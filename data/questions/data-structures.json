@@ -1,0 +1,100 @@
+{
+  "topic": {
+    "id": "data-structures",
+    "title": "Data Structures",
+    "description": "Arrays, Linked Lists, Trees, Stacks, Queues, and STL Containers.",
+    "icon": "Layers"
+  },
+  "questions": [
+    {
+      "id": "ds-01",
+      "topicId": "data-structures",
+      "title": "Vector Capacity Growth",
+      "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v;\n    v.reserve(2);\n    v.push_back(1);\n    v.push_back(2);\n    std::cout << v.capacity() << \" \";\n    v.push_back(3);\n    std::cout << (v.capacity() > 2);\n    return 0;\n}",
+      "answer": "2 1",
+      "explanation": "Initially reserved for 2, capacity is 2. When the 3rd element is added, the vector reallocates, doubling or increasing its capacity, making capacity > 2 evaluate to true (1).",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ds-02",
+      "topicId": "data-structures",
+      "title": "Map Default Value",
+      "code": "#include <iostream>\n#include <map>\n\nint main() {\n    std::map<int, int> m;\n    m[1] = 10;\n    std::cout << m[2] << m[1];\n    return 0;\n}",
+      "answer": "010",
+      "explanation": "Accessing m[2] using the subscript operator creates an element at key 2 with value-initialized data (which is 0 for int).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ds-03",
+      "topicId": "data-structures",
+      "title": "Vector Erase Iterators",
+      "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v = {1, 2, 3, 4};\n    auto it = v.erase(v.begin() + 1);\n    std::cout << *it;\n    return 0;\n}",
+      "answer": "3",
+      "explanation": "Erase removes the element at v.begin() + 1 (which is 2) and returns an iterator to the next element, which is 3.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ds-04",
+      "topicId": "data-structures",
+      "title": "Set Uniqueness",
+      "code": "#include <iostream>\n#include <set>\n\nint main() {\n    std::set<int> s = {3, 1, 3, 2, 1};\n    for(int x : s) std::cout << x;\n    return 0;\n}",
+      "answer": "123",
+      "explanation": "A std::set stores unique elements and keeps them sorted.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ds-05",
+      "topicId": "data-structures",
+      "title": "Array Decay",
+      "code": "#include <iostream>\n\nvoid sizeOfArray(int arr[]) {\n    std::cout << sizeof(arr);\n}\n\nint main() {\n    int a[10];\n    std::cout << sizeof(a) << \" \";\n    sizeOfArray(a);\n    return 0;\n}",
+      "answer": "40 8",
+      "explanation": "In main, sizeof(a) is 40 bytes (10 * 4). When passed to the function, it decays to a pointer. sizeof(pointer) on a 64-bit system is 8 bytes.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ds-06",
+      "topicId": "data-structures",
+      "title": "Priority Queue Default Ordering",
+      "code": "#include <iostream>\n#include <queue>\n\nint main() {\n    std::priority_queue<int> pq;\n    pq.push(3); pq.push(1); pq.push(5);\n    std::cout << pq.top();\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "By default, std::priority_queue is a max-heap in C++, meaning the largest element is at the top.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ds-07",
+      "topicId": "data-structures",
+      "title": "Queue FIFO",
+      "code": "#include <iostream>\n#include <queue>\n\nint main() {\n    std::queue<int> q;\n    q.push(1); q.push(2);\n    std::cout << q.front();\n    q.pop();\n    std::cout << q.front();\n    return 0;\n}",
+      "answer": "12",
+      "explanation": "A queue follows First-In-First-Out (FIFO). The first element pushed is 1, so front() returns 1. After pop(), front() returns 2.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ds-08",
+      "topicId": "data-structures",
+      "title": "Stack LIFO",
+      "code": "#include <iostream>\n#include <stack>\n\nint main() {\n    std::stack<int> s;\n    s.push(1); s.push(2);\n    std::cout << s.top();\n    s.pop();\n    std::cout << s.top();\n    return 0;\n}",
+      "answer": "21",
+      "explanation": "A stack follows Last-In-First-Out (LIFO). The last element pushed is 2, so top() is 2. After pop(), top() is 1.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ds-09",
+      "topicId": "data-structures",
+      "title": "String Substr",
+      "code": "#include <iostream>\n#include <string>\n\nint main() {\n    std::string s = \"hello\";\n    std::cout << s.substr(1, 2);\n    return 0;\n}",
+      "answer": "el",
+      "explanation": "substr(pos, count) starts at index 1 ('e') and extracts 2 characters ('e', 'l').",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ds-10",
+      "topicId": "data-structures",
+      "title": "Unordered Map Order",
+      "code": "#include <iostream>\n#include <unordered_map>\n\nint main() {\n    std::unordered_map<int, int> um;\n    um[3] = 30; um[1] = 10; um[2] = 20;\n    // Output depends on hash implementation, but we can check values\n    std::cout << um[1];\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "While unordered_map iteration order is not guaranteed, accessing um[1] always returns the mapped value 10 reliably.",
+      "difficulty": "Easy"
+    }
+  ]
+}

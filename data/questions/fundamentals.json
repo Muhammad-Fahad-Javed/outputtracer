@@ -1,0 +1,100 @@
+{
+  "topic": {
+    "id": "fundamentals",
+    "title": "Programming Fundamentals",
+    "description": "Loops, conditionals, basic logic, and standard I/O.",
+    "icon": "Code2"
+  },
+  "questions": [
+    {
+      "id": "fund-01",
+      "topicId": "fundamentals",
+      "title": "Switch Case Fallthrough",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 2;\n    switch(x) {\n        case 1: std::cout << \"One \";\n        case 2: std::cout << \"Two \";\n        case 3: std::cout << \"Three \";\n        default: std::cout << \"Default\";\n    }\n    return 0;\n}",
+      "answer": "Two Three Default",
+      "explanation": "Because there are no break statements, the execution falls through to the subsequent cases after matching case 2.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "fund-02",
+      "topicId": "fundamentals",
+      "title": "For Loop Scope",
+      "code": "#include <iostream>\n\nint main() {\n    int i = 0;\n    for (int i = 0; i < 3; i++) {\n        std::cout << i;\n    }\n    std::cout << i;\n    return 0;\n}",
+      "answer": "0120",
+      "explanation": "The 'i' inside the loop shadows the outer 'i'. The loop prints 0, 1, 2. After the loop, the outer 'i' (which is still 0) is printed.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "fund-03",
+      "topicId": "fundamentals",
+      "title": "Comma Operator",
+      "code": "#include <iostream>\n\nint main() {\n    int a = (1, 2, 3);\n    int b = 1, 2, 3;\n    std::cout << a << b;\n    return 0;\n}",
+      "answer": "31",
+      "explanation": "The comma operator evaluates operands left to right and returns the rightmost. So 'a' gets 3. However, 'int b = 1, 2, 3;' is a declaration list, so 'b' is initialized to 1.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "fund-04",
+      "topicId": "fundamentals",
+      "title": "Ternary Operator Associativity",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 1 ? 2 : 3 ? 4 : 5;\n    std::cout << a;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "The ternary operator is right-to-left associative, parsed as 1 ? 2 : (3 ? 4 : 5). Since 1 is true, it returns 2.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "fund-05",
+      "topicId": "fundamentals",
+      "title": "While Loop Post-decrement",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 3;\n    while (x--) {\n        std::cout << x;\n    }\n    return 0;\n}",
+      "answer": "210",
+      "explanation": "The condition evaluates x, then decrements it. Iteration 1: 3 (true), x becomes 2, prints 2. Iteration 2: 2 (true), x becomes 1, prints 1. Iteration 3: 1 (true), x becomes 0, prints 0.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "fund-06",
+      "topicId": "fundamentals",
+      "title": "Short Circuit Evaluation",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 0, b = 1;\n    if (a++ && b++) {\n        std::cout << a << b;\n    } else {\n        std::cout << a << b;\n    }\n    return 0;\n}",
+      "answer": "11",
+      "explanation": "a++ evaluates to 0 (false), so the right side (b++) is short-circuited and NOT evaluated. a becomes 1, b remains 1.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "fund-07",
+      "topicId": "fundamentals",
+      "title": "Static Variables",
+      "code": "#include <iostream>\n\nvoid func() {\n    static int x = 0;\n    int y = 0;\n    x++; y++;\n    std::cout << x << y;\n}\n\nint main() {\n    func();\n    func();\n    return 0;\n}",
+      "answer": "1121",
+      "explanation": "Static variable x retains its value between calls. Local variable y is re-initialized to 0 each time.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "fund-08",
+      "topicId": "fundamentals",
+      "title": "Bitwise Shift",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 1;\n    std::cout << (x << 2) + (x >> 1);\n    return 0;\n}",
+      "answer": "4",
+      "explanation": "1 << 2 shifts bits left by 2 (multiplies by 4), giving 4. 1 >> 1 shifts bits right by 1, giving 0. 4 + 0 = 4.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "fund-09",
+      "topicId": "fundamentals",
+      "title": "Integer Division",
+      "code": "#include <iostream>\n\nint main() {\n    float f = 5 / 2;\n    std::cout << f;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "5 / 2 is integer division, which truncates to 2. The integer 2 is then implicitly converted to float 2.0.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "fund-10",
+      "topicId": "fundamentals",
+      "title": "Do-While Loop",
+      "code": "#include <iostream>\n\nint main() {\n    int i = 0;\n    do {\n        std::cout << i;\n    } while (i++ < 0);\n    std::cout << i;\n    return 0;\n}",
+      "answer": "01",
+      "explanation": "The loop body executes once unconditionally, printing 0. Then i++ evaluates to 0 (which is not < 0), so the loop terminates. i is now 1, so it prints 1.",
+      "difficulty": "Medium"
+    }
+  ]
+}
