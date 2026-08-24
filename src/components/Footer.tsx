@@ -33,9 +33,14 @@ export default function Footer() {
           </nav>
         </div>
 
-        <p className="mt-8 text-xs text-[#999999]">
-          © 2026 OutputTracer. All rights reserved.
-        </p>
+        <div className="mt-12 flex flex-col items-center justify-center gap-2 border-t border-[#EAEAEA] pt-6 pb-2 text-center">
+          <p className="text-xs font-medium text-[#666666]">
+            Developed at <span className="font-semibold text-black">Fairline Technologies</span> by <span className="font-semibold text-black">FAHAD & AADIL</span>
+          </p>
+          <p className="text-xs text-[#999999]">
+            © 2026 OutputTracer. All rights reserved.
+          </p>
+        </div>
       </div>
     </footer>
   );
