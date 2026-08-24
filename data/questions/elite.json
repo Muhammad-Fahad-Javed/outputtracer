@@ -1,0 +1,235 @@
+{
+  "topic": {
+    "id": "elite",
+    "title": "Elite C++ Mechanics",
+    "description": "SFINAE, Template Metaprogramming, Memory Models, Strict Aliasing, and Deep Language Quirks.",
+    "icon": "Layers"
+  },
+  "questions": [
+    {
+      "id": "eli-01",
+      "topicId": "elite",
+      "title": "SFINAE (Substitution Failure Is Not An Error)",
+      "code": "#include <iostream>\n#include <type_traits>\n\ntemplate <typename T>\nauto test(int) -> decltype(std::declval<T>().foo(), void(), int()) { return 1; }\n\ntemplate <typename T>\nchar test(...) { return '0'; }\n\nstruct HasFoo { void foo() {} };\nstruct NoFoo {};\n\nint main() {\n    std::cout << test<HasFoo>(0) << test<NoFoo>(0);\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "test<HasFoo>(0) successfully substitutes T and finds void foo(), returning the int 1. test<NoFoo>(0) fails to substitute (no foo() found), so SFINAE discards the first template and falls back to the catch-all test(...) which returns the char '0'.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli-02",
+      "topicId": "elite",
+      "title": "Placement New",
+      "code": "#include <iostream>\n#include <new>\n\nclass X {\npublic:\n    int v;\n    X(int a) : v(a) { std::cout << \"C\"; }\n    ~X() { std::cout << \"D\"; }\n};\n\nint main() {\n    char buffer[sizeof(X)];\n    X* p = new (buffer) X(42);\n    std::cout << p->v;\n    p->~X();\n    return 0;\n}",
+      "answer": "C42D",
+      "explanation": "Placement new constructs an object at a pre-allocated memory address (buffer). It calls the constructor (C). We then print 42. Since it wasn't allocated with standard 'new', we must explicitly call the destructor (D).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli-03",
+      "topicId": "elite",
+      "title": "Strict Aliasing Rule Violation",
+      "code": "#include <iostream>\n\nint main() {\n    uint32_t val = 0x12345678;\n    // Assuming little-endian architecture\n    uint16_t* ptr = reinterpret_cast<uint16_t*>(&val);\n    std::cout << std::hex << ptr[0];\n    return 0;\n}",
+      "answer": "5678",
+      "explanation": "While this is technically undefined behavior due to breaking strict aliasing (accessing an object through a pointer to a different type), in practice on a little-endian machine, it reads the least significant 2 bytes (0x5678).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli-04",
+      "topicId": "elite",
+      "title": "Vector Reallocation Invalidating Iterators",
+      "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v = {1};\n    v.reserve(1);\n    int* p = &v[0];\n    v.push_back(2);\n    // Note: Assuming reallocation happens\n    std::cout << (p == &v[0] ? \"Same\" : \"Diff\");\n    return 0;\n}",
+      "answer": "Diff",
+      "explanation": "When a vector exceeds its capacity, it allocates a new memory block and moves the elements. Any pointers, references, or iterators to the old elements (like p) are invalidated. Thus the new address is different.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-05",
+      "topicId": "elite",
+      "title": "Constexpr if (C++17)",
+      "code": "#include <iostream>\n#include <type_traits>\n\ntemplate <typename T>\nvoid check(T t) {\n    if constexpr (std::is_pointer_v<T>) {\n        std::cout << \"P\";\n    } else {\n        std::cout << \"V\";\n    }\n}\n\nint main() {\n    int a = 5;\n    check(a);\n    check(&a);\n    return 0;\n}",
+      "answer": "VP",
+      "explanation": "constexpr if evaluates the condition at compile time. check(a) evaluates the else branch (V) and discards the if branch. check(&a) evaluates the if branch (P) and discards the else branch.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-06",
+      "topicId": "elite",
+      "title": "Reference Collapsing Rules",
+      "code": "#include <iostream>\n\ntemplate <typename T>\nvoid deduce(T&& x) {\n    std::cout << (std::is_same_v<T, int&> ? \"L\" : \"R\");\n}\n\nint main() {\n    int a = 5;\n    deduce(a);\n    deduce(5);\n    return 0;\n}",
+      "answer": "LR",
+      "explanation": "When an lvalue (a) is passed to a forwarding reference (T&&), T deduces as int&. int& && collapses to int& (L). When an rvalue (5) is passed, T deduces as int. int && remains int&& (R).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli-07",
+      "topicId": "elite",
+      "title": "Virtual Table Pointer Size",
+      "code": "#include <iostream>\n\nclass Empty {};\nclass VirtualEmpty { virtual void f() {} };\n\nint main() {\n    std::cout << (sizeof(VirtualEmpty) > sizeof(Empty));\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "An empty class typically has size 1 byte. A class with a virtual function must store a hidden vptr (virtual table pointer), meaning its size is usually 8 bytes (on 64-bit systems). Thus, it's larger.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-08",
+      "topicId": "elite",
+      "title": "Exception Specifications (noexcept)",
+      "code": "#include <iostream>\n\nvoid safe() noexcept {}\nvoid unsafe() {}\n\nint main() {\n    std::cout << noexcept(safe()) << noexcept(unsafe());\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "The noexcept operator checks at compile time whether an expression is declared to not throw any exceptions. safe() is 1 (true), unsafe() is 0 (false).",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "eli-09",
+      "topicId": "elite",
+      "title": "Template Metaprogramming (Factorial)",
+      "code": "#include <iostream>\n\ntemplate<int N>\nstruct Fact {\n    static const int value = N * Fact<N - 1>::value;\n};\n\ntemplate<>\nstruct Fact<0> {\n    static const int value = 1;\n};\n\nint main() {\n    std::cout << Fact<4>::value;\n    return 0;\n}",
+      "answer": "24",
+      "explanation": "This recursively evaluates 4 * 3 * 2 * 1 * 1 entirely at compile time using template specialization.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-10",
+      "topicId": "elite",
+      "title": "Pointers to Members",
+      "code": "#include <iostream>\n\nstruct C { int x; int y; };\n\nint main() {\n    int C::* ptr = &C::y;\n    C obj = {10, 20};\n    std::cout << obj.*ptr;\n    return 0;\n}",
+      "answer": "20",
+      "explanation": "ptr is a pointer-to-member of class C. It stores the offset of member 'y'. When dereferenced on instance 'obj' using the .* operator, it retrieves obj.y (20).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli-11",
+      "topicId": "elite",
+      "title": "Sequence Points and Undefined Behavior",
+      "code": "#include <iostream>\n\nint main() {\n    int i = 0;\n    i = i++ + ++i;\n    std::cout << \"UB\";\n    return 0;\n}",
+      "answer": "UB",
+      "explanation": "Modifying a variable multiple times without an intervening sequence point invokes undefined behavior. It could output anything or crash, but we print 'UB' conceptually.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-12",
+      "topicId": "elite",
+      "title": "Currying with std::bind",
+      "code": "#include <iostream>\n#include <functional>\n\nvoid print3(int a, int b, int c) { std::cout << a << b << c; }\n\nint main() {\n    auto f1 = std::bind(print3, std::placeholders::_1, 2, std::placeholders::_2);\n    f1(1, 3);\n    return 0;\n}",
+      "answer": "123",
+      "explanation": "std::bind maps the first argument (1) to 'a', hardcodes 2 for 'b', and maps the second argument (3) to 'c'.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-13",
+      "topicId": "elite",
+      "title": "Data Padding and Alignment",
+      "code": "#include <iostream>\n\nstruct A { char c; int i; };\nstruct B { int i; char c; };\n\nint main() {\n    std::cout << (sizeof(A) == sizeof(B));\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "Both structs typically require 8 bytes. A: 1 byte char + 3 bytes padding + 4 bytes int. B: 4 bytes int + 1 byte char + 3 bytes padding at the end to align the struct array. So they are equal (1).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli-14",
+      "topicId": "elite",
+      "title": "Bit Fields",
+      "code": "#include <iostream>\n\nstruct Flags {\n    unsigned int a : 1;\n    unsigned int b : 2;\n};\n\nint main() {\n    Flags f; f.a = 1; f.b = 3;\n    f.b = f.b + 1;\n    std::cout << f.a << f.b;\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "b is a 2-bit unsigned field (max value 3). When it is 3 and 1 is added, it overflows to 0. a remains 1.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli-15",
+      "topicId": "elite",
+      "title": "Covariant Return Types",
+      "code": "#include <iostream>\n\nclass Base { public: virtual Base* clone() { std::cout<<\"B\"; return new Base(); } };\nclass Derived : public Base { public: Derived* clone() override { std::cout<<\"D\"; return new Derived(); } };\n\nint main() {\n    Base* ptr = new Derived();\n    Base* c = ptr->clone();\n    delete ptr; delete c;\n    return 0;\n}",
+      "answer": "D",
+      "explanation": "A derived class overriding a virtual function can return a pointer/reference to a derived type instead of the base type. Dynamic dispatch ensures the Derived clone is called.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-16",
+      "topicId": "elite",
+      "title": "Move semantics on returning local objects",
+      "code": "#include <iostream>\n\nstruct Obj {\n    Obj() {}\n    Obj(const Obj&) { std::cout << \"C\"; }\n    Obj(Obj&&) noexcept { std::cout << \"M\"; }\n};\n\nObj make() {\n    Obj o;\n    return std::move(o);\n}\n\nint main() {\n    Obj x = make();\n    return 0;\n}",
+      "answer": "M",
+      "explanation": "By explicitly calling std::move(o), you PREVENT the compiler from performing NRVO (Named Return Value Optimization). Instead, it forces a move construction (M) into the return value.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli-17",
+      "topicId": "elite",
+      "title": "Multiple Inheritance Ambiguity",
+      "code": "#include <iostream>\n\nstruct L { void f() { std::cout << \"L\"; } };\nstruct R { void f() { std::cout << \"R\"; } };\nstruct D : L, R {};\n\nint main() {\n    D d;\n    d.L::f();\n    return 0;\n}",
+      "answer": "L",
+      "explanation": "d.f() would be ambiguous because both L and R have f(). However, using the scope resolution operator explicitly calls L's version.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-18",
+      "topicId": "elite",
+      "title": "std::launder",
+      "code": "#include <iostream>\n#include <new>\n\nstruct A { const int n; };\nunion U { A a; };\n\nint main() {\n    U u = { {1} };\n    new (&u.a) A{2};\n    std::cout << std::launder(&u.a)->n;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "Because 'n' is const, reusing its memory with placement new without std::launder leads to UB when reading. std::launder provides a pointer to the newly created object, returning 2.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli-19",
+      "topicId": "elite",
+      "title": "Default Member Initializers vs Member Initializer List",
+      "code": "#include <iostream>\n\nstruct S {\n    int a = 1;\n    S() : a(2) {}\n};\n\nint main() {\n    S s;\n    std::cout << s.a;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "If a member is initialized both in the default member initializer (1) and in the constructor's member initializer list (2), the constructor's list takes precedence.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "eli-20",
+      "topicId": "elite",
+      "title": "Destructor of Temporary Objects",
+      "code": "#include <iostream>\n\nstruct T {\n    ~T() { std::cout << \"D\"; }\n    void p() { std::cout << \"P\"; }\n};\n\nint main() {\n    T().p();\n    std::cout << \"E\";\n    return 0;\n}",
+      "answer": "PDE",
+      "explanation": "The temporary object T() is created, p() is called printing 'P'. The temporary is destroyed at the end of the full expression (the semicolon), printing 'D'. Then 'E' is printed.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-21",
+      "topicId": "elite",
+      "title": "Template Template Parameters",
+      "code": "#include <iostream>\n#include <vector>\n\ntemplate <template <typename, typename> class Container, typename T>\nvoid printSize(Container<T, std::allocator<T>> c) {\n    std::cout << c.size();\n}\n\nint main() {\n    std::vector<int> v = {1, 2, 3};\n    printSize(v);\n    return 0;\n}",
+      "answer": "3",
+      "explanation": "The function takes a container that itself takes a type and an allocator. std::vector matches this signature. It correctly prints the size 3.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli-22",
+      "topicId": "elite",
+      "title": "Exception catching order",
+      "code": "#include <iostream>\n#include <exception>\n\nclass MyExc : public std::exception {};\n\nint main() {\n    try {\n        throw MyExc();\n    } catch (std::exception& e) {\n        std::cout << \"S\";\n    } catch (MyExc& e) {\n        std::cout << \"M\";\n    }\n    return 0;\n}",
+      "answer": "S",
+      "explanation": "Catch blocks are evaluated in order. Since MyExc inherits from std::exception, the first block (std::exception&) catches it, printing S. The second block is never reached.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-23",
+      "topicId": "elite",
+      "title": "sizeof with side effects",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 1;\n    size_t s = sizeof(a++);\n    std::cout << a;\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "The operand of sizeof is not evaluated at runtime (except for VLAs in C). Therefore, a++ is never executed, and 'a' remains 1.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli-24",
+      "topicId": "elite",
+      "title": "Volatile keyword",
+      "code": "#include <iostream>\n\nint main() {\n    volatile int v = 5;\n    int a = v;\n    int b = v;\n    std::cout << (a == b);\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "Volatile tells the compiler not to optimize away reads. It reads 5 into a, then reads 5 into b. They are equal. Output is 1.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "eli-25",
+      "topicId": "elite",
+      "title": "Trailing Return Types",
+      "code": "#include <iostream>\n\nauto add(int a, double b) -> decltype(a + b) {\n    return a + b;\n}\n\nint main() {\n    std::cout << sizeof(add(1, 2.5));\n    return 0;\n}",
+      "answer": "8",
+      "explanation": "The trailing return type uses decltype(a + b). int + double results in double. sizeof(double) is typically 8 bytes.",
+      "difficulty": "Medium"
+    }
+  ]
+}

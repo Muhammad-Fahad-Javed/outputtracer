@@ -1,0 +1,235 @@
+{
+  "topic": {
+    "id": "elite2",
+    "title": "Elite C++ Mechanics II",
+    "description": "More deep dives into obscure C++ rules, memory management, and advanced features.",
+    "icon": "Layers"
+  },
+  "questions": [
+    {
+      "id": "eli2-01",
+      "topicId": "elite2",
+      "title": "Type Punning with Unions",
+      "code": "#include <iostream>\n\nunion U {\n    int i;\n    float f;\n};\n\nint main() {\n    U u;\n    u.f = 3.14f;\n    std::cout << (u.i == 0 ? \"Z\" : \"NZ\");\n    return 0;\n}",
+      "answer": "NZ",
+      "explanation": "Reading from a different union member than the one last written to is technically undefined behavior in C++ (unlike C). However, the bit pattern of 3.14f interpreted as an int will definitely not be zero, so it prints NZ.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli2-02",
+      "topicId": "elite2",
+      "title": "Static Local Variable Initialization Thread Safety",
+      "code": "#include <iostream>\n\nint init() {\n    std::cout << \"I\";\n    return 5;\n}\n\nvoid func() {\n    static int x = init();\n}\n\nint main() {\n    func();\n    func();\n    return 0;\n}",
+      "answer": "I",
+      "explanation": "In C++11 and later, static local variable initialization is thread-safe and guaranteed to happen exactly once. 'init()' is only called the first time func() is executed.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli2-03",
+      "topicId": "elite2",
+      "title": "Default Arguments on Virtual Functions (Revisited)",
+      "code": "#include <iostream>\n\nstruct B { virtual void f(int a = 1) { std::cout << \"B\" << a; } };\nstruct D : B { void f(int a = 2) override { std::cout << \"D\" << a; } };\n\nint main() {\n    D d;\n    B& b = d;\n    b.f();\n    d.f();\n    return 0;\n}",
+      "answer": "D1D2",
+      "explanation": "b.f() uses B's default argument (1) but calls D's function dynamically (D1). d.f() uses D's default argument (2) and calls D's function (D2).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli2-04",
+      "topicId": "elite2",
+      "title": "Pointer to Array vs Array of Pointers",
+      "code": "#include <iostream>\n\nint main() {\n    int arr[5] = {1, 2, 3, 4, 5};\n    int (*p)[5] = &arr;\n    int* q[5];\n    std::cout << sizeof(p) << \" \" << sizeof(q);\n    return 0;\n}",
+      "answer": "8 40",
+      "explanation": "Assuming a 64-bit system: p is a single pointer (8 bytes). q is an array of 5 pointers (5 * 8 = 40 bytes).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli2-05",
+      "topicId": "elite2",
+      "title": "Virtual Base Class Constructor Call",
+      "code": "#include <iostream>\n\nclass V { public: V(int) { std::cout << \"V\"; } };\nclass A : virtual public V { public: A() : V(1) { std::cout << \"A\"; } };\nclass B : virtual public V { public: B() : V(2) { std::cout << \"B\"; } };\nclass C : public A, public B { public: C() : V(3) { std::cout << \"C\"; } };\n\nint main() {\n    C c;\n    return 0;\n}",
+      "answer": "VABC",
+      "explanation": "The constructor of a virtual base class (V) is called by the most derived class (C). A's and B's calls to V's constructor are ignored.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli2-06",
+      "topicId": "elite2",
+      "title": "Function Try Blocks",
+      "code": "#include <iostream>\n\nclass A {\npublic:\n    A() { throw 1; }\n};\n\nclass B {\n    A a;\npublic:\n    B() try : a() { std::cout << \"B\"; } catch(...) { std::cout << \"C\"; }\n};\n\nint main() {\n    try { B b; } catch(...) { std::cout << \"M\"; }\n    return 0;\n}",
+      "answer": "CM",
+      "explanation": "A function try block catches exceptions from member initializers. It prints 'C'. However, function try blocks on constructors ALWAYS rethrow the exception automatically, which is then caught in main printing 'M'.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli2-07",
+      "topicId": "elite2",
+      "title": "Overload Resolution: Exact Match vs Conversion",
+      "code": "#include <iostream>\n\nvoid f(int) { std::cout << \"I\"; }\nvoid f(double) { std::cout << \"D\"; }\n\nint main() {\n    float x = 5.5f;\n    f(x);\n    return 0;\n}",
+      "answer": "D",
+      "explanation": "Float to double is a promotion (preferred), while float to int is a conversion (less preferred). Thus, f(double) is called.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli2-08",
+      "topicId": "elite2",
+      "title": "ADL (Argument-Dependent Lookup)",
+      "code": "#include <iostream>\n\nnamespace NS {\n    struct X {};\n    void func(X) { std::cout << \"NS\"; }\n}\n\nvoid func(NS::X) { std::cout << \"G\"; }\n\nint main() {\n    NS::X obj;\n    func(obj);\n    return 0;\n}",
+      "answer": "ERROR",
+      "explanation": "Because of ADL, the compiler finds NS::func. It also finds the global func. Both are exact matches for the arguments, leading to an ambiguous call error at compile time.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli2-09",
+      "topicId": "elite2",
+      "title": "std::vector<bool> Specialization",
+      "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<bool> v = {true, false};\n    auto ref = v[0];\n    v[0] = false;\n    std::cout << ref;\n    return 0;\n}",
+      "answer": "0",
+      "explanation": "std::vector<bool> is a bit-packed specialization. v[0] does not return a bool&, but a proxy object (std::vector<bool>::reference). Since 'auto' deduces the proxy type, changing v[0] changes the underlying bit, which 'ref' still points to.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli2-10",
+      "topicId": "elite2",
+      "title": "String Literal Concatenation",
+      "code": "#include <iostream>\n\nint main() {\n    const char* str = \"A\"\n                      \"B\"\n                      \"C\";\n    std::cout << str;\n    return 0;\n}",
+      "answer": "ABC",
+      "explanation": "Adjacent string literals separated only by whitespace are concatenated at compile time.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "eli2-11",
+      "topicId": "elite2",
+      "title": "Exception in Destructor",
+      "code": "#include <iostream>\n\nstruct E {\n    ~E() { throw 1; }\n};\n\nint main() {\n    try {\n        E e;\n    } catch(...) {\n        std::cout << \"C\";\n    }\n    return 0;\n}",
+      "answer": "C",
+      "explanation": "In C++11, destructors are noexcept by default. Throwing from a destructor that doesn't explicitly specify noexcept(false) immediately calls std::terminate, killing the program before 'C' can be printed. (Note: output may just be a crash, but prediction is conceptually Terminate).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli2-12",
+      "topicId": "elite2",
+      "title": "Typeid on Polymorphic Types",
+      "code": "#include <iostream>\n#include <typeinfo>\n\nstruct B { virtual ~B(){} };\nstruct D : B {};\n\nint main() {\n    B* p = new D();\n    std::cout << (typeid(*p) == typeid(D));\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "Because B has a virtual function (the destructor), it is a polymorphic type. typeid(*p) evaluates at runtime to the dynamic type, which is D. Therefore, they are equal (1).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli2-13",
+      "topicId": "elite2",
+      "title": "Typeid on Non-Polymorphic Types",
+      "code": "#include <iostream>\n#include <typeinfo>\n\nstruct B {};\nstruct D : B {};\n\nint main() {\n    B* p = new D();\n    std::cout << (typeid(*p) == typeid(D));\n    return 0;\n}",
+      "answer": "0",
+      "explanation": "Because B has no virtual functions, it is non-polymorphic. typeid(*p) evaluates at compile time to the static type, which is B. They are not equal (0).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli2-14",
+      "topicId": "elite2",
+      "title": "Anonymous Namespaces",
+      "code": "#include <iostream>\n\nnamespace {\n    int x = 5;\n}\n\nint main() {\n    int x = 10;\n    std::cout << ::x;\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "Variables in an anonymous namespace are effectively global to the translation unit, accessible via the global scope resolution operator ::x.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "eli2-15",
+      "topicId": "elite2",
+      "title": "Final keyword",
+      "code": "#include <iostream>\n\nstruct A { virtual void f() {} };\nstruct B : A { void f() final { std::cout << \"B\"; } };\n\nint main() {\n    A* a = new B();\n    a->f();\n    return 0;\n}",
+      "answer": "B",
+      "explanation": "The 'final' keyword prevents further overriding in derived classes, but it is a valid override of A's function, so dynamic dispatch calls B's function.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "eli2-16",
+      "topicId": "elite2",
+      "title": "Decltype with Parentheses",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 0;\n    decltype((a)) b = a;\n    b = 5;\n    std::cout << a;\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "decltype(a) yields int. However, decltype((a)) yields an lvalue reference to int (int&). Thus, modifying b modifies a.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli2-17",
+      "topicId": "elite2",
+      "title": "Template Non-Type Parameters",
+      "code": "#include <iostream>\n\ntemplate <int N>\nvoid print() { std::cout << N; }\n\nint main() {\n    int x = 5;\n    // print<x>(); // This would not compile\n    print<5>();\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "Template non-type parameters must be known at compile time. Since 5 is a literal, print<5>() is perfectly valid.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "eli2-18",
+      "topicId": "elite2",
+      "title": "Mutable Keyword",
+      "code": "#include <iostream>\n\nclass C {\n    mutable int x;\npublic:\n    C() : x(0) {}\n    void change() const { x = 5; }\n    void print() const { std::cout << x; }\n};\n\nint main() {\n    const C obj;\n    obj.change();\n    obj.print();\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "The 'mutable' keyword allows a member variable to be modified even if the object is const or the member function is const.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli2-19",
+      "topicId": "elite2",
+      "title": "Delete Operator Overloading",
+      "code": "#include <iostream>\n\nstruct Node {\n    void operator delete(void* p) {\n        std::cout << \"K\";\n        ::delete p;\n    }\n};\n\nint main() {\n    Node* n = new Node();\n    delete n;\n    return 0;\n}",
+      "answer": "K",
+      "explanation": "When 'delete n' is called, it calls the destructor (which is trivial and prints nothing) and then calls the overloaded class-specific operator delete, printing K.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli2-20",
+      "topicId": "elite2",
+      "title": "Explicit Constructor",
+      "code": "#include <iostream>\n\nclass Num {\npublic:\n    explicit Num(int x) { std::cout << \"N\"; }\n};\n\nvoid pass(Num n) {}\n\nint main() {\n    Num n1(5);\n    // pass(10); // Compile error\n    return 0;\n}",
+      "answer": "N",
+      "explanation": "The explicit constructor prevents implicit conversions (like pass(10)). Directly calling the constructor Num n1(5) is allowed, printing N.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli2-21",
+      "topicId": "elite2",
+      "title": "Lambda return type deduction",
+      "code": "#include <iostream>\n\nint main() {\n    auto l = [](bool b) {\n        if (b) return 1;\n        return 2;\n    };\n    std::cout << l(true);\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "C++14 allows lambdas to deduce their return type if all return statements return the same type. Both 1 and 2 are ints, so it works perfectly.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "eli2-22",
+      "topicId": "elite2",
+      "title": "Virtual functions inside Constructors",
+      "code": "#include <iostream>\n\nclass Base {\npublic:\n    Base() { foo(); }\n    virtual void foo() { std::cout << \"B\"; }\n};\n\nclass Derived : public Base {\npublic:\n    void foo() override { std::cout << \"D\"; }\n};\n\nint main() {\n    Derived d;\n    return 0;\n}",
+      "answer": "B",
+      "explanation": "During the Base constructor, the object is technically only a Base (the Derived parts haven't been built yet). Therefore, dynamic dispatch does not reach down to Derived, and Base::foo is called.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli2-23",
+      "topicId": "elite2",
+      "title": "Address of Operator Overloading",
+      "code": "#include <iostream>\n\nclass Trick {\npublic:\n    Trick* operator&() { std::cout << \"&\"; return this; }\n};\n\nint main() {\n    Trick t;\n    Trick* p = &t;\n    return 0;\n}",
+      "answer": "&",
+      "explanation": "The unary address-of operator (&) can be overloaded. Taking the address of t invokes the overloaded operator, printing &.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "eli2-24",
+      "topicId": "elite2",
+      "title": "Global vs Member operator new",
+      "code": "#include <iostream>\n\nstruct S {\n    void* operator new(size_t size) {\n        std::cout << \"S\";\n        return ::operator new(size);\n    }\n};\n\nint main() {\n    S* s = ::new S();\n    delete s;\n    return 0;\n}",
+      "answer": "",
+      "explanation": "By prefixing 'new' with '::', it forces the global allocator to be used, completely bypassing the class-specific overloaded operator new. Thus, nothing is printed.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "eli2-25",
+      "topicId": "elite2",
+      "title": "Rvalue Reference to Lvalue Reference",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 5;\n    int& b = a;\n    int&& c = std::move(b);\n    c = 10;\n    std::cout << a;\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "std::move casts the lvalue reference 'b' to an rvalue reference 'c'. 'c' still refers to the same memory location as 'a' and 'b'. Modifying 'c' modifies 'a'.",
+      "difficulty": "Hard"
+    }
+  ]
+}
