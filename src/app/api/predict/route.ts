@@ -53,10 +53,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const { source, stdin, standard } =
-    (body as { source?: unknown; stdin?: unknown; standard?: unknown }) ?? {};
+  const { source, files, stdin, standard } =
+    (body as { source?: unknown; files?: unknown; stdin?: unknown; standard?: unknown }) ?? {};
+
+  const isValidFiles =
+    typeof files === "object" &&
+    files !== null &&
+    Object.values(files).every((v) => typeof v === "string");
 
   const result = await compileAndRun({
+    files: isValidFiles ? (files as Record<string, string>) : undefined,
     source: typeof source === "string" ? source : "",
     stdin: typeof stdin === "string" ? stdin : undefined,
     standard: typeof standard === "string" ? standard : undefined,

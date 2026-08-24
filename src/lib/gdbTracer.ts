@@ -51,7 +51,7 @@ function generateGdbPythonScript(opts: {
   maxSteps: number;
   stdoutFile: string;
   traceFile: string;
-  sourceFile: string;
+  tempDir: string;
   stdinFile?: string;
 }): string {
   // The script runs inside GDB's embedded Python interpreter. It must not
@@ -71,7 +71,7 @@ import os
 MAX_STEPS = ${opts.maxSteps}
 STDOUT_FILE = ${JSON.stringify(opts.stdoutFile)}
 TRACE_FILE = ${JSON.stringify(opts.traceFile)}
-SOURCE_FILE = ${JSON.stringify(opts.sourceFile)}
+TEMP_DIR = ${JSON.stringify(opts.tempDir)}
 
 # ── Configure GDB ──────────────────────────────────────────────────────
 gdb.execute("set pagination off")
@@ -92,12 +92,15 @@ for pattern in ["/usr/*", "/lib/*", "/include/*", "*/bits/*", "*/ext/*", "*/c++/
         pass
 
 # ── Read user source lines for mapping line numbers to statements ──────
-source_lines = {}
-try:
-    with open(SOURCE_FILE, "r") as f:
-        source_lines = {i + 1: line.rstrip() for i, line in enumerate(f.readlines())}
-except Exception:
-    pass
+file_lines_cache = {}
+def get_statement(fname, lno):
+    if fname not in file_lines_cache:
+        try:
+            with open(fname, "r") as f:
+                file_lines_cache[fname] = {i + 1: line.rstrip() for i, line in enumerate(f.readlines())}
+        except Exception:
+            file_lines_cache[fname] = {}
+    return file_lines_cache[fname].get(lno, "").strip()
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 def get_locals():
@@ -197,15 +200,15 @@ for i in range(MAX_STEPS):
         filename = sal.symtab.fullname()
         lineno = sal.line
 
-        # Only trace lines from the user's source file
-        if not filename.endswith("main.cpp"):
+        # Only trace lines from the user's source files in the temp directory
+        if not filename.startswith(TEMP_DIR):
             try:
                 gdb.execute("step")
             except gdb.error:
                 break
             continue
 
-        statement = source_lines.get(lineno, "").strip()
+        statement = get_statement(filename, lineno)
 
         # Skip non-informative lines (braces, blank)
         if statement in SKIP_STATEMENTS:
@@ -267,7 +270,6 @@ with open(TRACE_FILE, "w") as f:
 export async function traceExecution(opts: {
   exePath: string;
   tempDir: string;
-  sourceFile: string;
   stdinContent?: string;
 }): Promise<TraceResult> {
   const gdbCheck = await checkGdbAvailable();
@@ -294,7 +296,7 @@ export async function traceExecution(opts: {
     maxSteps: execConfig.maxTraceSteps,
     stdoutFile,
     traceFile,
-    sourceFile: opts.sourceFile,
+    tempDir: opts.tempDir,
     stdinFile,
   });
   await fs.writeFile(scriptFile, script, "utf8");

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 import {
   RotateCcw,
   Sparkles,
@@ -9,6 +11,10 @@ import {
   Trash2,
   AlertTriangle,
   CheckCircle2,
+  FilePlus,
+  Download,
+  X,
+  FileCode2,
 } from "lucide-react";
 import CodeEditor from "@/components/CodeEditor";
 import PredictButton from "@/components/PredictButton";
@@ -19,11 +25,12 @@ import { PredictionResult } from "@/types/predictor";
 const IDLE_RESULT: PredictionResult = { status: "idle" };
 
 interface PredictorProps {
-  code: string;
-  setCode: (code: string) => void;
+  files: Record<string, string>;
+  setFiles: (files: Record<string, string>) => void;
 }
 
-export default function Predictor({ code, setCode }: PredictorProps) {
+export default function Predictor({ files, setFiles }: PredictorProps) {
+  const [activeFile, setActiveFile] = useState("main.cpp");
   const [result, setResult] = useState<PredictionResult>(IDLE_RESULT);
   const [copied, setCopied] = useState(false);
   const [stdin, setStdin] = useState("");
@@ -34,7 +41,7 @@ export default function Predictor({ code, setCode }: PredictorProps) {
     const pending = consumePendingExample();
 
     if (pending) {
-      setCode(pending);
+      setFiles({ "main.cpp": pending });
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,7 +58,7 @@ export default function Predictor({ code, setCode }: PredictorProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          source: code,
+          files,
           stdin,
         }),
       });
@@ -71,15 +78,73 @@ export default function Predictor({ code, setCode }: PredictorProps) {
   };
 
   const handleReset = () => {
-    setCode(DEFAULT_CODE);
+    setFiles({ "main.cpp": DEFAULT_CODE });
+    setActiveFile("main.cpp");
     setResult(IDLE_RESULT);
   };
 
   const handleLoadExample = () => {
     const random = examples[Math.floor(Math.random() * examples.length)];
 
-    setCode(random.code);
+    setFiles({ "main.cpp": random.code });
+    setActiveFile("main.cpp");
     setResult(IDLE_RESULT);
+  };
+
+  const handleAddFile = () => {
+    let name = "new_file.cpp";
+    let counter = 1;
+    while (files[name]) {
+      name = `new_file_${counter}.cpp`;
+      counter++;
+    }
+    
+    const input = prompt("Enter file name (e.g. helper.h, helper.cpp):", name);
+    if (!input) return;
+    
+    const finalName = input.trim();
+    if (files[finalName]) {
+      alert("A file with that name already exists.");
+      return;
+    }
+    if (!finalName.endsWith(".cpp") && !finalName.endsWith(".h") && !finalName.endsWith(".hpp")) {
+      alert("File must end with .cpp, .h, or .hpp");
+      return;
+    }
+    
+    setFiles({ ...files, [finalName]: "" });
+    setActiveFile(finalName);
+  };
+
+  const handleDeleteFile = (fileName: string) => {
+    if (Object.keys(files).length <= 1) {
+      alert("You must have at least one file.");
+      return;
+    }
+    const confirm = window.confirm(`Are you sure you want to delete ${fileName}?`);
+    if (!confirm) return;
+
+    const newFiles = { ...files };
+    delete newFiles[fileName];
+    setFiles(newFiles);
+    if (activeFile === fileName) {
+      setActiveFile(Object.keys(newFiles)[0]);
+    }
+  };
+
+  const handleDownloadFile = () => {
+    const content = files[activeFile] || "";
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    saveAs(blob, activeFile);
+  };
+
+  const handleDownloadZip = async () => {
+    const zip = new JSZip();
+    Object.entries(files).forEach(([name, content]) => {
+      zip.file(name, content);
+    });
+    const blob = await zip.generateAsync({ type: "blob" });
+    saveAs(blob, "outputtracer_project.zip");
   };
 
   const handleCopy = async () => {
@@ -107,12 +172,63 @@ export default function Predictor({ code, setCode }: PredictorProps) {
     >
       {/* Editor workspace */}
       <div className="overflow-hidden rounded-[4px] border border-[#DCDCDC]">
-        <div className="flex items-center justify-between bg-[#FAFAFA] px-4 py-2">
-          <span className="rounded-[3px] border border-[#DCDCDC] bg-white px-2 py-0.5 font-mono text-xs font-semibold text-black">
-            C++
-          </span>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-[#FAFAFA] px-2 py-2 gap-2 border-b border-[#DCDCDC]">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {Object.keys(files).map((fileName) => (
+              <div
+                key={fileName}
+                className={`group flex items-center gap-1.5 rounded-[4px] border px-2.5 py-1 font-mono text-xs font-medium cursor-pointer transition-colors ${
+                  activeFile === fileName
+                    ? "border-[#DCDCDC] bg-white text-black shadow-sm"
+                    : "border-transparent bg-transparent text-[#666666] hover:bg-[#EAEAEA] hover:text-black"
+                }`}
+                onClick={() => setActiveFile(fileName)}
+              >
+                <FileCode2 size={13} />
+                {fileName}
+                {Object.keys(files).length > 1 && (
+                  <button
+                    className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-black/10 rounded transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteFile(fileName);
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            ))}
+            
+            <button
+              type="button"
+              onClick={handleAddFile}
+              className="ml-1 flex items-center justify-center p-1.5 rounded-[4px] text-[#666666] hover:bg-[#EAEAEA] hover:text-black transition-colors"
+              title="Add File"
+            >
+              <FilePlus size={14} />
+            </button>
+          </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 px-2">
+            <button
+              type="button"
+              onClick={handleDownloadZip}
+              className="inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[#F2F2F2]"
+              title="Download Project ZIP"
+            >
+              <Download size={13} />
+              ZIP
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadFile}
+              className="inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[#F2F2F2]"
+              title="Download Current File"
+            >
+              <Download size={13} />
+              File
+            </button>
             <button
               type="button"
               onClick={() => setShowStdin((v) => !v)}
@@ -145,8 +261,8 @@ export default function Predictor({ code, setCode }: PredictorProps) {
         </div>
 
         <CodeEditor
-          value={code}
-          onChange={setCode}
+          value={files[activeFile] || ""}
+          onChange={(content) => setFiles({ ...files, [activeFile]: content })}
           onRunShortcut={handlePredict}
         />
 
@@ -225,41 +341,67 @@ export default function Predictor({ code, setCode }: PredictorProps) {
               </div>
             )}
 
-            {result.status === "success" && (
+            {(result.status === "success" || result.status === "error") && (
               <>
-                <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-black">
-                  {result.output}
-                </pre>
-
-                <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-[#666666]">
-                  <CheckCircle2 size={13} />
-                  Execution complete
-                  {typeof result.meta?.exitCode === "number" && result.meta.exitCode !== 0 && (
-                    <span className="text-[#999999]">
-                      &nbsp;— exited with code {result.meta.exitCode}
+                {result.output && (
+                  <div className="mb-4">
+                    <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[#666666]">
+                      Standard Output
                     </span>
-                  )}
-                </p>
+                    <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-black">
+                      {result.output}
+                    </pre>
+                  </div>
+                )}
+                
+                {result.status === "success" && !result.output && !result.stderr && (
+                  <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed italic text-[#999999]">
+                    (No output)
+                  </pre>
+                )}
+
+                {result.stderr && (
+                  <div className="mb-4">
+                    <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[#666666]">
+                      Standard Error
+                    </span>
+                    <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-[#D93025]">
+                      {result.stderr}
+                    </pre>
+                  </div>
+                )}
+
+                {result.status === "error" && result.error && (
+                  <div className="flex gap-2.5 mt-4 rounded bg-[#FAFAFA] border border-[#DCDCDC] p-3">
+                    <AlertTriangle
+                      size={16}
+                      className="mt-0.5 shrink-0 text-black"
+                    />
+
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-semibold tracking-wide text-black">
+                        {result.error.title}
+                      </p>
+
+                      <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-[#666666]">
+                        {result.error.message}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+
+                {result.status === "success" && (
+                  <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-[#666666]">
+                    <CheckCircle2 size={13} />
+                    Execution complete
+                    {typeof result.meta?.exitCode === "number" && result.meta.exitCode !== 0 && (
+                      <span className="text-[#999999]">
+                        &nbsp;— exited with code {result.meta.exitCode}
+                      </span>
+                    )}
+                  </p>
+                )}
               </>
-            )}
-
-            {result.status === "error" && result.error && (
-              <div className="flex gap-2.5">
-                <AlertTriangle
-                  size={16}
-                  className="mt-0.5 shrink-0 text-black"
-                />
-
-                <div>
-                  <p className="font-mono text-xs font-semibold tracking-wide text-black">
-                    {result.error.title}
-                  </p>
-
-                  <p className="mt-1 font-mono text-[13px] leading-relaxed text-[#666666]">
-                    {result.error.message}
-                  </p>
-                </div>
-              </div>
             )}
           </div>
         </div>

@@ -8,14 +8,16 @@ import Footer from "@/components/Footer";
 import { DEFAULT_CODE } from "@/lib/examples";
 
 export default function Home() {
-  const [code, setCode] = useState(DEFAULT_CODE);
+  const [files, setFiles] = useState<Record<string, string>>({
+    "main.cpp": DEFAULT_CODE,
+  });
 
   return (
     <>
       <Header />
       <main>
         <Hero />
-        <Predictor code={code} setCode={setCode} />
+        <Predictor files={files} setFiles={setFiles} />
       </main>
       <Footer />
     </>

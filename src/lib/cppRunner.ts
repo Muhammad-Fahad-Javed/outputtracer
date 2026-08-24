@@ -66,7 +66,8 @@ export interface RunResult {
 }
 
 export interface RunOptions {
-  source: string;
+  files?: Record<string, string>;
+  source?: string;
   stdin?: string;
   standard?: string;
 }
@@ -124,13 +125,18 @@ function log(execId: string, event: string, data: Record<string, unknown> = {}) 
 
 export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
   const execId = crypto.randomBytes(6).toString("hex");
-  const source = opts.source;
 
-  if (!source || typeof source !== "string" || source.trim().length === 0) {
+  const files = opts.files || (opts.source && opts.source.trim().length > 0 ? { "main.cpp": opts.source } : {});
+  if (Object.keys(files).length === 0) {
     return { status: "invalid_request", title: "No code", message: "Please enter C++ code." };
   }
 
-  if (Buffer.byteLength(source, "utf8") > execConfig.maxSourceBytes) {
+  let totalSourceBytes = 0;
+  for (const content of Object.values(files)) {
+    totalSourceBytes += Buffer.byteLength(content, "utf8");
+  }
+
+  if (totalSourceBytes > execConfig.maxSourceBytes) {
     return {
       status: "invalid_request",
       title: "Source too large",
@@ -172,21 +178,33 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
     };
   }
 
-  const srcName = "main.cpp";
   const exeName = os.platform() === "win32" ? "main.exe" : "main.out";
   const exePath = path.join(tempDir, exeName);
 
   try {
-    await fs.writeFile(path.join(tempDir, srcName), source, "utf8");
+    const cppFiles = [];
+    for (const [filename, content] of Object.entries(files)) {
+      if (filename.includes("/") || filename.includes("\\") || filename.startsWith(".")) {
+        throw new Error(`Invalid filename: ${filename}`);
+      }
+      if (filename.endsWith(".cpp")) {
+        cppFiles.push(filename);
+      }
+      await fs.writeFile(path.join(tempDir, filename), content, "utf8");
+    }
+
+    if (cppFiles.length === 0) {
+      throw new Error("No .cpp files found to compile.");
+    }
 
     // --- Compile ---------------------------------------------------------
-    log(execId, "compile_started", { standard, sourceBytes: Buffer.byteLength(source, "utf8") });
+    log(execId, "compile_started", { standard, sourceBytes: totalSourceBytes });
     const compileStart = Date.now();
     let compileTimeMs = 0;
     try {
       await execFileAsync(
         execConfig.compiler,
-        [srcName, `-std=${standard}`, "-g", "-O0", "-Wall", "-o", exeName],
+        [...cppFiles, `-std=${standard}`, "-g", "-O0", "-Wall", "-o", exeName],
         {
           cwd: tempDir,
           timeout: execConfig.compileTimeoutMs,
@@ -382,7 +400,6 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
         trace = await traceExecution({
           exePath,
           tempDir,
-          sourceFile: path.join(tempDir, srcName),
           stdinContent: stdinTrunc.text || undefined,
         });
         log(execId, "trace_completed", { steps: trace.steps.length, truncated: trace.truncated });
