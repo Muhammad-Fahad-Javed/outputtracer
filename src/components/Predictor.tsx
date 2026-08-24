@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import {
@@ -15,6 +15,9 @@ import {
   Download,
   X,
   FileCode2,
+  ChevronDown,
+  ChevronRight,
+  Terminal,
 } from "lucide-react";
 import CodeEditor from "@/components/CodeEditor";
 import PredictButton from "@/components/PredictButton";
@@ -23,6 +26,22 @@ import { DEFAULT_CODE, examples, consumePendingExample } from "@/lib/examples";
 import { PredictionResult } from "@/types/predictor";
 
 const IDLE_RESULT: PredictionResult = { status: "idle" };
+
+/** Patterns that suggest the program reads from stdin. */
+const STDIN_PATTERNS = [
+  /\bcin\s*>>/,
+  /\bgetline\s*\(/,
+  /\bscanf\s*\(/,
+  /\bgetchar\s*\(/,
+  /\bgets\s*\(/,
+  /\bfgets\s*\(.+stdin/,
+];
+
+function codeNeedsInput(files: Record<string, string>): boolean {
+  return Object.values(files).some((content) =>
+    STDIN_PATTERNS.some((pattern) => pattern.test(content))
+  );
+}
 
 interface PredictorProps {
   files: Record<string, string>;
@@ -35,6 +54,30 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
   const [copied, setCopied] = useState(false);
   const [stdin, setStdin] = useState("");
   const [showStdin, setShowStdin] = useState(false);
+
+  const needsInput = useMemo(() => codeNeedsInput(files), [files]);
+
+  // Derive a safe active file — if the stored activeFile no longer exists
+  // in the files map, fall back to the first available file.
+  const safeActiveFile = files[activeFile] !== undefined ? activeFile : Object.keys(files)[0] ?? "main.cpp";
+
+  // If safeActiveFile diverged from activeFile, sync it on next interaction
+  // (we can't call setState during render, but we handle it in event handlers).
+  const currentFile = safeActiveFile;
+
+  // Auto-expand stdin when code uses cin/scanf — track with a ref so we
+  // only auto-open once per "detection" rather than fighting the user.
+  const [stdinAutoOpened, setStdinAutoOpened] = useState(false);
+  if (needsInput && !showStdin && !stdinAutoOpened) {
+    // Schedule the state update to happen after render
+    queueMicrotask(() => {
+      setShowStdin(true);
+      setStdinAutoOpened(true);
+    });
+  }
+  if (!needsInput && stdinAutoOpened) {
+    queueMicrotask(() => setStdinAutoOpened(false));
+  }
 
   // Pick up a code snippet selected on /examples, if any, on first mount.
   useEffect(() => {
@@ -80,6 +123,7 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
   const handleReset = () => {
     setFiles({ "main.cpp": DEFAULT_CODE });
     setActiveFile("main.cpp");
+    setStdin("");
     setResult(IDLE_RESULT);
   };
 
@@ -88,6 +132,7 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
 
     setFiles({ "main.cpp": random.code });
     setActiveFile("main.cpp");
+    setStdin("");
     setResult(IDLE_RESULT);
   };
 
@@ -121,21 +166,21 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
       alert("You must have at least one file.");
       return;
     }
-    const confirm = window.confirm(`Are you sure you want to delete ${fileName}?`);
-    if (!confirm) return;
+    const shouldDelete = window.confirm(`Are you sure you want to delete ${fileName}?`);
+    if (!shouldDelete) return;
 
     const newFiles = { ...files };
     delete newFiles[fileName];
     setFiles(newFiles);
-    if (activeFile === fileName) {
+    if (currentFile === fileName) {
       setActiveFile(Object.keys(newFiles)[0]);
     }
   };
 
   const handleDownloadFile = () => {
-    const content = files[activeFile] || "";
+    const content = files[currentFile] || "";
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    saveAs(blob, activeFile);
+    saveAs(blob, currentFile);
   };
 
   const handleDownloadZip = async () => {
@@ -165,6 +210,8 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
     setResult(IDLE_RESULT);
   };
 
+  const hasOutput = result.status === "success" || result.status === "error";
+
   return (
     <section
       id="predictor"
@@ -178,7 +225,7 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
               <div
                 key={fileName}
                 className={`group flex items-center gap-1.5 rounded-[4px] border px-2.5 py-1 font-mono text-xs font-medium cursor-pointer transition-colors ${
-                  activeFile === fileName
+                  currentFile === fileName
                     ? "border-[#DCDCDC] bg-white text-black shadow-sm"
                     : "border-transparent bg-transparent text-[#666666] hover:bg-[#EAEAEA] hover:text-black"
                 }`}
@@ -229,16 +276,6 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
               <Download size={13} />
               File
             </button>
-            <button
-              type="button"
-              onClick={() => setShowStdin((v) => !v)}
-              aria-expanded={showStdin}
-              className={`inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-[#F2F2F2] ${
-                showStdin ? "text-black" : "text-[#666666]"
-              }`}
-            >
-              Input (stdin){stdin.trim() ? " •" : ""}
-            </button>
 
             <button
               type="button"
@@ -261,29 +298,69 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
         </div>
 
         <CodeEditor
-          value={files[activeFile] || ""}
-          onChange={(content) => setFiles({ ...files, [activeFile]: content })}
+          value={files[currentFile] || ""}
+          onChange={(content) => setFiles({ ...files, [currentFile]: content })}
           onRunShortcut={handlePredict}
         />
 
-        {showStdin && (
-          <div className="border-t border-[#DCDCDC] bg-[#FAFAFA] px-4 py-3">
-            <label
-              htmlFor="stdin-input"
-              className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#666666]"
-            >
-              Standard Input
-            </label>
-            <textarea
-              id="stdin-input"
-              value={stdin}
-              onChange={(e) => setStdin(e.target.value)}
-              placeholder="Values your program reads via std::cin, one per line…"
-              rows={3}
-              className="w-full resize-y rounded-[3px] border border-[#DCDCDC] bg-white px-3 py-2 font-mono text-sm text-black placeholder:text-[#999999] focus:outline-none focus:ring-2 focus:ring-black/10"
-            />
-          </div>
-        )}
+        {/* Stdin panel — always rendered, collapsible */}
+        <div className="border-t border-[#DCDCDC] bg-[#FAFAFA]">
+          <button
+            type="button"
+            onClick={() => setShowStdin((v) => !v)}
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-[#F2F2F2]"
+          >
+            {showStdin ? (
+              <ChevronDown size={14} className="text-[#666666]" />
+            ) : (
+              <ChevronRight size={14} className="text-[#666666]" />
+            )}
+            <Terminal size={14} className="text-[#666666]" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
+              Standard Input (stdin)
+            </span>
+            {stdin.trim() && (
+              <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-black" title="Input provided" />
+            )}
+            {needsInput && !stdin.trim() && (
+              <span className="ml-2 rounded-[3px] bg-[#FFF3CD] px-1.5 py-0.5 text-[10px] font-semibold text-[#856404]">
+                Input detected — provide values below
+              </span>
+            )}
+          </button>
+
+          {showStdin && (
+            <div className="px-4 pb-3">
+              <textarea
+                id="stdin-input"
+                value={stdin}
+                onChange={(e) => setStdin(e.target.value)}
+                placeholder={
+                  needsInput
+                    ? "Your code uses cin/scanf — enter input values here, one per line…"
+                    : "Values your program reads via std::cin, one per line…"
+                }
+                rows={4}
+                className="w-full resize-y rounded-[3px] border border-[#DCDCDC] bg-white px-3 py-2 font-mono text-sm text-black placeholder:text-[#999999] focus:outline-none focus:ring-2 focus:ring-black/10"
+              />
+              {stdin.trim() && (
+                <div className="mt-1.5 flex items-center justify-between">
+                  <span className="text-[11px] text-[#999999]">
+                    {stdin.trim().split("\n").length} line{stdin.trim().split("\n").length !== 1 ? "s" : ""} of input
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setStdin("")}
+                    className="inline-flex items-center gap-1 rounded-[3px] px-2 py-0.5 text-[11px] text-[#999999] transition-colors hover:bg-[#EAEAEA] hover:text-[#666666]"
+                  >
+                    <X size={10} />
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="bg-[#FAFAFA] px-4 py-5">
           <PredictButton
@@ -302,17 +379,19 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
               Output
             </span>
 
-            {result.status === "success" && (
+            {hasOutput && (result.output || result.stderr) && (
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  aria-label="Copy output"
-                  className="inline-flex items-center gap-1 rounded-[3px] px-2 py-1 text-xs text-black transition-colors hover:bg-[#F2F2F2]"
-                >
-                  {copied ? <Check size={13} /> : <Copy size={13} />}
-                  {copied ? "Copied" : "Copy"}
-                </button>
+                {result.output && (
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    aria-label="Copy output"
+                    className="inline-flex items-center gap-1 rounded-[3px] px-2 py-1 text-xs text-black transition-colors hover:bg-[#F2F2F2]"
+                  >
+                    {copied ? <Check size={13} /> : <Copy size={13} />}
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -341,23 +420,21 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
               </div>
             )}
 
-            {(result.status === "success" || result.status === "error") && (
+            {hasOutput && (
               <>
                 {result.output && (
                   <div className="mb-4">
                     <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[#666666]">
                       Standard Output
                     </span>
-                    <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-black">
-                      {result.output}
-                    </pre>
+                    <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-black">{result.output}</pre>
                   </div>
                 )}
                 
                 {result.status === "success" && !result.output && !result.stderr && (
-                  <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed italic text-[#999999]">
+                  <p className="font-mono text-[15px] leading-relaxed italic text-[#999999]">
                     (No output)
-                  </pre>
+                  </p>
                 )}
 
                 {result.stderr && (
@@ -365,9 +442,7 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
                     <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[#666666]">
                       Standard Error
                     </span>
-                    <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-[#D93025]">
-                      {result.stderr}
-                    </pre>
+                    <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-[#D93025]">{result.stderr}</pre>
                   </div>
                 )}
 
@@ -383,9 +458,7 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
                         {result.error.title}
                       </p>
 
-                      <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-[#666666]">
-                        {result.error.message}
-                      </pre>
+                      <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-[#666666]">{result.error.message}</pre>
                     </div>
                   </div>
                 )}
