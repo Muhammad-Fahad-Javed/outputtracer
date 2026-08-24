@@ -28,9 +28,9 @@
       "id": "fund-03",
       "topicId": "fundamentals",
       "title": "Comma Operator",
-      "code": "#include <iostream>\n\nint main() {\n    int a = (1, 2, 3);\n    int b = 1, 2, 3;\n    std::cout << a << b;\n    return 0;\n}",
+      "code": "#include <iostream>\n\nint main() {\n    int a = (1, 2, 3);\n    int b;\n    b = 1, 2, 3;\n    std::cout << a << b;\n    return 0;\n}",
       "answer": "31",
-      "explanation": "The comma operator evaluates operands left to right and returns the rightmost. So 'a' gets 3. However, 'int b = 1, 2, 3;' is a declaration list, so 'b' is initialized to 1.",
+      "explanation": "The comma operator evaluates operands left to right and returns the rightmost. So 'a' gets 3. However, the assignment operator '=' has higher precedence than the comma operator, so 'b = 1, 2, 3;' is evaluated as '(b = 1), 2, 3;'. 'b' gets 1.",
       "difficulty": "Hard"
     },
     {

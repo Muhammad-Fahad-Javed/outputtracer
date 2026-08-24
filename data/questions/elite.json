@@ -28,7 +28,7 @@
       "id": "eli-03",
       "topicId": "elite",
       "title": "Strict Aliasing Rule Violation",
-      "code": "#include <iostream>\n\nint main() {\n    uint32_t val = 0x12345678;\n    // Assuming little-endian architecture\n    uint16_t* ptr = reinterpret_cast<uint16_t*>(&val);\n    std::cout << std::hex << ptr[0];\n    return 0;\n}",
+      "code": "#include <iostream>\n#include <cstdint>\n\nint main() {\n    uint32_t val = 0x12345678;\n    // Assuming little-endian architecture\n    uint16_t* ptr = reinterpret_cast<uint16_t*>(&val);\n    std::cout << std::hex << ptr[0];\n    return 0;\n}",
       "answer": "5678",
       "explanation": "While this is technically undefined behavior due to breaking strict aliasing (accessing an object through a pointer to a different type), in practice on a little-endian machine, it reads the least significant 2 bytes (0x5678).",
       "difficulty": "Hard"

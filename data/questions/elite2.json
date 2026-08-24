@@ -101,7 +101,7 @@
       "topicId": "elite2",
       "title": "Exception in Destructor",
       "code": "#include <iostream>\n\nstruct E {\n    ~E() { throw 1; }\n};\n\nint main() {\n    try {\n        E e;\n    } catch(...) {\n        std::cout << \"C\";\n    }\n    return 0;\n}",
-      "answer": "C",
+      "answer": "Terminate",
       "explanation": "In C++11, destructors are noexcept by default. Throwing from a destructor that doesn't explicitly specify noexcept(false) immediately calls std::terminate, killing the program before 'C' can be printed. (Note: output may just be a crash, but prediction is conceptually Terminate).",
       "difficulty": "Hard"
     },
