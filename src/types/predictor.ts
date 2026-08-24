@@ -31,6 +31,7 @@ export interface PredictionResult {
   output?: string;
   stderr?: string;
   dryRun?: DryRunStep[];
+  traceTruncated?: boolean;
   meta?: ExecutionMeta;
   error?: {
     kind?: PredictionErrorKind;

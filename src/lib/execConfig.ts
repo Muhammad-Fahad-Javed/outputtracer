@@ -55,4 +55,11 @@ export const execConfig = {
   maxMemoryMb: envInt("MAX_MEMORY_MB", 256),
   maxCpuSeconds: envInt("MAX_CPU_SECONDS", 5),
   maxProcesses: envInt("MAX_PROCESSES", 32),
+
+  // GDB tracer settings — used for generating step-by-step dry-run traces.
+  // The tracer is best-effort; if GDB is unavailable, the API still returns
+  // output but without a detailed trace.
+  gdbPath: process.env.GDB_PATH || "gdb",
+  maxTraceSteps: envInt("MAX_TRACE_STEPS", 1000),
+  traceTimeoutMs: envInt("TRACE_TIMEOUT_MS", 15_000),
 };

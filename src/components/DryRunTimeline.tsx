@@ -1,10 +1,12 @@
+import { AlertTriangle } from "lucide-react";
 import { DryRunStep } from "@/types/predictor";
 
 interface DryRunTimelineProps {
   steps: DryRunStep[];
+  truncated?: boolean;
 }
 
-export default function DryRunTimeline({ steps }: DryRunTimelineProps) {
+export default function DryRunTimeline({ steps, truncated }: DryRunTimelineProps) {
   if (steps.length === 0) {
     return (
       <p className="font-mono text-sm text-[#999999]">
@@ -30,13 +32,13 @@ export default function DryRunTimeline({ steps }: DryRunTimelineProps) {
             {step.statement}
           </div>
 
-          {step.variables && (
+          {step.variables && step.variables !== "\u2014" && (
             <div className="mt-2 font-mono text-xs text-[#666666]">
               Variables: {step.variables}
             </div>
           )}
 
-          {step.output && (
+          {step.output && step.output !== "\u2014" && (
             <div className="mt-2 font-mono text-xs">
               <span className="text-[#666666]">Output:</span>{" "}
               <span className="font-semibold text-black">
@@ -46,6 +48,16 @@ export default function DryRunTimeline({ steps }: DryRunTimelineProps) {
           )}
         </div>
       ))}
+
+      {truncated && (
+        <div className="flex items-center gap-2 rounded-[4px] border border-dashed border-[#DCDCDC] bg-[#FAFAFA] px-4 py-3">
+          <AlertTriangle size={14} className="shrink-0 text-[#999999]" />
+          <p className="font-mono text-xs text-[#666666]">
+            Trace truncated at {steps.length} steps. The program has more
+            execution steps than the maximum trace limit.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

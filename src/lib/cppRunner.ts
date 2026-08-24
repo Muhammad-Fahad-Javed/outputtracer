@@ -37,6 +37,7 @@ import {
   AllowedStandard,
 } from "./execConfig";
 import { describeSignal } from "./signals";
+import { traceExecution, TraceResult } from "./gdbTracer";
 
 const execFileAsync = promisify(execFile);
 
@@ -54,6 +55,7 @@ export interface RunResult {
   status: RunStatus;
   stdout?: string;
   stderr?: string;
+  trace?: TraceResult;
   title?: string;
   message?: string;
   exitCode?: number | null;
@@ -160,8 +162,9 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
   let tempDir = "";
   try {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "outputtracer-"));
-  } catch (err: any) {
-    log(execId, "workspace_create_failed", { error: String(err?.message || err) });
+  } catch (error) {
+    const err = error as Error;
+    log(execId, "workspace_create_failed", { error: err.message || String(err) });
     return {
       status: "server_error",
       title: "Server error",
@@ -183,7 +186,7 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
     try {
       await execFileAsync(
         execConfig.compiler,
-        [srcName, `-std=${standard}`, "-O2", "-Wall", "-o", exeName],
+        [srcName, `-std=${standard}`, "-g", "-O0", "-Wall", "-o", exeName],
         {
           cwd: tempDir,
           timeout: execConfig.compileTimeoutMs,
@@ -192,10 +195,11 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
         }
       );
       compileTimeMs = Date.now() - compileStart;
-    } catch (err: any) {
+    } catch (error) {
+      const err = error as Error & { killed?: boolean; signal?: string; stderr?: string; stdout?: string };
       compileTimeMs = Date.now() - compileStart;
 
-      if (err?.killed && err?.signal) {
+      if (err.killed && err.signal) {
         log(execId, "compile_timeout", { compileTimeMs });
         return {
           status: "compile_timeout",
@@ -206,7 +210,7 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
       }
 
       const rawStderr =
-        (err?.stderr as string) || (err?.stdout as string) || err?.message || "Compilation failed.";
+        err.stderr || err.stdout || err.message || "Compilation failed.";
       const { text: stderr } = truncateBytes(rawStderr, execConfig.maxDiagnosticBytes);
       log(execId, "compile_error", { compileTimeMs });
       return {
@@ -367,9 +371,32 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
     });
 
     log(execId, "run_completed", { status: runResult.status, runTimeMs: runResult.runTimeMs });
-    return { ...runResult, compileTimeMs };
-  } catch (err: any) {
-    log(execId, "unexpected_error", { error: String(err?.message || err) });
+
+    // --- GDB Trace (best-effort) ------------------------------------------
+    // Only trace on successful execution — there's nothing useful to trace
+    // for compile errors, timeouts, etc.
+    let trace: TraceResult = { steps: [], truncated: false };
+    if (runResult.status === "success") {
+      try {
+        log(execId, "trace_started");
+        trace = await traceExecution({
+          exePath,
+          tempDir,
+          sourceFile: path.join(tempDir, srcName),
+          stdinContent: stdinTrunc.text || undefined,
+        });
+        log(execId, "trace_completed", { steps: trace.steps.length, truncated: trace.truncated });
+      } catch (error) {
+        const err = error as Error;
+        log(execId, "trace_failed", { error: err.message || String(err) });
+        // Non-fatal — we still return the program output.
+      }
+    }
+
+    return { ...runResult, compileTimeMs, trace };
+  } catch (error) {
+    const err = error as Error;
+    log(execId, "unexpected_error", { error: err.message || String(err) });
     return {
       status: "server_error",
       title: "Server error",

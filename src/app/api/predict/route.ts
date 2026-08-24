@@ -63,19 +63,27 @@ export async function POST(request: Request) {
   });
 
   if (result.status === "success") {
+    // Use real GDB trace steps when available; fall back to a single
+    // generic step when GDB is unavailable or produced no output.
+    const traceSteps =
+      result.trace && result.trace.steps.length > 0
+        ? result.trace.steps
+        : [
+            {
+              step: 1,
+              statement: "Program compiled and executed",
+              variables: "",
+              output: result.stdout ?? "",
+            },
+          ];
+
     return NextResponse.json(
       {
         status: "success",
         output: result.stdout ?? "",
         stderr: result.stderr || undefined,
-        dryRun: [
-          {
-            step: 1,
-            statement: "Program compiled and executed",
-            variables: "",
-            output: result.stdout ?? "",
-          },
-        ],
+        dryRun: traceSteps,
+        traceTruncated: result.trace?.truncated ?? false,
         meta: {
           exitCode: result.exitCode ?? null,
           compileTimeMs: result.compileTimeMs,

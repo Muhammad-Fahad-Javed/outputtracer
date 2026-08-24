@@ -273,7 +273,7 @@ export default function Predictor({ code, setCode }: PredictorProps) {
           </div>
 
           <div className="px-4 py-4">
-            <DryRunTimeline steps={result.dryRun ?? []} />
+            <DryRunTimeline steps={result.dryRun ?? []} truncated={result.traceTruncated} />
           </div>
         </div>
       </div>
