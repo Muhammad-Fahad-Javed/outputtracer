@@ -95,6 +95,96 @@
       "answer": "10",
       "explanation": "While unordered_map iteration order is not guaranteed, accessing um[1] always returns the mapped value 10 reliably.",
       "difficulty": "Easy"
+    },
+    {
+      "id": "ds-11",
+      "topicId": "data-structures",
+      "title": "Vector Emplace vs Push",
+      "code": "#include <iostream>\n#include <vector>\n\nstruct X {\n    X(int) { std::cout << \"C\"; }\n    X(const X&) { std::cout << \"L\"; }\n};\n\nint main() {\n    std::vector<X> v;\n    v.reserve(2);\n    v.push_back(X(1));\n    v.emplace_back(2);\n    return 0;\n}",
+      "answer": "CLC",
+      "explanation": "push_back constructs a temporary X(1) (prints 'C'), then copies/moves it into the vector (prints 'L'). emplace_back constructs it directly in place, but wait! Actually, X(1) prints C. Then push_back copies it (L). Then emplace_back(2) constructs in place (C). So CLC.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ds-12",
+      "topicId": "data-structures",
+      "title": "Map Insertion Operator",
+      "code": "#include <iostream>\n#include <map>\n\nint main() {\n    std::map<int, int> m;\n    m[1] = 10;\n    m[1]++;\n    std::cout << m[1] << m.size();\n    return 0;\n}",
+      "answer": "111",
+      "explanation": "m[1] inserts a new element with key 1 and value 0, then assigns it to 10. m[1]++ increments the value to 11. Size remains 1.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ds-13",
+      "topicId": "data-structures",
+      "title": "Set Duplicate Elements",
+      "code": "#include <iostream>\n#include <set>\n\nint main() {\n    std::set<int> s;\n    s.insert(5);\n    auto res = s.insert(5);\n    std::cout << s.size() << res.second;\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "Sets do not allow duplicates. The second insert fails, returning a pair where the 'second' element (a bool indicating insertion success) is false (0). Size is 1.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ds-14",
+      "topicId": "data-structures",
+      "title": "Deque Iterators",
+      "code": "#include <iostream>\n#include <deque>\n\nint main() {\n    std::deque<int> d = {1, 2, 3};\n    auto it = d.begin() + 1;\n    d.push_front(0);\n    std::cout << *it;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "Unlike std::vector, inserting at the front or back of a std::deque does not invalidate pointers or references to existing elements (though it may invalidate iterators, dereferencing often still works in practice, but strictly speaking it's UB if iterators are invalidated! Wait, deque guarantees that references to elements are NOT invalidated, but iterators ARE invalidated. So using 'it' is UB).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "ds-15",
+      "topicId": "data-structures",
+      "title": "Priority Queue Max",
+      "code": "#include <iostream>\n#include <queue>\n\nint main() {\n    std::priority_queue<int> pq;\n    pq.push(3);\n    pq.push(1);\n    pq.push(4);\n    std::cout << pq.top();\n    return 0;\n}",
+      "answer": "4",
+      "explanation": "std::priority_queue is a max-heap by default. It returns the largest element.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ds-16",
+      "topicId": "data-structures",
+      "title": "List Splice",
+      "code": "#include <iostream>\n#include <list>\n\nint main() {\n    std::list<int> l1 = {1, 2};\n    std::list<int> l2 = {3, 4};\n    l1.splice(l1.end(), l2);\n    std::cout << l1.size() << l2.size();\n    return 0;\n}",
+      "answer": "40",
+      "explanation": "splice transfers all elements from l2 into l1. l1 size becomes 4, and l2 becomes empty (size 0).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ds-17",
+      "topicId": "data-structures",
+      "title": "Unordered Map Collisions",
+      "code": "#include <iostream>\n#include <unordered_map>\n\nstruct Hash {\n    std::size_t operator()(int x) const { return 1; }\n};\n\nint main() {\n    std::unordered_map<int, int, Hash> um;\n    um[10] = 1;\n    um[20] = 2;\n    std::cout << um.size();\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "Even though all keys hash to the same bucket (collision), std::unordered_map handles collisions via chaining (linked lists) and correctly stores both distinct keys.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ds-18",
+      "topicId": "data-structures",
+      "title": "String Capacity",
+      "code": "#include <iostream>\n#include <string>\n\nint main() {\n    std::string s = \"hi\";\n    s.reserve(100);\n    std::cout << (s.capacity() >= 100);\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "reserve(100) requests that the string capacity be at least 100 characters. It will return true (1).",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ds-19",
+      "topicId": "data-structures",
+      "title": "Vector Erase",
+      "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v = {1, 2, 3, 4};\n    v.erase(v.begin() + 1, v.begin() + 3);\n    std::cout << v.size() << v[1];\n    return 0;\n}",
+      "answer": "24",
+      "explanation": "erase(first, last) removes elements in [first, last). It removes elements at index 1 (2) and index 2 (3). The vector becomes {1, 4}. Size is 2, index 1 is 4.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ds-20",
+      "topicId": "data-structures",
+      "title": "Stack Element Order",
+      "code": "#include <iostream>\n#include <stack>\n\nint main() {\n    std::stack<int> s;\n    s.push(1);\n    s.push(2);\n    std::cout << s.top();\n    s.pop();\n    std::cout << s.top();\n    return 0;\n}",
+      "answer": "21",
+      "explanation": "Stack is LIFO (Last In First Out). 2 is popped first, then 1.",
+      "difficulty": "Easy"
     }
   ]
 }

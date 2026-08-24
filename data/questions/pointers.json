@@ -113,6 +113,78 @@
       "answer": "2",
       "explanation": "p is a pointer to an array of 3 integers. Dereferencing p yields the array itself, and then [1] accesses the second element.",
       "difficulty": "Hard"
+    },
+    {
+      "id": "ptr-13",
+      "topicId": "pointers",
+      "title": "Pointer to Pointer",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 5;\n    int* p = &a;\n    int** q = &p;\n    std::cout << **q;\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "q stores the address of p. **q dereferences q to get p, then dereferences p to get a, which is 5.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ptr-14",
+      "topicId": "pointers",
+      "title": "Reference Reassignment",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 1, b = 2;\n    int& ref = a;\n    ref = b;\n    std::cout << a << ref;\n    return 0;\n}",
+      "answer": "22",
+      "explanation": "References cannot be reseated to refer to a different variable after initialization. ref = b simply assigns the value of b (2) into the variable ref refers to (a). Thus, a becomes 2.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ptr-15",
+      "topicId": "pointers",
+      "title": "Null Pointer Dereference",
+      "code": "#include <iostream>\n\nint main() {\n    int* p = nullptr;\n    std::cout << \"UB\";\n    return 0;\n}",
+      "answer": "UB",
+      "explanation": "Dereferencing a nullptr causes Undefined Behavior (usually a segfault crash).",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ptr-16",
+      "topicId": "pointers",
+      "title": "Pointer Arithmetic Subtraction",
+      "code": "#include <iostream>\n\nint main() {\n    int arr[3] = {10, 20, 30};\n    int* p1 = arr;\n    int* p2 = arr + 2;\n    std::cout << p2 - p1;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "Subtracting two pointers to the same array yields the number of elements between them (2), not the number of bytes.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ptr-17",
+      "topicId": "pointers",
+      "title": "Constant Pointer",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 1;\n    int b = 2;\n    int* const p = &a;\n    *p = 3;\n    std::cout << a;\n    return 0;\n}",
+      "answer": "3",
+      "explanation": "p is a constant pointer, meaning the pointer itself cannot be changed to point to something else (e.g., p = &b is invalid). However, the data it points to CAN be modified.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ptr-18",
+      "topicId": "pointers",
+      "title": "Pointer to Constant",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 1;\n    const int* p = &a;\n    a = 2;\n    std::cout << *p;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "p is a pointer to a constant int, meaning you cannot do *p = 3. However, 'a' itself is not constant, so changing 'a' is allowed, and the pointer observes the updated value.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ptr-19",
+      "topicId": "pointers",
+      "title": "Array Decays to Pointer",
+      "code": "#include <iostream>\n\nvoid print(int p[]) {\n    std::cout << sizeof(p);\n}\nint main() {\n    int arr[10];\n    print(arr);\n    return 0;\n}",
+      "answer": "8",
+      "explanation": "When an array is passed to a function, it decays into a pointer to its first element. Therefore, sizeof(p) returns the size of a pointer (typically 8 bytes on a 64-bit architecture), not the size of the array.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "ptr-20",
+      "topicId": "pointers",
+      "title": "Void Pointers",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 5;\n    void* p = &a;\n    std::cout << *(int*)p;\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "A void pointer can hold the address of any type, but it cannot be directly dereferenced. It must first be cast back to the correct pointer type.",
+      "difficulty": "Medium"
     }
   ]
 }

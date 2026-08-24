@@ -140,6 +140,51 @@
       "answer": "ABCD",
       "explanation": "Because B and C inherit virtually from A, there is only one shared sub-object A in D. Therefore, A is constructed only once.",
       "difficulty": "Hard"
+    },
+    {
+      "id": "oop-16",
+      "topicId": "oop",
+      "title": "Mutable Keyword",
+      "code": "#include <iostream>\n\nclass X {\n    mutable int a;\npublic:\n    X() : a(0) {}\n    void change() const { a++; }\n    int get() const { return a; }\n};\n\nint main() {\n    const X obj;\n    obj.change();\n    std::cout << obj.get();\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "The 'mutable' keyword allows a member variable to be modified even if the object is instantiated as 'const' or accessed through a 'const' member function.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "oop-17",
+      "topicId": "oop",
+      "title": "Private Constructor",
+      "code": "#include <iostream>\n\nclass Singleton {\n    Singleton() {}\npublic:\n    static Singleton& get() {\n        static Singleton instance;\n        return instance;\n    }\n    void print() { std::cout << \"S\"; }\n};\n\nint main() {\n    Singleton::get().print();\n    return 0;\n}",
+      "answer": "S",
+      "explanation": "A private constructor prevents direct instantiation. The static member function can still access it to implement the Singleton pattern.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "oop-18",
+      "topicId": "oop",
+      "title": "Static Method Hiding",
+      "code": "#include <iostream>\n\nstruct Base {\n    static void f() { std::cout << \"B\"; }\n};\nstruct Derived : Base {\n    static void f() { std::cout << \"D\"; }\n};\n\nint main() {\n    Base* p = new Derived();\n    p->f();\n    return 0;\n}",
+      "answer": "B",
+      "explanation": "Static methods are not virtual and do not support dynamic dispatch. They are resolved at compile-time based on the static type of the pointer.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "oop-19",
+      "topicId": "oop",
+      "title": "Object Slicing with Arrays",
+      "code": "#include <iostream>\n\nstruct A { int x = 1; virtual void p() { std::cout << \"A\"; } };\nstruct B : A { int y = 2; void p() override { std::cout << \"B\"; } };\n\nint main() {\n    B bArr[2];\n    A* aPtr = bArr;\n    aPtr[1].p();\n    return 0;\n}",
+      "answer": "UB",
+      "explanation": "Treating an array of derived objects as an array of base objects using pointer arithmetic leads to Undefined Behavior because sizeof(B) is likely greater than sizeof(A). The pointer aPtr[1] calculates the offset using sizeof(A), landing in the middle of a B object.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "oop-20",
+      "topicId": "oop",
+      "title": "Virtual Destructor and Memory",
+      "code": "#include <iostream>\n\nint count = 0;\nstruct A { virtual ~A() { count++; } };\nstruct B : A { ~B() { count++; } };\n\nint main() {\n    A* p = new B();\n    delete p;\n    std::cout << count;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "Because the base destructor is virtual, deleting a derived object through a base pointer correctly invokes the derived destructor first (count=1), then the base destructor (count=2).",
+      "difficulty": "Medium"
     }
   ]
 }

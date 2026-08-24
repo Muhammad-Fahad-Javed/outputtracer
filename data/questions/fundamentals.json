@@ -95,6 +95,96 @@
       "answer": "01",
       "explanation": "The loop body executes once unconditionally, printing 0. Then i++ evaluates to 0 (which is not < 0), so the loop terminates. i is now 1, so it prints 1.",
       "difficulty": "Medium"
+    },
+    {
+      "id": "fund-11",
+      "topicId": "fundamentals",
+      "title": "Const Variable Initialization",
+      "code": "#include <iostream>\n\nint main() {\n    const int x;\n    std::cout << \"Compilation Error\";\n    return 0;\n}",
+      "answer": "Compilation Error",
+      "explanation": "A 'const' variable must be initialized at the time of declaration.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "fund-12",
+      "topicId": "fundamentals",
+      "title": "Static Variable Initialization",
+      "code": "#include <iostream>\n\nvoid f() {\n    static int x = 0;\n    std::cout << ++x;\n}\n\nint main() {\n    f(); f(); f();\n    return 0;\n}",
+      "answer": "123",
+      "explanation": "Static local variables are initialized only once and retain their values between function calls.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "fund-13",
+      "topicId": "fundamentals",
+      "title": "Unsigned Int Underflow",
+      "code": "#include <iostream>\n\nint main() {\n    unsigned int x = 0;\n    x--;\n    std::cout << (x > 0);\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "Decrementing an unsigned int of value 0 causes it to wrap around to its maximum possible value, making it strictly greater than 0.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "fund-14",
+      "topicId": "fundamentals",
+      "title": "String Concatenation",
+      "code": "#include <iostream>\n#include <string>\n\nint main() {\n    std::string a = \"1\";\n    std::string b = \"2\";\n    std::cout << a + b;\n    return 0;\n}",
+      "answer": "12",
+      "explanation": "The '+' operator is overloaded for std::string to perform string concatenation.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "fund-15",
+      "topicId": "fundamentals",
+      "title": "Function Overloading Priority",
+      "code": "#include <iostream>\n\nvoid f(int) { std::cout << \"I\"; }\nvoid f(double) { std::cout << \"D\"; }\n\nint main() {\n    f(5.5f);\n    return 0;\n}",
+      "answer": "D",
+      "explanation": "A float literal (5.5f) is passed. There is no exact float overload, so it promotes to double instead of demoting to int.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "fund-16",
+      "topicId": "fundamentals",
+      "title": "Sizeof Array Operator",
+      "code": "#include <iostream>\n\nint main() {\n    int a[10];\n    std::cout << sizeof(a) / sizeof(a[0]);\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "sizeof(a) returns the total byte size of the array (40). sizeof(a[0]) returns the byte size of one element (4). 40/4 = 10, computing the number of elements.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "fund-17",
+      "topicId": "fundamentals",
+      "title": "Modulo with Negative Numbers",
+      "code": "#include <iostream>\n\nint main() {\n    std::cout << -5 % 2;\n    return 0;\n}",
+      "answer": "-1",
+      "explanation": "In C++, the modulo operator on negative numbers yields a negative remainder (the sign follows the dividend).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "fund-18",
+      "topicId": "fundamentals",
+      "title": "Floating Point Truncation",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 5.99;\n    std::cout << x;\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "When assigning a floating point to an integer, the decimal portion is truncated (not rounded).",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "fund-19",
+      "topicId": "fundamentals",
+      "title": "Global vs Local Scope",
+      "code": "#include <iostream>\n\nint x = 1;\nint main() {\n    int x = 2;\n    {\n        int x = 3;\n        std::cout << ::x << x;\n    }\n    return 0;\n}",
+      "answer": "13",
+      "explanation": "::x forces the global scope 'x' (1). The local 'x' in the inner block is 3.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "fund-20",
+      "topicId": "fundamentals",
+      "title": "Ternary Return Type",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 0;\n    (x == 0 ? x : x) = 5;\n    std::cout << x;\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "If both branches of the ternary operator are lvalues of the same type, the ternary operator itself returns an lvalue. Therefore, you can assign to it.",
+      "difficulty": "Hard"
     }
   ]
 }
