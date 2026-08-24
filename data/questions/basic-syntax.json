@@ -1,0 +1,37 @@
+{
+  "topic": {
+    "id": "basic-syntax",
+    "title": "Basic Syntax & Data Types",
+    "description": "Master the fundamentals of C++ variables, types, and standard I/O.",
+    "icon": "Terminal"
+  },
+  "questions": [
+    {
+      "id": "bs-01",
+      "topicId": "basic-syntax",
+      "title": "Variable Scope & Shadowing",
+      "code": "#include <iostream>\n\nint x = 10;\n\nint main() {\n    int x = 20;\n    {\n        int x = 30;\n        std::cout << ::x << \" \" << x;\n    }\n    return 0;\n}",
+      "answer": "10 30",
+      "explanation": "::x accesses the global variable (10). The local x inside the block shadows the outer local x, so it prints 30.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "bs-02",
+      "topicId": "basic-syntax",
+      "title": "Integer Overflow",
+      "code": "#include <iostream>\n#include <limits>\n\nint main() {\n    unsigned int a = std::numeric_limits<unsigned int>::max();\n    std::cout << a + 1;\n    return 0;\n}",
+      "answer": "0",
+      "explanation": "Unsigned integer overflow is well-defined in C++. Adding 1 to the maximum unsigned int wraps around to 0.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "bs-03",
+      "topicId": "basic-syntax",
+      "title": "Prefix vs Postfix Increment",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 5;\n    int b = a++;\n    int c = ++a;\n    std::cout << a << b << c;\n    return 0;\n}",
+      "answer": "757",
+      "explanation": "a++ returns the original value (5) and then increments a to 6. So b=5. Then ++a increments a to 7 and returns 7. So c=7. a is now 7.",
+      "difficulty": "Easy"
+    }
+  ]
+}

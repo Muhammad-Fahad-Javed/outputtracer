@@ -1,0 +1,37 @@
+{
+  "topic": {
+    "id": "pointers",
+    "title": "Pointers & References",
+    "description": "Understand memory addresses, pointer arithmetic, and reference semantics.",
+    "icon": "Crosshair"
+  },
+  "questions": [
+    {
+      "id": "ptr-01",
+      "topicId": "pointers",
+      "title": "Pointer Arithmetic",
+      "code": "#include <iostream>\n\nint main() {\n    int arr[] = {10, 20, 30, 40, 50};\n    int* p = arr;\n    p++;\n    std::cout << *p << \" \";\n    *p = *p + 5;\n    std::cout << *(p + 1) << \" \";\n    std::cout << arr[1];\n    return 0;\n}",
+      "answer": "20 30 25",
+      "explanation": "p points to arr[0] (10). p++ makes it point to arr[1] (20). *p is 20. Then arr[1] is incremented by 5 to 25. *(p+1) is arr[2] (30). Finally arr[1] is printed (25).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "ptr-02",
+      "topicId": "pointers",
+      "title": "Reference Reassignment",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 5;\n    int b = 10;\n    int& ref = a;\n    ref = b;\n    b = 20;\n    std::cout << a << \" \" << ref;\n    return 0;\n}",
+      "answer": "10 10",
+      "explanation": "A reference cannot be rebound. `ref = b;` assigns the value of b (10) to a. When b is later changed to 20, a and ref remain 10.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "ptr-03",
+      "topicId": "pointers",
+      "title": "Pointer to Pointer",
+      "code": "#include <iostream>\n\nvoid modify(int** p) {\n    int static x = 100;\n    *p = &x;\n}\n\nint main() {\n    int a = 10;\n    int* ptr = &a;\n    modify(&ptr);\n    std::cout << *ptr;\n    return 0;\n}",
+      "answer": "100",
+      "explanation": "The function `modify` takes a pointer-to-pointer. It updates the original pointer `ptr` to point to the static variable `x`. Therefore, `*ptr` prints 100.",
+      "difficulty": "Hard"
+    }
+  ]
+}

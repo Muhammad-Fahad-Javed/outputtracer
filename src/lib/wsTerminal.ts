@@ -11,7 +11,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import crypto from "crypto";
+
 import type { WebSocket } from "ws";
 import {
   execConfig,
@@ -65,7 +65,6 @@ export async function handleTerminalSession(
   ws: WebSocket,
   payload: TerminalInitPayload
 ): Promise<void> {
-  const _execId = crypto.randomBytes(6).toString("hex");
   const { files } = payload;
 
   if (!files || Object.keys(files).length === 0) {

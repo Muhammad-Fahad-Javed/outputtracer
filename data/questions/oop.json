@@ -1,0 +1,37 @@
+{
+  "topic": {
+    "id": "oop",
+    "title": "Object-Oriented Programming",
+    "description": "Classes, inheritance, polymorphism, and object lifecycle.",
+    "icon": "Box"
+  },
+  "questions": [
+    {
+      "id": "oop-01",
+      "topicId": "oop",
+      "title": "Virtual Functions",
+      "code": "#include <iostream>\n\nclass Base {\npublic:\n    virtual void print() { std::cout << \"Base\"; }\n};\n\nclass Derived : public Base {\npublic:\n    void print() { std::cout << \"Derived\"; }\n};\n\nint main() {\n    Base* obj = new Derived();\n    obj->print();\n    delete obj;\n    return 0;\n}",
+      "answer": "Derived",
+      "explanation": "Because `print` is declared virtual in the Base class, the call is resolved dynamically at runtime. Since the actual object is of type Derived, `Derived::print()` is called.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "oop-02",
+      "topicId": "oop",
+      "title": "Constructor & Destructor Order",
+      "code": "#include <iostream>\n\nclass A {\npublic:\n    A() { std::cout << \"A\"; }\n    ~A() { std::cout << \"~A\"; }\n};\n\nclass B : public A {\npublic:\n    B() { std::cout << \"B\"; }\n    ~B() { std::cout << \"~B\"; }\n};\n\nint main() {\n    B b;\n    return 0;\n}",
+      "answer": "AB~B~A",
+      "explanation": "Constructors are called from base to derived (A then B). Destructors are called in the reverse order (B then A).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "oop-03",
+      "topicId": "oop",
+      "title": "Object Slicing",
+      "code": "#include <iostream>\n\nclass Base {\npublic:\n    virtual void show() { std::cout << \"B\"; }\n};\n\nclass Derived : public Base {\npublic:\n    void show() override { std::cout << \"D\"; }\n};\n\nvoid display(Base obj) {\n    obj.show();\n}\n\nint main() {\n    Derived d;\n    display(d);\n    return 0;\n}",
+      "answer": "B",
+      "explanation": "The function `display` takes the object by value, causing object slicing. The `Derived` part of `d` is sliced off, and a pure `Base` object is created. Thus, `Base::show()` is called.",
+      "difficulty": "Hard"
+    }
+  ]
+}
