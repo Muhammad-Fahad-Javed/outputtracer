@@ -32,6 +32,114 @@
       "answer": "B",
       "explanation": "The function `display` takes the object by value, causing object slicing. The `Derived` part of `d` is sliced off, and a pure `Base` object is created. Thus, `Base::show()` is called.",
       "difficulty": "Hard"
+    },
+    {
+      "id": "oop-04",
+      "topicId": "oop",
+      "title": "Static Member Variables",
+      "code": "#include <iostream>\n\nclass Counter {\npublic:\n    static int count;\n    Counter() { count++; }\n};\n\nint Counter::count = 0;\n\nint main() {\n    Counter c1;\n    Counter c2;\n    std::cout << Counter::count;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "Static member variables are shared across all instances of a class. The constructor increments it twice.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "oop-05",
+      "topicId": "oop",
+      "title": "Virtual Destructor",
+      "code": "#include <iostream>\n\nclass Base {\npublic:\n    ~Base() { std::cout << \"~B\"; }\n};\n\nclass Derived : public Base {\npublic:\n    ~Derived() { std::cout << \"~D\"; }\n};\n\nint main() {\n    Base* obj = new Derived();\n    delete obj;\n    return 0;\n}",
+      "answer": "~B",
+      "explanation": "Because the base class destructor is NOT virtual, deleting a derived object through a base pointer results in undefined behavior, usually only calling the Base destructor.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "oop-06",
+      "topicId": "oop",
+      "title": "Const Member Functions",
+      "code": "#include <iostream>\n\nclass Test {\n    int val;\npublic:\n    Test(int v) : val(v) {}\n    int getValue() const { return val; }\n    int getValue() { return val * 2; }\n};\n\nint main() {\n    const Test t1(5);\n    Test t2(5);\n    std::cout << t1.getValue() << t2.getValue();\n    return 0;\n}",
+      "answer": "510",
+      "explanation": "t1 is const, so it calls the const version of getValue (returns 5). t2 is non-const, so it prefers the non-const version (returns 10).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "oop-07",
+      "topicId": "oop",
+      "title": "Initialization Lists",
+      "code": "#include <iostream>\n\nclass Data {\n    int x, y;\npublic:\n    Data(int a) : y(a), x(y) {}\n    void print() { std::cout << x << y; }\n};\n\nint main() {\n    Data d(5);\n    d.print();\n    return 0;\n}",
+      "answer": "Garbage5",
+      "explanation": "Members are initialized in the order they are declared in the class (x then y). x is initialized with y (which is currently garbage), and then y is initialized with a (5). Output is undefined for x.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "oop-08",
+      "topicId": "oop",
+      "title": "Friend Functions",
+      "code": "#include <iostream>\n\nclass Box {\n    int width;\npublic:\n    Box(int w) : width(w) {}\n    friend void printWidth(Box b);\n};\n\nvoid printWidth(Box b) {\n    std::cout << b.width;\n}\n\nint main() {\n    Box b(10);\n    printWidth(b);\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "Friend functions are not member functions, but they have access to private and protected members of the class.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "oop-09",
+      "topicId": "oop",
+      "title": "Default Arguments in Virtual Functions",
+      "code": "#include <iostream>\n\nclass Base {\npublic:\n    virtual void display(int x = 10) { std::cout << \"B\" << x; }\n};\n\nclass Derived : public Base {\npublic:\n    void display(int x = 20) override { std::cout << \"D\" << x; }\n};\n\nint main() {\n    Base* ptr = new Derived();\n    ptr->display();\n    delete ptr;\n    return 0;\n}",
+      "answer": "D10",
+      "explanation": "Default arguments are bound at compile-time based on the pointer type (Base, so x=10). But the function called is bound dynamically (Derived). Hence D10.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "oop-10",
+      "topicId": "oop",
+      "title": "Pure Virtual Functions",
+      "code": "#include <iostream>\n\nclass Abstract {\npublic:\n    virtual void show() = 0;\n};\n\nclass Concrete : public Abstract {\npublic:\n    void show() { std::cout << \"C\"; }\n};\n\nint main() {\n    Abstract* a = new Concrete();\n    a->show();\n    return 0;\n}",
+      "answer": "C",
+      "explanation": "Concrete provides an implementation for the pure virtual function, allowing it to be instantiated and called via the abstract base pointer.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "oop-11",
+      "topicId": "oop",
+      "title": "Operator Overloading",
+      "code": "#include <iostream>\n\nclass Point {\n    int x;\npublic:\n    Point(int x) : x(x) {}\n    Point operator+(const Point& p) {\n        return Point(x + p.x);\n    }\n    void print() { std::cout << x; }\n};\n\nint main() {\n    Point p1(2), p2(3);\n    Point p3 = p1 + p2;\n    p3.print();\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "The + operator is overloaded to return a new Point with the sum of the x values.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "oop-12",
+      "topicId": "oop",
+      "title": "Private Inheritance",
+      "code": "#include <iostream>\n\nclass A { public: void foo() { std::cout << \"A\"; } };\nclass B : private A { public: void bar() { foo(); } };\n\nint main() {\n    B b;\n    b.bar();\n    return 0;\n}",
+      "answer": "A",
+      "explanation": "B inherits privately from A, so A's public members become private in B. However, B's own member functions (like bar) can still call them.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "oop-13",
+      "topicId": "oop",
+      "title": "Delete this",
+      "code": "#include <iostream>\n\nclass Entity {\npublic:\n    void destroy() {\n        delete this;\n        std::cout << \"D\";\n    }\n};\n\nint main() {\n    Entity* e = new Entity();\n    e->destroy();\n    return 0;\n}",
+      "answer": "D",
+      "explanation": "Deleting `this` is legal as long as the object was allocated on the heap, and you don't access any member variables after deletion. The function continues and prints D.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "oop-14",
+      "topicId": "oop",
+      "title": "Copy Constructor",
+      "code": "#include <iostream>\n\nclass Box {\npublic:\n    Box() { std::cout << \"C\"; }\n    Box(const Box& b) { std::cout << \"K\"; }\n};\n\nint main() {\n    Box b1;\n    Box b2 = b1;\n    return 0;\n}",
+      "answer": "CK",
+      "explanation": "b1 calls the default constructor (C). b2 is initialized with b1, which calls the copy constructor (K).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "oop-15",
+      "topicId": "oop",
+      "title": "Virtual Inheritance",
+      "code": "#include <iostream>\n\nclass A { public: A() { std::cout << \"A\"; } };\nclass B : virtual public A { public: B() { std::cout << \"B\"; } };\nclass C : virtual public A { public: C() { std::cout << \"C\"; } };\nclass D : public B, public C { public: D() { std::cout << \"D\"; } };\n\nint main() {\n    D d;\n    return 0;\n}",
+      "answer": "ABCD",
+      "explanation": "Because B and C inherit virtually from A, there is only one shared sub-object A in D. Therefore, A is constructed only once.",
+      "difficulty": "Hard"
     }
   ]
 }

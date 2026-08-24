@@ -32,6 +32,159 @@
       "answer": "757",
       "explanation": "a++ returns the original value (5) and then increments a to 6. So b=5. Then ++a increments a to 7 and returns 7. So c=7. a is now 7.",
       "difficulty": "Easy"
+    },
+    {
+      "id": "bs-04",
+      "topicId": "basic-syntax",
+      "title": "Float Precision Truncation",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 5.99;\n    std::cout << a;\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "Assigning a floating-point literal to an integer truncates the decimal part without rounding.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "bs-05",
+      "topicId": "basic-syntax",
+      "title": "Char to Int Conversion",
+      "code": "#include <iostream>\n\nint main() {\n    char c = 'A';\n    int val = c + 1;\n    std::cout << (char)val;\n    return 0;\n}",
+      "answer": "B",
+      "explanation": "'A' has an ASCII value of 65. Adding 1 gives 66, which is the ASCII value for 'B'. Casting back to char prints 'B'.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "bs-06",
+      "topicId": "basic-syntax",
+      "title": "Const Initialization",
+      "code": "#include <iostream>\n\nint main() {\n    const int x = 10;\n    int y = x;\n    y = 20;\n    std::cout << x << \" \" << y;\n    return 0;\n}",
+      "answer": "10 20",
+      "explanation": "x is const so it cannot be modified. y takes a copy of x's value, and modifying y does not affect x.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "bs-07",
+      "topicId": "basic-syntax",
+      "title": "Auto Type Deduction",
+      "code": "#include <iostream>\n\nint main() {\n    auto x = 5;\n    auto y = 5.5;\n    std::cout << sizeof(x) << \" \" << sizeof(y);\n    return 0;\n}",
+      "answer": "4 8",
+      "explanation": "x is deduced as int (usually 4 bytes). y is deduced as double (usually 8 bytes). Note: exact sizes can depend on architecture, but 4 and 8 are standard on 64-bit systems.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "bs-08",
+      "topicId": "basic-syntax",
+      "title": "Enum Values",
+      "code": "#include <iostream>\n\nenum Color { RED, GREEN, BLUE = 5, YELLOW };\n\nint main() {\n    std::cout << RED << GREEN << BLUE << YELLOW;\n    return 0;\n}",
+      "answer": "0156",
+      "explanation": "Enums start at 0 unless explicitly assigned. RED=0, GREEN=1. BLUE is set to 5. YELLOW automatically becomes 5 + 1 = 6.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "bs-09",
+      "topicId": "basic-syntax",
+      "title": "Namespace Resolution",
+      "code": "#include <iostream>\n\nnamespace A { int x = 1; }\nnamespace B { int x = 2; }\n\nint main() {\n    using namespace A;\n    std::cout << x << B::x;\n    return 0;\n}",
+      "answer": "12",
+      "explanation": "using namespace A brings A::x into scope. So x resolves to A::x (1). B::x explicitly accesses the variable in namespace B (2).",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "bs-10",
+      "topicId": "basic-syntax",
+      "title": "Sizeof String Literal",
+      "code": "#include <iostream>\n\nint main() {\n    std::cout << sizeof(\"Hi\");\n    return 0;\n}",
+      "answer": "3",
+      "explanation": "The string literal 'Hi' contains 2 characters plus a null terminator '\\0', making its size 3 bytes.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "bs-11",
+      "topicId": "basic-syntax",
+      "title": "Boolean Output",
+      "code": "#include <iostream>\n\nint main() {\n    bool a = true;\n    bool b = false;\n    std::cout << a << b;\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "By default, booleans print as 1 (true) and 0 (false) in C++ unless std::boolalpha is used.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "bs-12",
+      "topicId": "basic-syntax",
+      "title": "Type Alias",
+      "code": "#include <iostream>\n\nusing Integer = int;\n\nint main() {\n    Integer x = 50;\n    std::cout << x;\n    return 0;\n}",
+      "answer": "50",
+      "explanation": "'using' creates an alias for a type. Integer is identical to int.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "bs-13",
+      "topicId": "basic-syntax",
+      "title": "Hex and Octal Literals",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 0x10;\n    int b = 010;\n    std::cout << a << \" \" << b;\n    return 0;\n}",
+      "answer": "16 8",
+      "explanation": "0x10 is 16 in hexadecimal. 010 is 8 in octal.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "bs-14",
+      "topicId": "basic-syntax",
+      "title": "Static Cast",
+      "code": "#include <iostream>\n\nint main() {\n    double d = 9.99;\n    int i = static_cast<int>(d);\n    std::cout << i;\n    return 0;\n}",
+      "answer": "9",
+      "explanation": "static_cast<int> explicitly converts the double to an integer, truncating the decimal part.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "bs-15",
+      "topicId": "basic-syntax",
+      "title": "Extern Variable",
+      "code": "#include <iostream>\n\nextern int globalVar;\nint globalVar = 42;\n\nint main() {\n    std::cout << globalVar;\n    return 0;\n}",
+      "answer": "42",
+      "explanation": "extern declares that the variable exists. It is then defined and initialized to 42.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "bs-16",
+      "topicId": "basic-syntax",
+      "title": "Modulus Operator",
+      "code": "#include <iostream>\n\nint main() {\n    std::cout << -5 % 3;\n    return 0;\n}",
+      "answer": "-2",
+      "explanation": "In C++, the sign of the result of the modulus operator matches the sign of the dividend (the left operand).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "bs-17",
+      "topicId": "basic-syntax",
+      "title": "Character Arithmetic",
+      "code": "#include <iostream>\n\nint main() {\n    char a = '3';\n    char b = '4';\n    std::cout << a + b;\n    return 0;\n}",
+      "answer": "103",
+      "explanation": "The ASCII value of '3' is 51 and '4' is 52. When adding them, they are promoted to integers: 51 + 52 = 103.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "bs-18",
+      "topicId": "basic-syntax",
+      "title": "Multiple Assignment",
+      "code": "#include <iostream>\n\nint main() {\n    int a, b, c;\n    a = b = c = 10;\n    std::cout << a << b << c;\n    return 0;\n}",
+      "answer": "101010",
+      "explanation": "Assignment operators evaluate right-to-left. 10 is assigned to c, then the result of that assignment (10) is assigned to b, and then to a.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "bs-19",
+      "topicId": "basic-syntax",
+      "title": "Macro Constants",
+      "code": "#include <iostream>\n#define MAX 100\n\nint main() {\n    int x = MAX;\n    #undef MAX\n    #define MAX 200\n    std::cout << x << \" \" << MAX;\n    return 0;\n}",
+      "answer": "100 200",
+      "explanation": "Macros are evaluated during preprocessing. x is assigned 100. Then MAX is undefined and redefined to 200 before being printed.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "bs-20",
+      "topicId": "basic-syntax",
+      "title": "Void Pointer",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 10;\n    void* ptr = &x;\n    std::cout << *(static_cast<int*>(ptr));\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "A void pointer can hold any address but cannot be dereferenced directly. It must first be cast back to the correct pointer type (int*).",
+      "difficulty": "Hard"
     }
   ]
 }
