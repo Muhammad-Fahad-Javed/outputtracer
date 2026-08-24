@@ -1,0 +1,190 @@
+{
+  "topic": {
+    "id": "advanced",
+    "title": "Advanced C++ & Modern Features",
+    "description": "Templates, Move Semantics, Smart Pointers, Lambdas, and STL Algorithms.",
+    "icon": "Cpu"
+  },
+  "questions": [
+    {
+      "id": "adv-01",
+      "topicId": "advanced",
+      "title": "Move Constructor vs Copy Constructor",
+      "code": "#include <iostream>\n#include <utility>\n\nclass Data {\npublic:\n    Data() { std::cout << \"D\"; }\n    Data(const Data&) { std::cout << \"C\"; }\n    Data(Data&&) noexcept { std::cout << \"M\"; }\n};\n\nint main() {\n    Data d1;\n    Data d2 = std::move(d1);\n    Data d3 = d1;\n    return 0;\n}",
+      "answer": "DMC",
+      "explanation": "d1 calls Default constructor (D). std::move casts d1 to an rvalue reference, triggering the Move constructor (M) for d2. d1 is in a valid but unspecified state. Assigning d1 to d3 calls the Copy constructor (C).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "adv-02",
+      "topicId": "advanced",
+      "title": "Lambda Capture by Value",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 10;\n    auto lambda = [x]() mutable {\n        x += 5;\n        std::cout << x << \" \";\n    };\n    lambda();\n    std::cout << x;\n    return 0;\n}",
+      "answer": "15 10",
+      "explanation": "The lambda captures x by value. The 'mutable' keyword allows the lambda to modify its internal copy of x (printing 15). The original x in main remains 10.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "adv-03",
+      "topicId": "advanced",
+      "title": "Template Instantiation",
+      "code": "#include <iostream>\n\ntemplate <typename T>\nvoid print(T a) { std::cout << \"T\"; }\n\ntemplate <>\nvoid print(int a) { std::cout << \"I\"; }\n\nint main() {\n    print(5);\n    print(5.5);\n    print<int>(5.5);\n    return 0;\n}",
+      "answer": "ITI",
+      "explanation": "print(5) deduces int, calling the int specialization (I). print(5.5) deduces double, calling the generic template (T). print<int>(5.5) forces the int specialization, implicitly converting 5.5 to 5 (I).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "adv-04",
+      "topicId": "advanced",
+      "title": "Unique Pointer Transfer",
+      "code": "#include <iostream>\n#include <memory>\n\nint main() {\n    std::unique_ptr<int> p1 = std::make_unique<int>(10);\n    std::unique_ptr<int> p2 = std::move(p1);\n    std::cout << (p1 == nullptr) << (*p2);\n    return 0;\n}",
+      "answer": "110",
+      "explanation": "std::unique_ptr cannot be copied. Moving p1 into p2 transfers ownership, leaving p1 as a null pointer (1 for true), while p2 now points to 10.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "adv-05",
+      "topicId": "advanced",
+      "title": "Shared Pointer Reference Count",
+      "code": "#include <iostream>\n#include <memory>\n\nint main() {\n    std::shared_ptr<int> sp1 = std::make_shared<int>(5);\n    std::cout << sp1.use_count();\n    {\n        std::shared_ptr<int> sp2 = sp1;\n        std::cout << sp1.use_count();\n    }\n    std::cout << sp1.use_count();\n    return 0;\n}",
+      "answer": "121",
+      "explanation": "Initially, the reference count is 1. Inside the block, sp2 shares ownership, making it 2. When the block ends, sp2 is destroyed, dropping the count back to 1.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "adv-06",
+      "topicId": "advanced",
+      "title": "constexpr Evaluation",
+      "code": "#include <iostream>\n\nconstexpr int square(int x) {\n    return x * x;\n}\n\nint main() {\n    int a = 3;\n    const int b = square(4);\n    std::cout << square(a) << b;\n    return 0;\n}",
+      "answer": "916",
+      "explanation": "constexpr functions can be evaluated at compile time if arguments are constant expressions (like square(4)). If arguments are runtime variables (like square(a)), they execute at runtime.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "adv-07",
+      "topicId": "advanced",
+      "title": "std::remove on Vectors",
+      "code": "#include <iostream>\n#include <vector>\n#include <algorithm>\n\nint main() {\n    std::vector<int> v = {1, 2, 3, 2, 4};\n    auto it = std::remove(v.begin(), v.end(), 2);\n    for(int x : v) std::cout << x;\n    return 0;\n}",
+      "answer": "13424",
+      "explanation": "std::remove shifts non-removed elements to the front (1, 3, 4). It does NOT change the vector's size. The elements past the new logical end are left in a valid but unspecified state (often leaving old values behind).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "adv-08",
+      "topicId": "advanced",
+      "title": "Perfect Forwarding",
+      "code": "#include <iostream>\n#include <utility>\n\nvoid process(int& x) { std::cout << \"L\"; }\nvoid process(int&& x) { std::cout << \"R\"; }\n\ntemplate<typename T>\nvoid wrapper(T&& arg) {\n    process(std::forward<T>(arg));\n}\n\nint main() {\n    int a = 5;\n    wrapper(a);\n    wrapper(10);\n    return 0;\n}",
+      "answer": "LR",
+      "explanation": "wrapper uses a forwarding reference (T&&). std::forward preserves the value category. 'a' is an lvalue, so it calls process(int&). '10' is an rvalue, so it calls process(int&&).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "adv-09",
+      "topicId": "advanced",
+      "title": "Exception Re-throwing",
+      "code": "#include <iostream>\n\nvoid thrower() {\n    try {\n        throw 20;\n    } catch (int e) {\n        std::cout << \"C1 \";\n        throw;\n    }\n}\n\nint main() {\n    try {\n        thrower();\n    } catch (int e) {\n        std::cout << \"C2\";\n    }\n    return 0;\n}",
+      "answer": "C1 C2",
+      "explanation": "The naked 'throw;' inside a catch block re-throws the current exception, passing it up the call stack to be caught by the outer block.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "adv-10",
+      "topicId": "advanced",
+      "title": "decltype keyword",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 10;\n    int& y = x;\n    decltype(y) z = x;\n    z = 20;\n    std::cout << x;\n    return 0;\n}",
+      "answer": "20",
+      "explanation": "decltype(y) inspects the declared type of y, which is int&. Therefore, z is also an int reference to x. Changing z to 20 changes x.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "adv-11",
+      "topicId": "advanced",
+      "title": "CRTP (Curiously Recurring Template Pattern)",
+      "code": "#include <iostream>\n\ntemplate <typename Derived>\nclass Base {\npublic:\n    void interface() {\n        static_cast<Derived*>(this)->implementation();\n    }\n};\n\nclass Derived : public Base<Derived> {\npublic:\n    void implementation() { std::cout << \"D\"; }\n};\n\nint main() {\n    Derived d;\n    d.interface();\n    return 0;\n}",
+      "answer": "D",
+      "explanation": "CRTP achieves static polymorphism. The base class casts its 'this' pointer to the Derived type at compile time, resolving and calling Derived::implementation without virtual table overhead.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "adv-12",
+      "topicId": "advanced",
+      "title": "Variadic Templates",
+      "code": "#include <iostream>\n\nvoid print() {}\n\ntemplate<typename T, typename... Args>\nvoid print(T first, Args... args) {\n    std::cout << first;\n    print(args...);\n}\n\nint main() {\n    print(1, \"A\", 3.5);\n    return 0;\n}",
+      "answer": "1A3.5",
+      "explanation": "The variadic template recursively unpacks arguments, printing the first and passing the rest, until the base case (empty print()) is reached.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "adv-13",
+      "topicId": "advanced",
+      "title": "std::initializer_list",
+      "code": "#include <iostream>\n#include <initializer_list>\n\nclass Container {\npublic:\n    Container(std::initializer_list<int> list) {\n        std::cout << list.size();\n    }\n};\n\nint main() {\n    Container c = {1, 2, 3, 4, 5};\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "Uniform initialization with braces maps perfectly to std::initializer_list constructors, printing the number of elements passed.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "adv-14",
+      "topicId": "advanced",
+      "title": "Type Traits (is_same)",
+      "code": "#include <iostream>\n#include <type_traits>\n\nint main() {\n    std::cout << std::is_same<int, const int>::value;\n    std::cout << std::is_same<int, std::decay<const int&>::type>::value;\n    return 0;\n}",
+      "answer": "01",
+      "explanation": "int and const int are different types (0). std::decay strips const/volatile qualifiers and references, making 'const int&' decay into 'int' (1).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "adv-15",
+      "topicId": "advanced",
+      "title": "std::any",
+      "code": "#include <iostream>\n#include <any>\n\nint main() {\n    std::any a = 5;\n    a = std::string(\"Hello\");\n    try {\n        std::cout << std::any_cast<int>(a);\n    } catch(const std::bad_any_cast& e) {\n        std::cout << \"E\";\n    }\n    return 0;\n}",
+      "answer": "E",
+      "explanation": "std::any can hold any type. It was reassigned from int to std::string. Attempting to extract it as an int throws std::bad_any_cast.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "adv-16",
+      "topicId": "advanced",
+      "title": "std::variant and std::visit",
+      "code": "#include <iostream>\n#include <variant>\n\nint main() {\n    std::variant<int, float> v = 3.14f;\n    std::visit([](auto&& arg) { std::cout << arg; }, v);\n    return 0;\n}",
+      "answer": "3.14",
+      "explanation": "std::variant holds one of the specified types (currently float). std::visit applies the generic lambda to the currently active type.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "adv-17",
+      "topicId": "advanced",
+      "title": "Return Value Optimization (RVO)",
+      "code": "#include <iostream>\n\nclass Obj {\npublic:\n    Obj() { std::cout << \"C\"; }\n    Obj(const Obj&) { std::cout << \"K\"; }\n};\n\nObj makeObj() {\n    return Obj();\n}\n\nint main() {\n    Obj o = makeObj();\n    return 0;\n}",
+      "answer": "C",
+      "explanation": "Due to mandatory Copy Elision (RVO) in C++17 and later, the object is constructed directly in the memory location of 'o'. No copy or move constructor is called.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "adv-18",
+      "topicId": "advanced",
+      "title": "std::bind",
+      "code": "#include <iostream>\n#include <functional>\n\nint sub(int a, int b) { return a - b; }\n\nint main() {\n    auto func = std::bind(sub, std::placeholders::_2, std::placeholders::_1);\n    std::cout << func(10, 5);\n    return 0;\n}",
+      "answer": "-5",
+      "explanation": "std::bind wraps the function and maps the second argument (5) to 'a' and the first argument (10) to 'b'. It calculates 5 - 10 = -5.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "adv-19",
+      "topicId": "advanced",
+      "title": "Fold Expressions",
+      "code": "#include <iostream>\n\ntemplate<typename... Args>\nint sum(Args... args) {\n    return (... + args);\n}\n\nint main() {\n    std::cout << sum(1, 2, 3, 4);\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "C++17 fold expressions expand (... + args) into (1 + (2 + (3 + 4))), returning the sum 10.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "adv-20",
+      "topicId": "advanced",
+      "title": "Structured Binding",
+      "code": "#include <iostream>\n#include <tuple>\n\nint main() {\n    std::tuple<int, char> t(10, 'Z');\n    auto [num, letter] = t;\n    std::cout << num << letter;\n    return 0;\n}",
+      "answer": "10Z",
+      "explanation": "C++17 structured bindings allow unpacking tuples directly into named variables.",
+      "difficulty": "Easy"
+    }
+  ]
+}
