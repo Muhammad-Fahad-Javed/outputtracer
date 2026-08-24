@@ -231,7 +231,7 @@ export async function handleTerminalSession(
     const timer = setTimeout(() => {
       timedOut = true;
       killGroup("SIGKILL");
-    }, execConfig.runTimeoutMs);
+    }, 5 * 60 * 1000); // 5 minutes timeout for interactive sessions
 
     const finish = () => {
       if (settled) return;
@@ -301,7 +301,7 @@ export async function handleTerminalSession(
       if (timedOut) {
         send(ws, {
           type: "timeout",
-          data: `Program timed out after ${execConfig.runTimeoutMs}ms.`,
+          data: `Program timed out after 5 minutes.`,
         });
       } else if (signal) {
         send(ws, {
