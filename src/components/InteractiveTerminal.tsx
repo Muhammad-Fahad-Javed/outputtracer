@@ -155,10 +155,31 @@ export default function InteractiveTerminal({
 
           case "ready":
             setStatus("running");
-            // Enable user input forwarding
+            // Enable user input forwarding with local echo and line buffering
+            let inputBuffer = "";
             const dataDisposable = term.onData((data) => {
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: "stdin", data }));
+              // Handle backspace
+              if (data === "\x7f" || data === "\b") {
+                if (inputBuffer.length > 0) {
+                  inputBuffer = inputBuffer.slice(0, -1);
+                  // Move cursor back, erase char, move cursor back
+                  term.write("\b \b");
+                }
+                return;
+              }
+              // Handle Enter
+              if (data === "\r") {
+                term.writeln("");
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "stdin", data: inputBuffer + "\n" }));
+                }
+                inputBuffer = "";
+                return;
+              }
+              // Handle printable characters
+              if (data >= String.fromCharCode(0x20) && data <= String.fromCharCode(0x7E)) {
+                inputBuffer += data;
+                term.write(data);
               }
             });
 
