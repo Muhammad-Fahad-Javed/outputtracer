@@ -1,0 +1,235 @@
+{
+  "topic": {
+    "id": "tracing1",
+    "title": "Vast Tracing & Flow Control",
+    "description": "Deeply nested loops, recursion tracing, complex switch fallthroughs, and long execution paths.",
+    "icon": "GitBranch"
+  },
+  "questions": [
+    {
+      "id": "tr1-01",
+      "topicId": "tracing1",
+      "title": "Recursive Fibonacci Tracing",
+      "code": "#include <iostream>\n\nint f(int n) {\n    std::cout << n;\n    if (n <= 1) return n;\n    return f(n - 1) + f(n - 2);\n}\n\nint main() {\n    f(3);\n    return 0;\n}",
+      "answer": "32101",
+      "explanation": "f(3) prints 3. It calls f(2) and f(1). f(2) prints 2, then calls f(1) and f(0). f(1) prints 1. f(0) prints 0. Back to f(3), it calls its second branch f(1) which prints 1. Total: 3, 2, 1, 0, 1.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr1-02",
+      "topicId": "tracing1",
+      "title": "Nested Loop Break/Continue",
+      "code": "#include <iostream>\n\nint main() {\n    for (int i = 0; i < 3; i++) {\n        for (int j = 0; j < 3; j++) {\n            if (i == 1 && j == 1) break;\n            if (i == j) continue;\n            std::cout << i << j;\n        }\n    }\n    return 0;\n}",
+      "answer": "0102102021",
+      "explanation": "i=0: j=0(cont), j=1(01), j=2(02). i=1: j=0(10), j=1(break inner). i=2: j=0(20), j=1(21), j=2(cont).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr1-03",
+      "topicId": "tracing1",
+      "title": "Switch Case Waterfall",
+      "code": "#include <iostream>\n\nint main() {\n    int k = 1, sum = 0;\n    switch(k) {\n        case 1:\n            for(int i=0; i<2; i++) sum++;\n        case 2:\n            sum += 5;\n            if (sum > 6) break;\n        case 3:\n            sum--;\n        default:\n            sum *= 2;\n    }\n    std::cout << sum;\n    return 0;\n}",
+      "answer": "7",
+      "explanation": "k=1. case 1: sum becomes 2. Fallthrough to case 2: sum becomes 7. if (7 > 6) break! Execution breaks out of the switch. Final sum is 7.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr1-04",
+      "topicId": "tracing1",
+      "title": "Mutually Recursive Functions",
+      "code": "#include <iostream>\n\nvoid B(int n);\nvoid A(int n) {\n    if (n <= 0) return;\n    std::cout << \"A\" << n;\n    B(n - 1);\n}\nvoid B(int n) {\n    if (n <= 0) return;\n    std::cout << \"B\" << n;\n    A(n / 2);\n}\n\nint main() {\n    A(4);\n    return 0;\n}",
+      "answer": "A4B3A1",
+      "explanation": "A(4) -> prints A4, calls B(3). B(3) -> prints B3, calls A(1). A(1) -> prints A1, calls B(0). B(0) -> returns. Total: A4B3A1.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr1-05",
+      "topicId": "tracing1",
+      "title": "Static Variable in Recursion",
+      "code": "#include <iostream>\n\nint rec(int n) {\n    static int val = 0;\n    if (n > 0) {\n        val += n;\n        rec(n - 1);\n    }\n    return val;\n}\n\nint main() {\n    std::cout << rec(3);\n    return 0;\n}",
+      "answer": "6",
+      "explanation": "rec(3): val=3, calls rec(2). rec(2): val=3+2=5, calls rec(1). rec(1): val=5+1=6, calls rec(0). rec(0): returns val(6). All recursive unwinds return 6.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr1-06",
+      "topicId": "tracing1",
+      "title": "Try-Catch Control Flow",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 0;\n    try {\n        x++;\n        if (x == 1) throw x;\n        x++;\n    } catch (int e) {\n        x += e;\n    }\n    std::cout << x;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "x becomes 1. throw 1 bypasses the second x++. Catch block executes, adding e (which is 1) to x (which is 1), resulting in 2.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "tr1-07",
+      "topicId": "tracing1",
+      "title": "Post-Increment in Conditionals",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 1, b = 1;\n    if (a++ == 1 || b++ == 1) {\n        std::cout << a << b;\n    }\n    return 0;\n}",
+      "answer": "21",
+      "explanation": "a++ evaluates to 1 (true), so the right side (b++) is short-circuited and not executed. a becomes 2, b remains 1.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr1-08",
+      "topicId": "tracing1",
+      "title": "For Loop Variable Updates",
+      "code": "#include <iostream>\n\nint main() {\n    int i;\n    for (i = 0; i < 5; i++) {\n        i += 1;\n        std::cout << i;\n    }\n    return 0;\n}",
+      "answer": "135",
+      "explanation": "Iteration 1: i=0, becomes 1 in body, prints 1. loop inc makes i=2. Iteration 2: i=2, becomes 3 in body, prints 3. loop inc makes i=4. Iteration 3: i=4, becomes 5 in body, prints 5. loop inc makes i=6. Condition 6<5 is false.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr1-09",
+      "topicId": "tracing1",
+      "title": "Do-While nested in While",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 3, y;\n    while (x > 0) {\n        y = x;\n        do {\n            std::cout << y;\n            y--;\n        } while (y > 1);\n        x--;\n    }\n    return 0;\n}",
+      "answer": "3221",
+      "explanation": "x=3. y=3, prints 3, y=2. prints 2, y=1. Loop ends. x=2. y=2, prints 2, y=1. Loop ends. x=1. y=1, prints 1, y=0. 0>1 false. Total: 3221.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr1-10",
+      "topicId": "tracing1",
+      "title": "Exception in Loop",
+      "code": "#include <iostream>\n\nint main() {\n    int sum = 0;\n    try {\n        for (int i = 1; i <= 3; i++) {\n            sum += i;\n            if (i == 2) throw 0;\n        }\n    } catch (...) {\n        sum *= 2;\n    }\n    std::cout << sum;\n    return 0;\n}",
+      "answer": "6",
+      "explanation": "i=1: sum=1. i=2: sum=1+2=3. Throws. Loop terminates instantly. Catch block multiplies sum by 2. 3*2 = 6.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "tr1-11",
+      "topicId": "tracing1",
+      "title": "Recursive Array Processing",
+      "code": "#include <iostream>\n\nint process(int* arr, int n) {\n    if (n <= 0) return 0;\n    return arr[n-1] + process(arr, n-2);\n}\n\nint main() {\n    int nums[] = {1, 2, 3, 4, 5};\n    std::cout << process(nums, 5);\n    return 0;\n}",
+      "answer": "9",
+      "explanation": "process(5) reads arr[4] (5) + process(3). process(3) reads arr[2] (3) + process(1). process(1) reads arr[0] (1) + process(-1). process(-1) returns 0. 5 + 3 + 1 = 9.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr1-12",
+      "topicId": "tracing1",
+      "title": "Goto Statements",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 0;\nstart:\n    x++;\n    if (x == 2) goto skip;\n    x++;\nskip:\n    std::cout << x;\n    if (x < 3) goto start;\n    return 0;\n}",
+      "answer": "24",
+      "explanation": "x=0. start: x=1, x=2. skip: prints 2. 2<3 true. start: x=3, if x==2 false, x=4. skip: prints 4. 4<3 false. Output: 24.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr1-13",
+      "topicId": "tracing1",
+      "title": "Comma Operator in For Loop",
+      "code": "#include <iostream>\n\nint main() {\n    for (int i = 0, j = 5; i < 3; i++, j--) {\n        std::cout << i + j;\n    }\n    return 0;\n}",
+      "answer": "555",
+      "explanation": "Iteration 1: i=0, j=5, prints 5. Iteration 2: i=1, j=4, prints 5. Iteration 3: i=2, j=3, prints 5.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "tr1-14",
+      "topicId": "tracing1",
+      "title": "While Loop with Assignment",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 5;\n    while (int y = x--) {\n        if (y % 2 == 0) std::cout << y;\n    }\n    return 0;\n}",
+      "answer": "42",
+      "explanation": "x=5. y=5, x=4. y is 5 (odd). x=4. y=4, x=3. y is 4 (even), prints 4. x=3. y=3, x=2. y is 3 (odd). x=2. y=2, x=1. y is 2 (even), prints 2. x=1. y=1, x=0. y is 1 (odd). x=0. y=0, x=-1. y is 0 (evaluates to false in while condition). Loop ends.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr1-15",
+      "topicId": "tracing1",
+      "title": "Switch without Breaks",
+      "code": "#include <iostream>\n\nint main() {\n    int n = 2;\n    switch(n) {\n        case 1: std::cout << \"A\";\n        case 2: std::cout << \"B\";\n        case 3: std::cout << \"C\";\n        case 4: std::cout << \"D\";\n    }\n    return 0;\n}",
+      "answer": "BCD",
+      "explanation": "Since there are no break statements, matching case 2 starts execution, which then falls through cases 3 and 4 unconditionally.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "tr1-16",
+      "topicId": "tracing1",
+      "title": "Ternary Operator Chaining",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 10, b = 20, c = 30;\n    int res = (a > b) ? a : (b > c) ? b : c;\n    std::cout << res;\n    return 0;\n}",
+      "answer": "30",
+      "explanation": "a>b (10>20) is false. It evaluates the else part: (b>c) ? b : c. b>c (20>30) is false. It evaluates the else part: c (30).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr1-17",
+      "topicId": "tracing1",
+      "title": "Nested Functions (Lambdas)",
+      "code": "#include <iostream>\n\nint main() {\n    int v = 1;\n    auto f = [&](int x) {\n        auto g = [&](int y) { return x + y + v; };\n        return g(2);\n    };\n    v = 5;\n    std::cout << f(3);\n    return 0;\n}",
+      "answer": "10",
+      "explanation": "f is called with x=3. Inside f, g is called with y=2. g returns x(3) + y(2) + v(5). 3+2+5 = 10. v is captured by reference and was changed to 5 before f was called.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr1-18",
+      "topicId": "tracing1",
+      "title": "Complex Loop Conditions",
+      "code": "#include <iostream>\n\nint main() {\n    int i = 0, j = 10;\n    for (; i < 5 && j > 5; i++, j -= 2) {\n        std::cout << i;\n    }\n    return 0;\n}",
+      "answer": "012",
+      "explanation": "i=0,j=10 (print 0). i=1,j=8 (print 1). i=2,j=6 (print 2). i=3,j=4. Loop terminates because j>5 is false.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr1-19",
+      "topicId": "tracing1",
+      "title": "Static and Global Variable Tracing",
+      "code": "#include <iostream>\n\nint g = 1;\n\nvoid run() {\n    static int s = 1;\n    int l = 1;\n    g++; s++; l++;\n    std::cout << g << s << l;\n}\n\nint main() {\n    run();\n    run();\n    return 0;\n}",
+      "answer": "222332",
+      "explanation": "First call: g=2, s=2, l=2. Second call: g=3, s=3 (persisted), l=2 (reinitialized).",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "tr1-20",
+      "topicId": "tracing1",
+      "title": "Short-Circuit with Side Effects",
+      "code": "#include <iostream>\n\nbool check(int& x, bool res) {\n    x++;\n    return res;\n}\n\nint main() {\n    int a = 0;\n    if (check(a, false) && check(a, true)) {}\n    std::cout << a;\n    if (check(a, true) || check(a, false)) {}\n    std::cout << a;\n    return 0;\n}",
+      "answer": "12",
+      "explanation": "First if: check(a, false) increments a to 1 and returns false. The && short-circuits. Output a (1). Second if: check(a, true) increments a to 2 and returns true. The || short-circuits. Output a (2).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr1-21",
+      "topicId": "tracing1",
+      "title": "Multiple Recursion Tree",
+      "code": "#include <iostream>\n\nvoid tree(int n) {\n    if (n <= 0) return;\n    std::cout << n;\n    tree(n - 1);\n    tree(n - 2);\n}\n\nint main() {\n    tree(3);\n    return 0;\n}",
+      "answer": "3211",
+      "explanation": "tree(3): prints 3. Calls tree(2) and tree(1). tree(2): prints 2. Calls tree(1) and tree(0). tree(1): prints 1, calls tree(0) and tree(-1). Back to tree(2)'s second call: tree(0) does nothing. Back to tree(3)'s second call: tree(1) prints 1. Total: 3, 2, 1, 1.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr1-22",
+      "topicId": "tracing1",
+      "title": "Reference Return and Assignment",
+      "code": "#include <iostream>\n\nint& getVal(int* arr, int index) {\n    return arr[index];\n}\n\nint main() {\n    int nums[] = {10, 20, 30};\n    getVal(nums, 1) = 50;\n    std::cout << nums[0] << nums[1] << nums[2];\n    return 0;\n}",
+      "answer": "105030",
+      "explanation": "getVal returns a reference to nums[1]. The assignment getVal() = 50 directly modifies the array element at index 1.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr1-23",
+      "topicId": "tracing1",
+      "title": "Exception Stack Unwinding",
+      "code": "#include <iostream>\n\nstruct C { \n    int id; \n    C(int i) : id(i) { std::cout << \"C\" << id; }\n    ~C() { std::cout << \"D\" << id; }\n};\n\nvoid func() {\n    C obj2(2);\n    throw 1;\n}\n\nint main() {\n    try {\n        C obj1(1);\n        func();\n    } catch(...) {\n        std::cout << \"E\";\n    }\n    return 0;\n}",
+      "answer": "C1C2D2D1E",
+      "explanation": "obj1 constructed (C1). func called. obj2 constructed (C2). throw 1 initiates stack unwinding. Local objects are destroyed in reverse order of creation: obj2 (D2), obj1 (D1). Then the catch block executes (E).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr1-24",
+      "topicId": "tracing1",
+      "title": "Pointer to Pointer Tracing",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 1, b = 2;\n    int* p1 = &a;\n    int* p2 = &b;\n    int** pp = &p1;\n    *pp = p2;\n    **pp = 3;\n    std::cout << a << b;\n    return 0;\n}",
+      "answer": "13",
+      "explanation": "pp points to p1. *pp = p2 changes p1 to point to b. **pp = 3 dereferences pp to get p1 (which points to b), and dereferences again to modify b to 3. a remains 1.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr1-25",
+      "topicId": "tracing1",
+      "title": "Multi-dimensional Array Offsets",
+      "code": "#include <iostream>\n\nint main() {\n    int arr[2][3] = {{1, 2, 3}, {4, 5, 6}};\n    int* p = &arr[0][0];\n    std::cout << *(p + 4);\n    return 0;\n}",
+      "answer": "5",
+      "explanation": "Multi-dimensional arrays are contiguous in memory. p points to the first element (1). Adding 4 moves the pointer 4 elements forward: 1, 2, 3, 4, 5. It points to 5.",
+      "difficulty": "Medium"
+    }
+  ]
+}

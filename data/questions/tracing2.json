@@ -1,0 +1,235 @@
+{
+  "topic": {
+    "id": "tracing2",
+    "title": "Tough Logic Puzzles",
+    "description": "Complex macro expansions, tricky operator precedence, multi-dimensional structures, and bitwise math.",
+    "icon": "Box"
+  },
+  "questions": [
+    {
+      "id": "tr2-01",
+      "topicId": "tracing2",
+      "title": "Macro Side Effects",
+      "code": "#include <iostream>\n\n#define SQUARE(x) x * x\n\nint main() {\n    int a = 3;\n    std::cout << SQUARE(a + 1);\n    return 0;\n}",
+      "answer": "7",
+      "explanation": "Macros perform literal text substitution. SQUARE(a + 1) expands to a + 1 * a + 1. Due to operator precedence, this is 3 + (1 * 3) + 1 = 3 + 3 + 1 = 7. It does NOT evaluate as (a+1)*(a+1).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr2-02",
+      "topicId": "tracing2",
+      "title": "Macro Post-Increment",
+      "code": "#include <iostream>\n\n#define MAX(a, b) ((a) > (b) ? (a) : (b))\n\nint main() {\n    int x = 2, y = 3;\n    std::cout << MAX(x++, y++);\n    return 0;\n}",
+      "answer": "4",
+      "explanation": "The macro expands to ((x++) > (y++) ? (x++) : (y++)). Initially x=2, y=3. 2 > 3 is false. y is incremented to 4. x is incremented to 3. The ternary evaluates the false branch: (y++). It evaluates to 4, then y increments to 5.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr2-03",
+      "topicId": "tracing2",
+      "title": "Bitwise XOR Swap",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 5, b = 10;\n    a ^= b;\n    b ^= a;\n    a ^= b;\n    std::cout << a << b;\n    return 0;\n}",
+      "answer": "105",
+      "explanation": "This is the classic XOR swap algorithm. It swaps the values of a and b without using a temporary variable.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-04",
+      "topicId": "tracing2",
+      "title": "Shift Operator Precedence",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 1;\n    std::cout << (x << 1 + 2);\n    return 0;\n}",
+      "answer": "8",
+      "explanation": "Addition (+) has higher precedence than the bitwise shift operator (<<). So it evaluates as x << (1 + 2) -> 1 << 3, which is 8.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr2-05",
+      "topicId": "tracing2",
+      "title": "Bitwise AND with Negation",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 4;\n    std::cout << (x & -x);\n    return 0;\n}",
+      "answer": "4",
+      "explanation": "In two's complement, -x is equivalent to ~x + 1. The expression x & -x isolates the lowest set bit of x. For 4 (binary 100), the lowest set bit is 4.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr2-06",
+      "topicId": "tracing2",
+      "title": "Array of Function Pointers",
+      "code": "#include <iostream>\n\nint f1() { return 1; }\nint f2() { return 2; }\n\nint main() {\n    int (*arr[2])() = {f1, f2};\n    std::cout << arr[0]() + arr[1]();\n    return 0;\n}",
+      "answer": "3",
+      "explanation": "arr is an array of 2 pointers to functions returning int. arr[0]() calls f1 returning 1. arr[1]() calls f2 returning 2. 1 + 2 = 3.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-07",
+      "topicId": "tracing2",
+      "title": "Chained Assignments and Side Effects",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 1, b = 2, c = 3;\n    a = (b += 2) + (c *= 2);\n    std::cout << a << b << c;\n    return 0;\n}",
+      "answer": "1046",
+      "explanation": "b += 2 makes b=4. c *= 2 makes c=6. a becomes 4 + 6 = 10. The output is 10, 4, 6.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-08",
+      "topicId": "tracing2",
+      "title": "Logical NOT on Integers",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 5;\n    std::cout << !x << !!x;\n    return 0;\n}",
+      "answer": "01",
+      "explanation": "5 is non-zero (true). !5 is 0 (false). !!5 is !0 which is 1 (true).",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "tr2-09",
+      "topicId": "tracing2",
+      "title": "Sizeof String Literals vs Pointers",
+      "code": "#include <iostream>\n\nint main() {\n    char arr[] = \"Hi\";\n    const char* ptr = \"Hi\";\n    std::cout << (sizeof(arr) == sizeof(ptr));\n    return 0;\n}",
+      "answer": "0",
+      "explanation": "arr is a character array of size 3 (H, i, \\0). ptr is a pointer, whose size is typically 8 bytes on a 64-bit system. 3 is not equal to 8, so it prints 0.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-10",
+      "topicId": "tracing2",
+      "title": "Struct Padding Alignment",
+      "code": "#include <iostream>\n\nstruct Node {\n    char c;\n    short s;\n    int i;\n};\n\nint main() {\n    std::cout << sizeof(Node);\n    return 0;\n}",
+      "answer": "8",
+      "explanation": "c takes 1 byte, followed by 1 byte of padding to align the short on a 2-byte boundary. s takes 2 bytes. i takes 4 bytes. Total: 1+1+2+4 = 8 bytes.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr2-11",
+      "topicId": "tracing2",
+      "title": "Dangling Reference",
+      "code": "#include <iostream>\n\nint& get() {\n    int x = 10;\n    return x;\n}\n\nint main() {\n    int& ref = get();\n    std::cout << \"UB\";\n    return 0;\n}",
+      "answer": "UB",
+      "explanation": "get() returns a reference to a local variable x. When get() returns, x is destroyed, leaving a dangling reference. Using it causes Undefined Behavior.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "tr2-12",
+      "topicId": "tracing2",
+      "title": "Static Cast to Void",
+      "code": "#include <iostream>\n\nint main() {\n    int x = 5;\n    static_cast<void>(x++);\n    std::cout << x;\n    return 0;\n}",
+      "answer": "6",
+      "explanation": "Casting an expression to void evaluates the expression and discards the result. x++ is evaluated, so x becomes 6.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-13",
+      "topicId": "tracing2",
+      "title": "Pointer Subtraction Types",
+      "code": "#include <iostream>\n\nint main() {\n    int arr[5] = {1,2,3,4,5};\n    auto diff = &arr[3] - &arr[1];\n    std::cout << diff;\n    return 0;\n}",
+      "answer": "2",
+      "explanation": "Pointer subtraction returns the number of elements between them, not the number of bytes. 3 - 1 = 2 elements of type int.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-14",
+      "topicId": "tracing2",
+      "title": "Virtual Function Default Argument Bind",
+      "code": "#include <iostream>\n\nstruct B { virtual void f(int a = 1) { std::cout << a; } };\nstruct D : B { void f(int a = 2) override { std::cout << a; } };\n\nint main() {\n    B* p = new D();\n    p->f();\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "Default arguments are bound at compile-time based on the static type of the pointer (B), which provides 1. The function is called dynamically (D::f), which prints the bound argument 1.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr2-15",
+      "topicId": "tracing2",
+      "title": "Switch Case Initialization",
+      "code": "#include <iostream>\n\nint main() {\n    int i = 1;\n    switch(i) {\n        case 1:\n            int x = 5;\n            std::cout << x;\n            break;\n        case 2:\n            x = 10;\n            std::cout << x;\n            break;\n    }\n    return 0;\n}",
+      "answer": "Compilation Error",
+      "explanation": "You cannot declare and initialize a variable inside a switch case without creating a scope (using braces {}). The compiler will throw an error because 'x' would be in scope for case 2 but skipped initialization.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr2-16",
+      "topicId": "tracing2",
+      "title": "Operator Precedence with Pointers",
+      "code": "#include <iostream>\n\nint main() {\n    int arr[] = {10, 20, 30};\n    int* p = arr;\n    std::cout << *p++ << \" \";\n    std::cout << *p;\n    return 0;\n}",
+      "answer": "10 20",
+      "explanation": "Postfix ++ has higher precedence than *. So *p++ evaluates as *(p++). It returns the original value pointed to by p (10), and then increments the pointer to point to 20.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-17",
+      "topicId": "tracing2",
+      "title": "Enum Scope",
+      "code": "#include <iostream>\n\nenum Color { RED, GREEN };\nenum Traffic { RED, YELLOW };\n\nint main() {\n    std::cout << \"Compilation Error\";\n    return 0;\n}",
+      "answer": "Compilation Error",
+      "explanation": "Standard enums leak their enumerators into the surrounding scope. Defining RED in Traffic conflicts with RED in Color. This is why enum classes (scoped enums) were introduced in C++11.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-18",
+      "topicId": "tracing2",
+      "title": "Const Member Initialization",
+      "code": "#include <iostream>\n\nstruct S {\n    const int x;\n    S(int v) { x = v; }\n};\n\nint main() {\n    std::cout << \"Compilation Error\";\n    return 0;\n}",
+      "answer": "Compilation Error",
+      "explanation": "Const member variables must be initialized using a member initializer list. They cannot be assigned inside the constructor body.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-19",
+      "topicId": "tracing2",
+      "title": "Empty String Length",
+      "code": "#include <iostream>\n#include <cstring>\n\nint main() {\n    char s[] = \"\\0Hello\";\n    std::cout << strlen(s) << \" \" << sizeof(s);\n    return 0;\n}",
+      "answer": "0 7",
+      "explanation": "strlen stops at the first null terminator, so it returns 0. sizeof evaluates the entire array size: \\0, H, e, l, l, o, and the implicit \\0 at the end (7 bytes total).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr2-20",
+      "topicId": "tracing2",
+      "title": "Float Equality Comparison",
+      "code": "#include <iostream>\n\nint main() {\n    float f = 0.1f;\n    if (f == 0.1) std::cout << \"Y\";\n    else std::cout << \"N\";\n    return 0;\n}",
+      "answer": "N",
+      "explanation": "0.1f is a float, which lacks precision compared to the double literal 0.1. When compared, the float is promoted to double, but their underlying binary representations are different, making them unequal.",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr2-21",
+      "topicId": "tracing2",
+      "title": "String Literal Modification",
+      "code": "#include <iostream>\n\nint main() {\n    char* s = (char*)\"Hello\";\n    s[0] = 'Y';\n    std::cout << \"UB\";\n    return 0;\n}",
+      "answer": "UB",
+      "explanation": "String literals are stored in read-only memory. Attempting to modify them through a non-const pointer leads to Undefined Behavior (usually a segmentation fault).",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-22",
+      "topicId": "tracing2",
+      "title": "Main Function Return",
+      "code": "#include <iostream>\n\nint main() {\n    std::cout << \"Hi\";\n}",
+      "answer": "Hi",
+      "explanation": "In C++, it is not strictly required for the main function to have a 'return 0;' statement. If omitted, the compiler implicitly inserts it.",
+      "difficulty": "Easy"
+    },
+    {
+      "id": "tr2-23",
+      "topicId": "tracing2",
+      "title": "Type Promotion in Ternary",
+      "code": "#include <iostream>\n\nint main() {\n    int a = 5;\n    double b = 5.5;\n    auto res = true ? a : b;\n    std::cout << sizeof(res);\n    return 0;\n}",
+      "answer": "8",
+      "explanation": "The ternary operator requires both branches to yield a common type. The int 'a' is promoted to double to match 'b'. Thus, 'res' is deduced as a double (8 bytes).",
+      "difficulty": "Hard"
+    },
+    {
+      "id": "tr2-24",
+      "topicId": "tracing2",
+      "title": "Multi-dimensional Array Initialization",
+      "code": "#include <iostream>\n\nint main() {\n    int arr[2][2] = {1, 2, 3};\n    std::cout << arr[1][1];\n    return 0;\n}",
+      "answer": "0",
+      "explanation": "The array is initialized sequentially. arr[0][0]=1, arr[0][1]=2, arr[1][0]=3. Any uninitialized elements in a brace-enclosed list are value-initialized to 0. So arr[1][1]=0.",
+      "difficulty": "Medium"
+    },
+    {
+      "id": "tr2-25",
+      "topicId": "tracing2",
+      "title": "Pointer Comparison",
+      "code": "#include <iostream>\n\nint main() {\n    int arr[2];\n    int* p1 = &arr[0];\n    int* p2 = &arr[1];\n    std::cout << (p1 < p2);\n    return 0;\n}",
+      "answer": "1",
+      "explanation": "Pointers to elements within the same array can be compared. Since elements are contiguous in memory and array indices grow upwards, p1 is strictly less than p2.",
+      "difficulty": "Easy"
+    }
+  ]
+}
