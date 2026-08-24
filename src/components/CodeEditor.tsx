@@ -15,7 +15,8 @@ export default function CodeEditor({ value, onChange, onRunShortcut }: CodeEdito
   const [isFullscreen, setIsFullscreen] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
 
-  const lineCount = value.length === 0 ? 1 : value.split("\n").length;
+  const safeValue = value || "";
+  const lineCount = safeValue.length === 0 ? 1 : safeValue.split("\n").length;
 
   useEffect(() => {
     if (!isFullscreen) return;

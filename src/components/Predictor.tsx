@@ -18,14 +18,24 @@ import {
   ChevronDown,
   ChevronRight,
   Terminal,
+  Play,
+  FlaskConical,
 } from "lucide-react";
 import CodeEditor from "@/components/CodeEditor";
 import PredictButton from "@/components/PredictButton";
 import DryRunTimeline from "@/components/DryRunTimeline";
+import dynamic from "next/dynamic";
 import { DEFAULT_CODE, examples, consumePendingExample } from "@/lib/examples";
 import { PredictionResult } from "@/types/predictor";
 
+const InteractiveTerminal = dynamic(
+  () => import("@/components/InteractiveTerminal"),
+  { ssr: false, loading: () => <div className="flex h-[350px] items-center justify-center rounded-[4px] border border-[#DCDCDC] bg-[#111111]"><span className="font-mono text-sm text-[#666666]">Loading terminal…</span></div> }
+);
+
 const IDLE_RESULT: PredictionResult = { status: "idle" };
+
+type RunMode = "predict" | "interactive";
 
 /** Patterns that suggest the program reads from stdin. */
 const STDIN_PATTERNS = [
@@ -54,6 +64,7 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
   const [copied, setCopied] = useState(false);
   const [stdin, setStdin] = useState("");
   const [showStdin, setShowStdin] = useState(false);
+  const [runMode, setRunMode] = useState<RunMode>("interactive");
 
   const needsInput = useMemo(() => codeNeedsInput(files), [files]);
 
@@ -303,195 +314,236 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
           onRunShortcut={handlePredict}
         />
 
-        {/* Stdin panel — always rendered, collapsible */}
-        <div className="border-t border-[#DCDCDC] bg-[#FAFAFA]">
-          <button
-            type="button"
-            onClick={() => setShowStdin((v) => !v)}
-            className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-[#F2F2F2]"
-          >
-            {showStdin ? (
-              <ChevronDown size={14} className="text-[#666666]" />
-            ) : (
-              <ChevronRight size={14} className="text-[#666666]" />
-            )}
-            <Terminal size={14} className="text-[#666666]" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
-              Standard Input (stdin)
-            </span>
-            {stdin.trim() && (
-              <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-black" title="Input provided" />
-            )}
-            {needsInput && !stdin.trim() && (
-              <span className="ml-2 rounded-[3px] bg-[#FFF3CD] px-1.5 py-0.5 text-[10px] font-semibold text-[#856404]">
-                Input detected — provide values below
-              </span>
-            )}
-          </button>
+        {/* Mode toggle + action area */}
+        <div className="flex items-center justify-between bg-[#FAFAFA] border-t border-[#DCDCDC] px-4 py-3">
+          <div className="flex items-center gap-1 rounded-[4px] border border-[#DCDCDC] bg-white p-0.5">
+            <button
+              type="button"
+              onClick={() => setRunMode("interactive")}
+              className={`inline-flex items-center gap-1.5 rounded-[3px] px-3 py-1.5 text-xs font-medium transition-colors ${
+                runMode === "interactive"
+                  ? "bg-black text-white"
+                  : "text-[#666666] hover:text-black"
+              }`}
+            >
+              <Play size={11} />
+              Interactive Run
+            </button>
+            <button
+              type="button"
+              onClick={() => setRunMode("predict")}
+              className={`inline-flex items-center gap-1.5 rounded-[3px] px-3 py-1.5 text-xs font-medium transition-colors ${
+                runMode === "predict"
+                  ? "bg-black text-white"
+                  : "text-[#666666] hover:text-black"
+              }`}
+            >
+              <FlaskConical size={11} />
+              Predict + Trace
+            </button>
+          </div>
 
-          {showStdin && (
-            <div className="px-4 pb-3">
-              <textarea
-                id="stdin-input"
-                value={stdin}
-                onChange={(e) => setStdin(e.target.value)}
-                placeholder={
-                  needsInput
-                    ? "Your code uses cin/scanf — enter input values here, one per line…"
-                    : "Values your program reads via std::cin, one per line…"
-                }
-                rows={4}
-                className="w-full resize-y rounded-[3px] border border-[#DCDCDC] bg-white px-3 py-2 font-mono text-sm text-black placeholder:text-[#999999] focus:outline-none focus:ring-2 focus:ring-black/10"
-              />
+          {runMode === "predict" && (
+            <PredictButton
+              onClick={handlePredict}
+              loading={result.status === "loading"}
+            />
+          )}
+        </div>
+
+        {/* Stdin panel — only shown in predict mode */}
+        {runMode === "predict" && (
+          <div className="border-t border-[#DCDCDC] bg-[#FAFAFA]">
+            <button
+              type="button"
+              onClick={() => setShowStdin((v) => !v)}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-[#F2F2F2]"
+            >
+              {showStdin ? (
+                <ChevronDown size={14} className="text-[#666666]" />
+              ) : (
+                <ChevronRight size={14} className="text-[#666666]" />
+              )}
+              <Terminal size={14} className="text-[#666666]" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
+                Standard Input (stdin)
+              </span>
               {stdin.trim() && (
-                <div className="mt-1.5 flex items-center justify-between">
-                  <span className="text-[11px] text-[#999999]">
-                    {stdin.trim().split("\n").length} line{stdin.trim().split("\n").length !== 1 ? "s" : ""} of input
-                  </span>
+                <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-black" title="Input provided" />
+              )}
+              {needsInput && !stdin.trim() && (
+                <span className="ml-2 rounded-[3px] bg-[#FFF3CD] px-1.5 py-0.5 text-[10px] font-semibold text-[#856404]">
+                  Input detected — provide values below
+                </span>
+              )}
+            </button>
+
+            {showStdin && (
+              <div className="px-4 pb-3">
+                <textarea
+                  id="stdin-input"
+                  value={stdin}
+                  onChange={(e) => setStdin(e.target.value)}
+                  placeholder={
+                    needsInput
+                      ? "Your code uses cin/scanf — enter input values here, one per line…"
+                      : "Values your program reads via std::cin, one per line…"
+                  }
+                  rows={4}
+                  className="w-full resize-y rounded-[3px] border border-[#DCDCDC] bg-white px-3 py-2 font-mono text-sm text-black placeholder:text-[#999999] focus:outline-none focus:ring-2 focus:ring-black/10"
+                />
+                {stdin.trim() && (
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <span className="text-[11px] text-[#999999]">
+                      {stdin.trim().split("\n").length} line{stdin.trim().split("\n").length !== 1 ? "s" : ""} of input
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setStdin("")}
+                      className="inline-flex items-center gap-1 rounded-[3px] px-2 py-0.5 text-[11px] text-[#999999] transition-colors hover:bg-[#EAEAEA] hover:text-[#666666]"
+                    >
+                      <X size={10} />
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Interactive Terminal — shown in interactive mode */}
+      {runMode === "interactive" && (
+        <div className="mt-6">
+          <InteractiveTerminal files={files} />
+        </div>
+      )}
+
+      {/* Results — only shown in predict mode */}
+      {runMode === "predict" && (
+        <div className="mt-6 grid gap-5 lg:grid-cols-5">
+          {/* Output */}
+          <div className="rounded-[4px] border border-[#DCDCDC] lg:col-span-2">
+            <div className="flex items-center justify-between border-b border-[#DCDCDC] bg-[#FAFAFA] px-4 py-2.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
+                Output
+              </span>
+
+              {hasOutput && (result.output || result.stderr) && (
+                <div className="flex items-center gap-1">
+                  {result.output && (
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      aria-label="Copy output"
+                      className="inline-flex items-center gap-1 rounded-[3px] px-2 py-1 text-xs text-black transition-colors hover:bg-[#F2F2F2]"
+                    >
+                      {copied ? <Check size={13} /> : <Copy size={13} />}
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  )}
+
                   <button
                     type="button"
-                    onClick={() => setStdin("")}
-                    className="inline-flex items-center gap-1 rounded-[3px] px-2 py-0.5 text-[11px] text-[#999999] transition-colors hover:bg-[#EAEAEA] hover:text-[#666666]"
+                    onClick={handleClearOutput}
+                    aria-label="Clear output"
+                    className="inline-flex items-center gap-1 rounded-[3px] px-2 py-1 text-xs text-black transition-colors hover:bg-[#F2F2F2]"
                   >
-                    <X size={10} />
+                    <Trash2 size={13} />
                     Clear
                   </button>
                 </div>
               )}
             </div>
-          )}
-        </div>
 
-        <div className="bg-[#FAFAFA] px-4 py-5">
-          <PredictButton
-            onClick={handlePredict}
-            loading={result.status === "loading"}
-          />
-        </div>
-      </div>
+            <div className="min-h-[160px] px-4 py-5">
+              {result.status === "idle" && (
+                <p className="font-mono text-sm text-[#999999]">
+                  Run the predictor to see the expected output here.
+                </p>
+              )}
 
-      {/* Results */}
-      <div className="mt-6 grid gap-5 lg:grid-cols-5">
-        {/* Output */}
-        <div className="rounded-[4px] border border-[#DCDCDC] lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-[#DCDCDC] bg-[#FAFAFA] px-4 py-2.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
-              Output
-            </span>
+              {result.status === "loading" && (
+                <div className="flex items-center gap-2 font-mono text-sm text-[#666666]">
+                  <span className="inline-block h-2 w-2 animate-pulse-dot rounded-full bg-[#666666]" />
+                  Analyzing program…
+                </div>
+              )}
 
-            {hasOutput && (result.output || result.stderr) && (
-              <div className="flex items-center gap-1">
-                {result.output && (
-                  <button
-                    type="button"
-                    onClick={handleCopy}
-                    aria-label="Copy output"
-                    className="inline-flex items-center gap-1 rounded-[3px] px-2 py-1 text-xs text-black transition-colors hover:bg-[#F2F2F2]"
-                  >
-                    {copied ? <Check size={13} /> : <Copy size={13} />}
-                    {copied ? "Copied" : "Copy"}
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleClearOutput}
-                  aria-label="Clear output"
-                  className="inline-flex items-center gap-1 rounded-[3px] px-2 py-1 text-xs text-black transition-colors hover:bg-[#F2F2F2]"
-                >
-                  <Trash2 size={13} />
-                  Clear
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="min-h-[160px] px-4 py-5">
-            {result.status === "idle" && (
-              <p className="font-mono text-sm text-[#999999]">
-                Run the predictor to see the expected output here.
-              </p>
-            )}
-
-            {result.status === "loading" && (
-              <div className="flex items-center gap-2 font-mono text-sm text-[#666666]">
-                <span className="inline-block h-2 w-2 animate-pulse-dot rounded-full bg-[#666666]" />
-                Analyzing program…
-              </div>
-            )}
-
-            {hasOutput && (
-              <>
-                {result.output && (
-                  <div className="mb-4">
-                    <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[#666666]">
-                      Standard Output
-                    </span>
-                    <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-black">{result.output}</pre>
-                  </div>
-                )}
-                
-                {result.status === "success" && !result.output && !result.stderr && (
-                  <p className="font-mono text-[15px] leading-relaxed italic text-[#999999]">
-                    (No output)
-                  </p>
-                )}
-
-                {result.stderr && (
-                  <div className="mb-4">
-                    <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[#666666]">
-                      Standard Error
-                    </span>
-                    <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-[#D93025]">{result.stderr}</pre>
-                  </div>
-                )}
-
-                {result.status === "error" && result.error && (
-                  <div className="flex gap-2.5 mt-4 rounded bg-[#FAFAFA] border border-[#DCDCDC] p-3">
-                    <AlertTriangle
-                      size={16}
-                      className="mt-0.5 shrink-0 text-black"
-                    />
-
-                    <div className="min-w-0">
-                      <p className="font-mono text-xs font-semibold tracking-wide text-black">
-                        {result.error.title}
-                      </p>
-
-                      <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-[#666666]">{result.error.message}</pre>
-                    </div>
-                  </div>
-                )}
-
-                {result.status === "success" && (
-                  <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-[#666666]">
-                    <CheckCircle2 size={13} />
-                    Execution complete
-                    {typeof result.meta?.exitCode === "number" && result.meta.exitCode !== 0 && (
-                      <span className="text-[#999999]">
-                        &nbsp;— exited with code {result.meta.exitCode}
+              {hasOutput && (
+                <>
+                  {result.output && (
+                    <div className="mb-4">
+                      <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[#666666]">
+                        Standard Output
                       </span>
-                    )}
-                  </p>
-                )}
-              </>
-            )}
+                      <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-black">{result.output}</pre>
+                    </div>
+                  )}
+                  
+                  {result.status === "success" && !result.output && !result.stderr && (
+                    <p className="font-mono text-[15px] leading-relaxed italic text-[#999999]">
+                      (No output)
+                    </p>
+                  )}
+
+                  {result.stderr && (
+                    <div className="mb-4">
+                      <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[#666666]">
+                        Standard Error
+                      </span>
+                      <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-[#D93025]">{result.stderr}</pre>
+                    </div>
+                  )}
+
+                  {result.status === "error" && result.error && (
+                    <div className="flex gap-2.5 mt-4 rounded bg-[#FAFAFA] border border-[#DCDCDC] p-3">
+                      <AlertTriangle
+                        size={16}
+                        className="mt-0.5 shrink-0 text-black"
+                      />
+
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-semibold tracking-wide text-black">
+                          {result.error.title}
+                        </p>
+
+                        <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-[#666666]">{result.error.message}</pre>
+                      </div>
+                    </div>
+                  )}
+
+                  {result.status === "success" && (
+                    <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-[#666666]">
+                      <CheckCircle2 size={13} />
+                      Execution complete
+                      {typeof result.meta?.exitCode === "number" && result.meta.exitCode !== 0 && (
+                        <span className="text-[#999999]">
+                          &nbsp;— exited with code {result.meta.exitCode}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Step-by-Step Trace */}
+          <div className="rounded-[4px] border border-[#DCDCDC] lg:col-span-3">
+            <div className="border-b border-[#DCDCDC] bg-[#FAFAFA] px-4 py-2.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
+                Step-by-Step Trace
+              </span>
+            </div>
+
+            <div className="px-4 py-4">
+              <DryRunTimeline steps={result.dryRun ?? []} truncated={result.traceTruncated} />
+            </div>
           </div>
         </div>
-
-        {/* Step-by-Step Trace */}
-        <div className="rounded-[4px] border border-[#DCDCDC] lg:col-span-3">
-          <div className="border-b border-[#DCDCDC] bg-[#FAFAFA] px-4 py-2.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
-              Step-by-Step Trace
-            </span>
-          </div>
-
-          <div className="px-4 py-4">
-            <DryRunTimeline steps={result.dryRun ?? []} truncated={result.traceTruncated} />
-          </div>
-        </div>
-      </div>
+      )}
     </section>
   );
 }
