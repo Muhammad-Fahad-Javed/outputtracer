@@ -86,9 +86,9 @@ app.prepare().then(() => {
     });
   });
 
-  server.listen(port, () => {
+  server.listen(port, "0.0.0.0", () => {
     console.log(
-      `> Ready on http://localhost:${port} (${dev ? "development" : "production"})`
+      `> Ready on http://0.0.0.0:${port} (${dev ? "development" : "production"})`
     );
     console.log(`> WebSocket terminal available at ws://localhost:${port}/ws/terminal`);
   });

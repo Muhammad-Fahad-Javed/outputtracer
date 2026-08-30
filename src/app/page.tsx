@@ -5,6 +5,7 @@ import Header from "@/components/Header";
 import Hero from "@/components/Hero";
 import Predictor from "@/components/Predictor";
 import Footer from "@/components/Footer";
+import SeoContent from "@/components/SeoContent";
 import { DEFAULT_CODE } from "@/lib/examples";
 
 export default function Home() {
@@ -26,6 +27,7 @@ export default function Home() {
       <main>
         <Hero />
         <Predictor files={files} setFiles={setFiles} />
+        <SeoContent />
       </main>
       <Footer />
     </>

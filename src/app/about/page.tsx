@@ -3,8 +3,8 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "About — OutputTracer",
-  description: "What OutputTracer is, and who it's built for.",
+  title: "About | OutputTracer",
+  description: "Learn what OutputTracer is, and how it helps students and developers write and run C++ code online.",
 };
 
 export default function AboutPage() {

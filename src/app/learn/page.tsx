@@ -7,9 +7,9 @@ import Topics from "@/components/Topics";
 import FAQ from "@/components/FAQ";
 
 export const metadata: Metadata = {
-  title: "Learn — OutputTracer",
+  title: "Learn C++ | OutputTracer",
   description:
-    "Understand how OutputTracer predicts C++ output and traces execution, and which topics it covers.",
+    "Learn C++ programming online. Understand how OutputTracer predicts C++ output and traces execution, and which topics it covers.",
 };
 
 export default function LearnPage() {

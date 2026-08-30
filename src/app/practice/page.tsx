@@ -6,8 +6,8 @@ import { getTopics } from "@/lib/practice";
 import { Terminal, Crosshair, Box, Code2, Layers, Cpu } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Practice — OutputTracer",
-  description: "C++ output prediction practice questions categorized by topic.",
+  title: "C++ Practice Questions | OutputTracer",
+  description: "Test your C++ knowledge with our practice questions. Predict C++ output, practice OOP, pointers, arrays, and algorithms online.",
 };
 
 const ICON_MAP: Record<string, React.ElementType> = {

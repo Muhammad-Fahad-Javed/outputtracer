@@ -6,10 +6,10 @@ export default function Hero() {
           C++ Output Predictor
         </p>
         <h1 className="mt-2 text-xl font-semibold tracking-tight text-black sm:text-2xl">
-          Predict the output. Trace every step.
+          C++ Online Compiler
         </h1>
         <p className="mt-1.5 max-w-xl text-sm text-[#666666]">
-          Paste C++ code, predict its output, and follow the execution step by step.
+          Write, compile, and run C++ code online for free with OutputTracer.
         </p>
       </div>
     </section>
