@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --theme-primary: #128C7E;
+  --theme-primary-dark: #0D6E63;
+  --theme-bubble-out: #DCF8C6;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-background text-ink antialiased;
+}
+
+.dark body {
+  @apply bg-neutral-950 text-neutral-100;
+}
+
+/* Hide scrollbar visually while keeping scroll functionality, for a
+   cleaner WhatsApp-style message list. */
+.no-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.no-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-radius: 9999px;
+}
+.dark .no-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Prevent mobile keyboards from squashing the layout oddly on iOS Safari */
+@supports (-webkit-touch-callout: none) {
+  .mobile-vh-fix {
+    height: -webkit-fill-available;
+  }
+}
