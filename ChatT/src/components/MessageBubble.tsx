@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, CheckCheck, Heart, Reply, SmilePlus, Flame, MapPin } from "lucide-react";
 import { Map, Marker } from "pigeon-maps";
 import type { Message } from "@/types/database";
@@ -45,6 +45,89 @@ export const MessageBubble = React.memo(function MessageBubble({
   const [showReactionsMenu, setShowReactionsMenu] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [locationCoords, setLocationCoords] = useState<[number, number] | null>(null);
+
+  // Swipe-to-reply — uses native listeners with { passive: false } so we can
+  // preventDefault during horizontal swipes (React synthetic events are passive).
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const swipeRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const isSwipingRef = useRef(false);
+  const swipeTriggeredRef = useRef(false);
+  const directionLocked = useRef<"horizontal" | "vertical" | null>(null);
+  const SWIPE_THRESHOLD = 55;
+
+  useEffect(() => {
+    const el = swipeRef.current;
+    if (!el) return;
+
+    function onTouchStart(e: TouchEvent) {
+      touchStartX.current = e.touches[0].clientX;
+      touchStartY.current = e.touches[0].clientY;
+      isSwipingRef.current = false;
+      swipeTriggeredRef.current = false;
+      directionLocked.current = null;
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      const deltaX = e.touches[0].clientX - touchStartX.current;
+      const deltaY = e.touches[0].clientY - touchStartY.current;
+      const absDX = Math.abs(deltaX);
+      const absDY = Math.abs(deltaY);
+
+      // Lock direction on first significant movement
+      if (!directionLocked.current && (absDX > 8 || absDY > 8)) {
+        directionLocked.current = absDX > absDY ? "horizontal" : "vertical";
+      }
+
+      // If vertical scroll, let the browser handle it
+      if (directionLocked.current === "vertical") return;
+      if (!directionLocked.current) return;
+
+      // Horizontal swipe detected — check if it's in the correct direction
+      // Own messages: swipe left. Partner messages: swipe right.
+      const validSwipe = isOwn ? deltaX < 0 : deltaX > 0;
+      if (!validSwipe) {
+        if (isSwipingRef.current) {
+          setSwipeOffset(0);
+          isSwipingRef.current = false;
+        }
+        return;
+      }
+
+      // Prevent vertical scrolling while we're swiping horizontally
+      e.preventDefault();
+      isSwipingRef.current = true;
+
+      const capped = Math.min(absDX, 80);
+      setSwipeOffset(isOwn ? -capped : capped);
+
+      if (absDX >= SWIPE_THRESHOLD && !swipeTriggeredRef.current) {
+        swipeTriggeredRef.current = true;
+        if (navigator.vibrate) navigator.vibrate(30);
+      }
+    }
+
+    function onTouchEnd() {
+      if (swipeTriggeredRef.current && onReply) {
+        onReply(message);
+      }
+      setSwipeOffset(0);
+      isSwipingRef.current = false;
+      swipeTriggeredRef.current = false;
+      directionLocked.current = null;
+    }
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [isOwn, onReply, message]);
 
   const AVAILABLE_REACTIONS = ["❤️", "😂", "😮", "😢", "👍", "👎"];
 
@@ -93,12 +176,9 @@ export const MessageBubble = React.memo(function MessageBubble({
         try { await cachePhoto(path, blob); } catch {}
         if (!cancelled) setPhotoUrl(URL.createObjectURL(blob));
 
-        if (!isOwn) {
-          deleteStoragePhoto(path).catch(() => {});
-          if (getAutoSavePreference()) {
-            const extension = path.split(".").pop() ?? "jpg";
-            downloadPhotoToDevice(blob, `chat-photo-${Date.now()}.${extension}`);
-          }
+        if (!isOwn && getAutoSavePreference()) {
+          const extension = path.split(".").pop() ?? "jpg";
+          downloadPhotoToDevice(blob, `chat-photo-${Date.now()}.${extension}`);
         }
       } else if (message.message_type === "audio") {
         try {
@@ -108,9 +188,6 @@ export const MessageBubble = React.memo(function MessageBubble({
             const url = URL.createObjectURL(blob);
             if (cancelled) return;
             setAudioUrl(url);
-            if (!isOwn) {
-              deleteStorageAudio(path).catch(() => {});
-            }
           }
         } catch (err) {
           console.error("Failed to load audio", err);
@@ -152,8 +229,18 @@ export const MessageBubble = React.memo(function MessageBubble({
   // Get unique emojis used
   const reactionEmojis = hasReactions ? Array.from(new Set(Object.values(message.reactions!))) : [];
 
+  const showSwipeHint = Math.abs(swipeOffset) >= SWIPE_THRESHOLD;
+
   return (
     <div className={`group relative flex w-full animate-message-in ${isOwn ? "justify-end" : "justify-start"}`}>
+      {/* Swipe-to-reply indicator */}
+      {swipeOffset !== 0 && (
+        <div className={`absolute top-1/2 -translate-y-1/2 transition-opacity ${showSwipeHint ? "opacity-100" : "opacity-40"} ${
+          isOwn ? "right-[calc(78%+8px)] sm:right-[calc(65%+8px)]" : "left-[calc(78%+8px)] sm:left-[calc(65%+8px)]"
+        }`}>
+          <Reply className={`h-5 w-5 text-primary ${showSwipeHint ? "scale-125" : ""} transition-transform`} />
+        </div>
+      )}
       {/* Hover Actions Menu */}
       <div className={`absolute top-0 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 ${
         isOwn ? "right-[100%] mr-2" : "left-[100%] ml-2"
@@ -192,7 +279,14 @@ export const MessageBubble = React.memo(function MessageBubble({
         )}
       </div>
 
-      <div className="flex max-w-[78%] flex-col sm:max-w-[65%]">
+      <div
+        ref={swipeRef}
+        className="flex max-w-[78%] flex-col sm:max-w-[65%]"
+        style={{
+          transform: `translateX(${swipeOffset}px)`,
+          transition: swipeOffset !== 0 ? 'none' : 'transform 0.2s ease-out',
+        }}
+      >
         {/* Quoted Reply */}
         {repliedMessage && (
           <div className={`mb-1 overflow-hidden rounded-xl border-l-4 border-primary/50 bg-black/5 px-3 py-1.5 opacity-80 ${

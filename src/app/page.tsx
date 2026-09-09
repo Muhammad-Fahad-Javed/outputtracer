@@ -1,10 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Header from "@/components/Header";
-import Hero from "@/components/Hero";
 import Predictor from "@/components/Predictor";
-import Footer from "@/components/Footer";
 import SeoContent from "@/components/SeoContent";
 import { DEFAULT_CODE } from "@/lib/examples";
 
@@ -22,14 +19,12 @@ export default function Home() {
   }, []);
 
   return (
-    <>
-      <Header />
-      <main>
-        <Hero />
-        <Predictor files={files} setFiles={setFiles} />
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-white">
+      <Predictor files={files} setFiles={setFiles} />
+      {/* Hidden SEO content for crawlers */}
+      <div className="hidden">
         <SeoContent />
-      </main>
-      <Footer />
-    </>
+      </div>
+    </div>
   );
 }

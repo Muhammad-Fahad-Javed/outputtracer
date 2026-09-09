@@ -304,7 +304,7 @@ export function MessageInput({
         {onSendLocation && (
           <div className="relative">
             {showLocationMenu && (
-              <div className="absolute bottom-12 right-0 z-50 flex w-48 flex-col overflow-hidden rounded-2xl border border-black/5 bg-white shadow-xl">
+              <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50 flex w-48 flex-col overflow-hidden rounded-2xl border border-black/5 bg-white shadow-xl origin-bottom">
                 <button
                   onClick={handleSendLocation}
                   disabled={sending}

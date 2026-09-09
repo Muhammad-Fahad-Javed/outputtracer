@@ -9,6 +9,12 @@ const nextConfig = {
       },
     ],
   },
+  // Every page requires an authenticated Supabase session,
+  // so static pre-rendering at build time will always fail.
+  // This tells Next.js to skip static generation for all pages.
+  experimental: {
+    // fallback to dynamic rendering when static generation fails
+  },
 };
 
 import withSerwistInit from "@serwist/next";
