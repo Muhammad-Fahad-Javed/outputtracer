@@ -225,144 +225,124 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
   const hasOutput = result.status === "success" || result.status === "error";
 
   return (
-    <section id="predictor" className="flex h-full w-full flex-col bg-white">
-      {/* 1. IDE Top Navigation Bar */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[#DCDCDC] bg-[#FAFAFA] px-4">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="text-[14px] font-semibold tracking-tight text-black">
+    <section id="predictor" className="flex h-full w-full flex-col bg-[#2D2D30] text-[#D4D4D4] font-sans">
+      {/* 1. VS Menu Bar */}
+      <header className="flex h-7 shrink-0 items-center justify-between border-b border-[#333333] bg-[#2D2D30] px-2 text-[12px] text-[#F1F1F1]">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="font-semibold px-2 hover:bg-[#3E3E42] rounded-[2px] transition-colors py-0.5">
             OutputTracer
           </Link>
-          <nav className="hidden items-center gap-4 md:flex">
-            <Link href="/practice" className="text-[13px] text-[#666666] hover:text-black transition-colors">Practice</Link>
-            <Link href="/learn" className="text-[13px] text-[#666666] hover:text-black transition-colors">Learn</Link>
+          <nav className="hidden items-center md:flex">
+            {["File", "Edit", "View", "Project", "Build", "Debug"].map(item => (
+              <button key={item} className="px-2 py-0.5 hover:bg-[#3E3E42] rounded-[2px] transition-colors cursor-default">
+                {item}
+              </button>
+            ))}
           </nav>
         </div>
-        
-        {/* Run modes on the right */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-[4px] border border-[#DCDCDC] bg-white p-0.5">
-            <button
-              type="button"
-              onClick={() => setRunMode("interactive")}
-              className={`inline-flex items-center gap-1.5 rounded-[3px] px-3 py-1 text-xs font-medium transition-colors ${
-                runMode === "interactive"
-                  ? "bg-black text-white"
-                  : "text-[#666666] hover:text-black"
-              }`}
-            >
-              <Play size={11} />
-              <span className="hidden sm:inline">Interactive Run</span>
-              <span className="sm:hidden">Run</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRunMode("predict")}
-              className={`inline-flex items-center gap-1.5 rounded-[3px] px-3 py-1 text-xs font-medium transition-colors ${
-                runMode === "predict"
-                  ? "bg-black text-white"
-                  : "text-[#666666] hover:text-black"
-              }`}
-            >
-              <FlaskConical size={11} />
-              <span className="hidden sm:inline">Predict + Trace</span>
-              <span className="sm:hidden">Predict</span>
-            </button>
-          </div>
-          {runMode === "predict" && (
-            <div className="ml-1">
-              <PredictButton
-                onClick={handlePredict}
-                loading={result.status === "loading"}
-              />
-            </div>
-          )}
+        <div className="flex items-center gap-3 pr-2">
+          <Link href="/practice" className="px-2 py-0.5 hover:bg-[#3E3E42] rounded-[2px] transition-colors">Practice</Link>
+          <Link href="/learn" className="px-2 py-0.5 hover:bg-[#3E3E42] rounded-[2px] transition-colors">Learn</Link>
         </div>
       </header>
 
-      {/* 2. Main IDE Workspace */}
-      <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
+      {/* 2. VS Toolbar */}
+      <div className="flex h-8 shrink-0 items-center gap-4 border-b border-[#333333] bg-[#2D2D30] px-3">
+        <div className="flex items-center gap-2">
+          {/* Green Run Button (Interactive) */}
+          <button
+            type="button"
+            onClick={() => setRunMode("interactive")}
+            className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[12px] transition-colors border border-transparent rounded-[2px] ${
+              runMode === "interactive" ? "bg-[#3E3E42] border-[#555558]" : "hover:bg-[#3E3E42]"
+            }`}
+          >
+            <Play size={14} className="text-[#689F38] fill-[#689F38]" />
+            <span>Local Windows Debugger</span>
+          </button>
+          
+          {/* Predict Button */}
+          <button
+            type="button"
+            onClick={() => setRunMode("predict")}
+            className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[12px] transition-colors border border-transparent rounded-[2px] ${
+              runMode === "predict" ? "bg-[#3E3E42] border-[#555558]" : "hover:bg-[#3E3E42]"
+            }`}
+          >
+            <FlaskConical size={14} className="text-[#007ACC]" />
+            <span>Predict + Trace</span>
+          </button>
+        </div>
+
+        <div className="h-4 w-px bg-[#4D4D50]" />
+
+        {/* Other Toolbar actions */}
+        <div className="flex items-center gap-1">
+          <button onClick={handleAddFile} className="p-1 hover:bg-[#3E3E42] rounded-[2px] text-[#D4D4D4]" title="Add File">
+            <FilePlus size={14} />
+          </button>
+          <button onClick={handleDownloadZip} className="p-1 hover:bg-[#3E3E42] rounded-[2px] text-[#D4D4D4]" title="Download Solution">
+            <Download size={14} />
+          </button>
+          <button onClick={handleReset} className="p-1 hover:bg-[#3E3E42] rounded-[2px] text-[#D4D4D4]" title="Reset">
+            <RotateCcw size={14} />
+          </button>
+          <button onClick={handleLoadExample} className="p-1 hover:bg-[#3E3E42] rounded-[2px] text-[#D4D4D4]" title="Load Example">
+            <Sparkles size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Main Workspace (Split Vertically) */}
+      <div className="flex flex-1 flex-col overflow-hidden">
         
-        {/* Left Pane: Editor */}
-        <div className="flex flex-col border-b border-[#DCDCDC] lg:w-1/2 lg:border-b-0 lg:border-r">
-          <div className="flex shrink-0 flex-col sm:flex-row items-start sm:items-center justify-between bg-[#FAFAFA] px-2 py-2 gap-2 border-b border-[#DCDCDC]">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {Object.keys(files).map((fileName) => (
-                <div
-                  key={fileName}
-                  className={`group flex items-center gap-1.5 rounded-[4px] border px-2.5 py-1 font-mono text-xs font-medium cursor-pointer transition-colors ${
-                    currentFile === fileName
-                      ? "border-[#DCDCDC] bg-white text-black shadow-sm"
-                      : "border-transparent bg-transparent text-[#666666] hover:bg-[#EAEAEA] hover:text-black"
-                  }`}
-                  onClick={() => setActiveFile(fileName)}
-                >
-                  <FileCode2 size={13} />
-                  {fileName}
-                  {Object.keys(files).length > 1 && (
-                    <button
-                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-black/10 rounded transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteFile(fileName);
-                      }}
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
-                </div>
-              ))}
-              
-              <button
-                type="button"
-                onClick={handleAddFile}
-                className="ml-1 flex items-center justify-center p-1.5 rounded-[4px] text-[#666666] hover:bg-[#EAEAEA] hover:text-black transition-colors"
-                title="Add File"
+        {/* Top Pane: Editor */}
+        <div className="flex flex-1 flex-col overflow-hidden bg-[#1E1E1E]">
+          {/* File Tabs */}
+          <div className="flex shrink-0 items-end bg-[#2D2D30] pt-1 px-1 gap-0.5 h-8">
+            {Object.keys(files).map((fileName) => (
+              <div
+                key={fileName}
+                className={`group relative flex items-center gap-2 px-3 py-1 text-[12px] cursor-pointer ${
+                  currentFile === fileName
+                    ? "bg-[#1E1E1E] text-[#F1F1F1]"
+                    : "bg-[#2D2D30] text-[#969696] hover:bg-[#1C97EA]/10 hover:text-[#F1F1F1]"
+                }`}
+                onClick={() => setActiveFile(fileName)}
               >
-                <FilePlus size={14} />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1 px-2">
-              <button
-                type="button"
-                onClick={handleDownloadZip}
-                className="inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[#F2F2F2]"
-                title="Download Project ZIP"
-              >
-                <Download size={13} />
-                ZIP
-              </button>
-              <button
-                type="button"
-                onClick={handleDownloadFile}
-                className="inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[#F2F2F2]"
-                title="Download Current File"
-              >
-                <Download size={13} />
-                File
-              </button>
-
-              <button
-                type="button"
-                onClick={handleLoadExample}
-                className="inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[#F2F2F2]"
-              >
-                <Sparkles size={13} />
-                Example
-              </button>
-
-              <button
-                type="button"
-                onClick={handleReset}
-                className="inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[#F2F2F2]"
-              >
-                <RotateCcw size={13} />
-                Reset
-              </button>
-            </div>
+                {/* Active blue line indicator */}
+                {currentFile === fileName && (
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#007ACC]" />
+                )}
+                <FileCode2 size={12} className={currentFile === fileName ? "text-[#007ACC]" : ""} />
+                {fileName}
+                {Object.keys(files).length > 1 && (
+                  <button
+                    className={`ml-1 rounded-[2px] p-0.5 ${currentFile === fileName ? "opacity-100" : "opacity-0 group-hover:opacity-100"} hover:bg-[#333333]`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteFile(fileName);
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
 
-          <div className="flex-1 overflow-hidden min-h-[300px]">
+          {/* Editor Container */}
+          <div className="flex-1 overflow-hidden relative border-t border-[#1E1E1E]">
+            {/* The predict mode has a floating "Run" button if we wanted, but we have it in the toolbar. */}
+            {runMode === "predict" && (
+              <div className="absolute top-2 right-4 z-10">
+                <PredictButton
+                  onClick={handlePredict}
+                  loading={result.status === "loading"}
+                />
+              </div>
+            )}
+            
             <CodeEditor
               value={files[currentFile] || ""}
               onChange={(content) => setFiles({ ...files, [currentFile]: content })}
@@ -371,197 +351,146 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
           </div>
         </div>
 
-        {/* Right Pane: Terminal / Output */}
-        <div className="flex flex-col lg:w-1/2 bg-[#FAFAFA] overflow-hidden">
-          {runMode === "interactive" ? (
-            <div className="flex-1 p-4 overflow-y-auto">
-              <InteractiveTerminal files={files} />
+        {/* Bottom Pane: Terminal / Output */}
+        <div className="flex flex-col h-72 border-t border-[#333333] bg-[#252526] shrink-0">
+          {/* Output Tabs Header */}
+          <div className="flex items-center justify-between shrink-0 h-7 bg-[#2D2D30] border-b border-[#333333]">
+            <div className="flex items-center h-full px-2">
+              <span className="text-[12px] font-semibold text-[#F1F1F1] px-2">Output</span>
             </div>
-          ) : (
-            <div className="flex flex-1 flex-col overflow-y-auto">
-              {/* Stdin panel */}
-              <div className="shrink-0 border-b border-[#DCDCDC] bg-white">
-                <button
-                  type="button"
-                  onClick={() => setShowStdin((v) => !v)}
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-[#F2F2F2]"
-                >
-                  {showStdin ? (
-                    <ChevronDown size={14} className="text-[#666666]" />
-                  ) : (
-                    <ChevronRight size={14} className="text-[#666666]" />
-                  )}
-                  <Terminal size={14} className="text-[#666666]" />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
-                    Standard Input (stdin)
-                  </span>
-                  {stdin.trim() && (
-                    <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-black" title="Input provided" />
-                  )}
-                  {needsInput && !stdin.trim() && (
-                    <span className="ml-2 rounded-[3px] bg-[#FFF3CD] px-1.5 py-0.5 text-[10px] font-semibold text-[#856404]">
-                      Input detected — provide values below
-                    </span>
-                  )}
-                </button>
+            
+            <div className="flex items-center pr-2 gap-1">
+              {hasOutput && (result.output || result.stderr) && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="p-1 hover:bg-[#3E3E42] rounded-[2px] text-[#D4D4D4] transition-colors"
+                    title="Copy All"
+                  >
+                    {copied ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearOutput}
+                    className="p-1 hover:bg-[#3E3E42] rounded-[2px] text-[#D4D4D4] transition-colors"
+                    title="Clear All"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
 
-                {showStdin && (
-                  <div className="px-4 pb-3">
-                    <textarea
-                      id="stdin-input"
-                      value={stdin}
-                      onChange={(e) => setStdin(e.target.value)}
-                      placeholder={
-                        needsInput
-                          ? "Your code uses cin/scanf — enter input values here, one per line…"
-                          : "Values your program reads via std::cin, one per line…"
-                      }
-                      rows={3}
-                      className="w-full resize-y rounded-[3px] border border-[#DCDCDC] bg-white px-3 py-2 font-mono text-sm text-black placeholder:text-[#999999] focus:outline-none focus:ring-2 focus:ring-black/10"
-                    />
-                    {stdin.trim() && (
-                      <div className="mt-1.5 flex items-center justify-between">
-                        <span className="text-[11px] text-[#999999]">
-                          {stdin.trim().split("\n").length} line{stdin.trim().split("\n").length !== 1 ? "s" : ""} of input
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setStdin("")}
-                          className="inline-flex items-center gap-1 rounded-[3px] px-2 py-0.5 text-[11px] text-[#999999] transition-colors hover:bg-[#EAEAEA] hover:text-[#666666]"
-                        >
-                          <X size={10} />
-                          Clear
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+          <div className="flex-1 flex overflow-hidden">
+            {runMode === "interactive" ? (
+              <div className="flex-1 overflow-y-auto">
+                <InteractiveTerminal files={files} />
               </div>
-
-              {/* Output & Trace */}
-              <div className="flex-1 p-4 space-y-5">
-                <div className="rounded-[4px] border border-[#DCDCDC] bg-white">
-                  <div className="flex items-center justify-between border-b border-[#DCDCDC] bg-[#FAFAFA] px-4 py-2.5">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
-                      Output
-                    </span>
-
-                    {hasOutput && (result.output || result.stderr) && (
-                      <div className="flex items-center gap-1">
-                        {result.output && (
-                          <button
-                            type="button"
-                            onClick={handleCopy}
-                            aria-label="Copy output"
-                            className="inline-flex items-center gap-1 rounded-[3px] px-2 py-1 text-xs text-black transition-colors hover:bg-[#F2F2F2]"
-                          >
-                            {copied ? <Check size={13} /> : <Copy size={13} />}
-                            {copied ? "Copied" : "Copy"}
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={handleClearOutput}
-                          aria-label="Clear output"
-                          className="inline-flex items-center gap-1 rounded-[3px] px-2 py-1 text-xs text-black transition-colors hover:bg-[#F2F2F2]"
-                        >
-                          <Trash2 size={13} />
-                          Clear
-                        </button>
-                      </div>
+            ) : (
+              <div className="flex-1 flex overflow-hidden">
+                {/* Standard Input panel - Left side of bottom panel */}
+                <div className="w-1/3 min-w-[200px] border-r border-[#333333] flex flex-col bg-[#1E1E1E]">
+                  <div className="px-3 py-1.5 border-b border-[#333333] flex justify-between items-center bg-[#2D2D30]">
+                    <span className="text-[11px] font-semibold text-[#D4D4D4]">Standard Input</span>
+                    {needsInput && !stdin.trim() && (
+                      <span className="text-[10px] text-[#E5C07B]">Input required</span>
                     )}
                   </div>
-
-                  <div className="px-4 py-5">
-                    {result.status === "idle" && (
-                      <p className="font-mono text-sm text-[#999999]">
-                        Run the predictor to see the expected output here.
-                      </p>
-                    )}
-
-                    {result.status === "loading" && (
-                      <div className="flex items-center gap-2 font-mono text-sm text-[#666666]">
-                        <span className="inline-block h-2 w-2 animate-pulse-dot rounded-full bg-[#666666]" />
-                        Analyzing program…
-                      </div>
-                    )}
-
-                    {hasOutput && (
-                      <>
-                        {result.output && (
-                          <div className="mb-4">
-                            <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[#666666]">
-                              Standard Output
-                            </span>
-                            <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-black">{result.output}</pre>
-                          </div>
-                        )}
-                        
-                        {result.status === "success" && !result.output && !result.stderr && (
-                          <p className="font-mono text-[15px] leading-relaxed italic text-[#999999]">
-                            (No output)
-                          </p>
-                        )}
-
-                        {result.stderr && (
-                          <div className="mb-4">
-                            <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[#666666]">
-                              Standard Error
-                            </span>
-                            <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed text-[#D93025]">{result.stderr}</pre>
-                          </div>
-                        )}
-
-                        {result.status === "error" && result.error && (
-                          <div className="flex gap-2.5 mt-4 rounded bg-[#FAFAFA] border border-[#DCDCDC] p-3">
-                            <AlertTriangle
-                              size={16}
-                              className="mt-0.5 shrink-0 text-black"
-                            />
-
-                            <div className="min-w-0">
-                              <p className="font-mono text-xs font-semibold tracking-wide text-black">
-                                {result.error.title}
-                              </p>
-
-                              <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-[#666666]">{result.error.message}</pre>
-                            </div>
-                          </div>
-                        )}
-
-                        {result.status === "success" && (
-                          <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-[#666666]">
-                            <CheckCircle2 size={13} />
-                            Execution complete
-                            {typeof result.meta?.exitCode === "number" && result.meta.exitCode !== 0 && (
-                              <span className="text-[#999999]">
-                                &nbsp;— exited with code {result.meta.exitCode}
-                              </span>
-                            )}
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </div>
+                  <textarea
+                    id="stdin-input"
+                    value={stdin}
+                    onChange={(e) => setStdin(e.target.value)}
+                    placeholder={
+                      needsInput
+                        ? "Enter input values here..."
+                        : "Optional stdin..."
+                    }
+                    className="flex-1 w-full resize-none bg-[#1E1E1E] text-[#D4D4D4] p-3 font-mono text-[13px] focus:outline-none placeholder:text-[#555555]"
+                  />
                 </div>
 
-                <div className="rounded-[4px] border border-[#DCDCDC] bg-white">
-                  <div className="border-b border-[#DCDCDC] bg-[#FAFAFA] px-4 py-2.5">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
-                      Step-by-Step Trace
-                    </span>
-                  </div>
+                {/* Main Output / Trace panel - Right side of bottom panel */}
+                <div className="flex-1 flex flex-col overflow-y-auto bg-[#1E1E1E] p-3 space-y-4">
+                  {/* Status Indicator */}
+                  {result.status === "idle" && (
+                    <p className="font-mono text-[12px] text-[#555555]">
+                      Ready. Select a run mode from the toolbar.
+                    </p>
+                  )}
 
-                  <div className="px-4 py-4">
-                    <DryRunTimeline steps={result.dryRun ?? []} truncated={result.traceTruncated} />
-                  </div>
+                  {result.status === "loading" && (
+                    <div className="flex items-center gap-2 font-mono text-[12px] text-[#007ACC]">
+                      <span className="inline-block h-2 w-2 animate-pulse-dot rounded-full bg-[#007ACC]" />
+                      Build started...
+                    </div>
+                  )}
+
+                  {hasOutput && (
+                    <div className="space-y-4">
+                      {/* stdout */}
+                      {result.output && (
+                        <div>
+                          <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-[#D4D4D4]">{result.output}</pre>
+                        </div>
+                      )}
+                      
+                      {result.status === "success" && !result.output && !result.stderr && (
+                        <p className="font-mono text-[13px] italic text-[#555555]">
+                          The program exited normally with no output.
+                        </p>
+                      )}
+
+                      {/* stderr */}
+                      {result.stderr && (
+                        <div>
+                          <pre className="mono-scroll overflow-x-auto whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-[#F48771]">{result.stderr}</pre>
+                        </div>
+                      )}
+
+                      {/* Error details */}
+                      {result.status === "error" && result.error && (
+                        <div className="flex gap-2.5 mt-2 rounded bg-[#333333] border border-[#444444] p-2">
+                          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-[#F48771]" />
+                          <div className="min-w-0">
+                            <p className="font-mono text-[12px] font-semibold text-[#F48771]">
+                              {result.error.title}
+                            </p>
+                            <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[12px] text-[#D4D4D4]">{result.error.message}</pre>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Trace */}
+                      {(result.dryRun ?? []).length > 0 && (
+                        <div className="mt-4 border-t border-[#333333] pt-4">
+                          <span className="block text-[11px] font-semibold text-[#858585] mb-3 uppercase tracking-wider">
+                            Execution Trace
+                          </span>
+                          <DryRunTimeline steps={result.dryRun ?? []} truncated={result.traceTruncated} />
+                        </div>
+                      )}
+                      
+                      {/* Exit code */}
+                      {result.status === "success" && (
+                        <p className="mt-2 text-[12px] text-[#858585]">
+                          Program exited with code {result.meta?.exitCode ?? 0}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
+      
+      {/* Visual Studio bottom status bar (blue/purple) */}
+      <footer className="flex h-6 shrink-0 items-center bg-[#007ACC] px-3 text-[11px] text-white font-medium">
+        <span>Ready</span>
+      </footer>
     </section>
   );
 }

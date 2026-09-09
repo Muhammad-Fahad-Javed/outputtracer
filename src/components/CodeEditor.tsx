@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
-import { Maximize2, Minimize2 } from "lucide-react";
 
 interface CodeEditorProps {
   value: string;
@@ -12,26 +11,10 @@ interface CodeEditorProps {
 
 export default function CodeEditor({ value, onChange, onRunShortcut }: CodeEditorProps) {
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
 
   const safeValue = value || "";
   const lineCount = safeValue.length === 0 ? 1 : safeValue.split("\n").length;
-
-  useEffect(() => {
-    if (!isFullscreen) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsFullscreen(false);
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [isFullscreen]);
-
-  useEffect(() => {
-    // Re-layout Monaco after toggling fullscreen since its container resizes.
-    const id = requestAnimationFrame(() => editorRef.current?.layout());
-    return () => cancelAnimationFrame(id);
-  }, [isFullscreen]);
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -45,25 +28,11 @@ export default function CodeEditor({ value, onChange, onRunShortcut }: CodeEdito
     });
   };
 
-  const editorHeight = isFullscreen ? "calc(100vh - 40px)" : "100%";
-
-  const editor = (
-    <div
-      className={
-        isFullscreen
-          ? "flex h-screen w-screen flex-col"
-          : "flex h-full flex-col overflow-hidden bg-[#111111]"
-      }
-    >
-      <div
-        className={
-          isFullscreen
-            ? "flex-1 overflow-hidden bg-[#111111]"
-            : "flex-1 overflow-hidden"
-        }
-      >
+  return (
+    <div className="flex h-full flex-col overflow-hidden bg-[#1E1E1E]">
+      <div className="flex-1 overflow-hidden">
         <Editor
-          height={editorHeight}
+          height="100%"
           defaultLanguage="cpp"
           theme="vs-dark"
           value={value}
@@ -85,33 +54,16 @@ export default function CodeEditor({ value, onChange, onRunShortcut }: CodeEdito
         />
       </div>
 
-      {/* Status bar */}
-      <div className="flex h-10 shrink-0 items-center justify-between border-t border-[#2a2a2a] bg-[#111111] px-3 font-mono text-[11px] text-[#9a9a9a]">
+      {/* Subtle editor status bar */}
+      <div className="flex h-6 shrink-0 items-center justify-end bg-[#1E1E1E] px-4 font-mono text-[10px] text-[#858585]">
         <div className="flex items-center gap-3">
           <span>{lineCount} {lineCount === 1 ? "line" : "lines"}</span>
-          <span className="text-[#4a4a4a]">|</span>
+          <span className="text-[#333333]">|</span>
           <span>
             Ln {cursor.line}, Col {cursor.column}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsFullscreen((v) => !v)}
-          aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          className="inline-flex items-center gap-1.5 rounded-[3px] px-2 py-1 text-[#9a9a9a] transition-colors hover:bg-white/10 hover:text-white"
-        >
-          {isFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-          {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-        </button>
       </div>
-    </div>
-  );
-
-  if (!isFullscreen) return editor;
-
-  return (
-    <div className="fixed inset-0 z-[60] bg-[#111111]" role="dialog" aria-modal="true">
-      {editor}
     </div>
   );
 }
