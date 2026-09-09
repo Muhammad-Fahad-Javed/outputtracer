@@ -45,21 +45,21 @@ export default function CodeEditor({ value, onChange, onRunShortcut }: CodeEdito
     });
   };
 
-  const editorHeight = isFullscreen ? "calc(100vh - 40px)" : "380px";
+  const editorHeight = isFullscreen ? "calc(100vh - 40px)" : "100%";
 
   const editor = (
     <div
       className={
         isFullscreen
           ? "flex h-screen w-screen flex-col"
-          : "overflow-hidden bg-[#111111]"
+          : "flex h-full flex-col overflow-hidden bg-[#111111]"
       }
     >
       <div
         className={
           isFullscreen
-            ? "overflow-hidden bg-[#111111]"
-            : "overflow-hidden"
+            ? "flex-1 overflow-hidden bg-[#111111]"
+            : "flex-1 overflow-hidden"
         }
       >
         <Editor
