@@ -5,6 +5,7 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Loader2, RotateCcw, Square } from "lucide-react";
+import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 type SessionStatus =
   | "idle"
@@ -16,10 +17,24 @@ type SessionStatus =
 
 interface InteractiveTerminalProps {
   files: Record<string, string>;
+  projectId?: string;
+  standard?: string;
+  runRequest?: number;
+  stopRequest?: number;
+  showControls?: boolean;
+  onRunningChange?: (running: boolean) => void;
+  onStatusChange?: (status: SessionStatus) => void;
 }
 
 export default function InteractiveTerminal({
   files,
+  projectId,
+  standard,
+  runRequest = 0,
+  stopRequest = 0,
+  showControls = true,
+  onRunningChange,
+  onStatusChange,
 }: InteractiveTerminalProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
@@ -70,8 +85,8 @@ export default function InteractiveTerminal({
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    term.writeln("\x1b[90m● OutputTracer Interactive Terminal\x1b[0m");
-    term.writeln("\x1b[90m  Click \"Run\" to compile and execute your code.\x1b[0m");
+    term.writeln("\x1b[90m● Debug\x1b[0m");
+    term.writeln("\x1b[90m  Press Local Windows Debugger or F5 to start. Type here when the program asks for input.\x1b[0m");
     term.writeln("");
 
     // Handle resize
@@ -113,15 +128,25 @@ export default function InteractiveTerminal({
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setStatus("compiling");
-      term.writeln("\x1b[90m● Compiling...\x1b[0m");
+      void (async () => {
+        setStatus("compiling");
+        term.writeln("\x1b[90m● Compiling...\x1b[0m");
 
-      // Send the init payload
-      ws.send(
-        JSON.stringify({
-          files,
-        })
-      );
+        if (projectId) {
+          const supabase = await getSupabaseBrowser();
+          const token = (await supabase?.auth.getSession())?.data.session?.access_token;
+          if (!token) {
+            setStatus("error");
+            term.writeln("\x1b[31m● Sign in again to run this project.\x1b[0m");
+            ws.close();
+            return;
+          }
+          ws.send(JSON.stringify({ projectId, accessToken: token, standard }));
+          return;
+        }
+
+        ws.send(JSON.stringify({ files, standard }));
+      })();
     };
 
     ws.onmessage = (event) => {
@@ -254,7 +279,23 @@ export default function InteractiveTerminal({
         setStatus("finished");
       }
     };
-  }, [files, status]);
+  }, [files, projectId, standard, status]);
+
+  const runRef = useRef(handleRun);
+  useEffect(() => {
+    runRef.current = handleRun;
+  });
+  useEffect(() => {
+    if (!runRequest) return;
+    runRef.current();
+  }, [runRequest]);
+
+  useEffect(() => {
+    onRunningChange?.(
+      status === "connecting" || status === "compiling" || status === "running"
+    );
+    onStatusChange?.(status);
+  }, [onRunningChange, onStatusChange, status]);
 
   // Stop the program
   const handleStop = useCallback(() => {
@@ -270,15 +311,28 @@ export default function InteractiveTerminal({
     }
   }, []);
 
+  const stopRef = useRef(handleStop);
+  useEffect(() => {
+    stopRef.current = handleStop;
+  });
+  useEffect(() => {
+    if (!stopRequest) return;
+    stopRef.current();
+  }, [stopRequest]);
+
   const isActive =
     status === "connecting" || status === "compiling" || status === "running";
 
   return (
-    <div className="overflow-hidden rounded-[4px] border border-[#DCDCDC]">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-[#DCDCDC] bg-[#FAFAFA] px-4 py-2.5">
+    <div className={showControls ? (projectId ? "flex h-full flex-col bg-[#1E1E1E]" : "overflow-hidden rounded-[4px] border border-[#DCDCDC]") : "flex h-full min-h-0 flex-col bg-[#1E1E1E]"}>
+      {showControls && (
+      <div className={projectId
+        ? "flex items-center justify-between border-b border-[#333333] bg-[#2D2D30] px-3 py-1.5"
+        : "flex items-center justify-between border-b border-[#DCDCDC] bg-[#FAFAFA] px-4 py-2.5"}>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[#666666]">
+          <span className={projectId
+          ? "text-[11px] font-semibold uppercase tracking-wider text-[#D4D4D4]"
+          : "text-xs font-semibold uppercase tracking-wider text-[#666666]"}>
             Interactive Console
           </span>
           {status === "compiling" && (
@@ -327,11 +381,11 @@ export default function InteractiveTerminal({
           )}
         </div>
       </div>
+      )}
 
-      {/* Terminal */}
       <div
         ref={termRef}
-        className="h-[350px] w-full bg-[#111111] px-2 py-2"
+        className={showControls && !projectId ? "h-[350px] w-full bg-[#111111] px-2 py-2" : "min-h-0 w-full flex-1 bg-[#111111] px-2 py-2"}
       />
     </div>
   );

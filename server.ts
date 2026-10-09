@@ -12,6 +12,39 @@ import {
   handleTerminalSession,
   TerminalInitPayload,
 } from "./src/lib/wsTerminal.js";
+import { execConfig } from "./src/lib/execConfig.js";
+import { clientIpFromForwarded, globalRateLimiter } from "./src/lib/rateLimit.js";
+import { getHub } from "./src/lib/cloud/collabHub.js";
+import { accessFromToken } from "./src/lib/cloud/accessToken.js";
+import { canEdit } from "./src/lib/cloud/roles.js";
+
+async function resolveTerminalPayload(
+  payload: TerminalInitPayload & { projectId?: string; accessToken?: string }
+): Promise<{ ok: true; payload: TerminalInitPayload } | { ok: false; message: string }> {
+  if (payload.projectId) {
+    const access = await accessFromToken(payload.accessToken || "", payload.projectId);
+    if (!access) {
+      return { ok: false, message: "You do not have access to run this project." };
+    }
+    if (payload.standard && canEdit(access.role)) {
+      await getHub().setStandard(payload.projectId, payload.standard);
+    }
+    const shared = await getHub().readFiles(payload.projectId);
+    return {
+      ok: true,
+      payload: {
+        files: shared.files,
+        standard: shared.standard,
+        ownerKey: access.userId,
+      },
+    };
+  }
+
+  if (!payload.files || typeof payload.files !== "object") {
+    return { ok: false, message: "Invalid init payload: missing files." };
+  }
+  return { ok: true, payload: { files: payload.files, standard: payload.standard } };
+}
 
 const port = parseInt(process.env.PORT || "3000", 10);
 const dev = process.env.NODE_ENV !== "production";
@@ -30,11 +63,60 @@ app.prepare().then(() => {
   server.on("upgrade", (req, socket, head) => {
     const { pathname } = parse(req.url!, true);
 
+    if (pathname === "/ws/collab") {
+      const ip = clientIpFromForwarded(
+        req.headers["x-forwarded-for"],
+        req.socket.remoteAddress,
+        process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true"
+      );
+      const limited = globalRateLimiter.check(
+        `collab:${ip}`,
+        execConfig.rateLimitWsMax,
+        execConfig.rateLimitWsWindowMs
+      );
+      if (!limited.ok) {
+        socket.write(
+          "HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\nRetry-After: " +
+            limited.retryAfterSec +
+            "\r\n\r\n"
+        );
+        socket.destroy();
+        return;
+      }
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        getHub().attach(ws);
+      });
+      return;
+    }
+
     if (pathname === "/ws/terminal") {
+      const ip = clientIpFromForwarded(
+        req.headers["x-forwarded-for"],
+        req.socket.remoteAddress,
+        process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true"
+      );
+      const limited = globalRateLimiter.check(
+        `ws:${ip}`,
+        execConfig.rateLimitWsMax,
+        execConfig.rateLimitWsWindowMs
+      );
+      if (!limited.ok) {
+        socket.write(
+          "HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\nRetry-After: " +
+            limited.retryAfterSec +
+            "\r\n\r\n"
+        );
+        socket.destroy();
+        return;
+      }
+
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit("connection", ws, req);
       });
+      return;
     }
+
+    // Leave HMR and other Next.js upgrades alone in development.
   });
 
   wss.on("connection", (ws: WebSocket) => {
@@ -60,20 +142,29 @@ app.prepare().then(() => {
       clearTimeout(initTimeout);
 
       try {
-        const payload = JSON.parse(data.toString()) as TerminalInitPayload;
+        const payload = JSON.parse(data.toString()) as TerminalInitPayload & {
+          projectId?: string;
+          accessToken?: string;
+        };
 
-        if (!payload.files || typeof payload.files !== "object") {
-          ws.send(
-            JSON.stringify({
-              type: "error",
-              data: "Invalid init payload: missing files.",
-            })
-          );
-          ws.close();
-          return;
-        }
-
-        handleTerminalSession(ws, payload);
+        void resolveTerminalPayload(payload)
+          .then((resolved) => {
+            if (!resolved.ok) {
+              ws.send(JSON.stringify({ type: "error", data: resolved.message }));
+              ws.close();
+              return;
+            }
+            handleTerminalSession(ws, resolved.payload);
+          })
+          .catch(() => {
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                data: "Could not start the program.",
+              })
+            );
+            ws.close();
+          });
       } catch {
         ws.send(
           JSON.stringify({
@@ -91,5 +182,6 @@ app.prepare().then(() => {
       `> Ready on http://0.0.0.0:${port} (${dev ? "development" : "production"})`
     );
     console.log(`> WebSocket terminal available at ws://localhost:${port}/ws/terminal`);
+    console.log(`> WebSocket collab available at ws://localhost:${port}/ws/collab`);
   });
 });

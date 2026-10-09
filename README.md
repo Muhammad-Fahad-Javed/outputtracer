@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OutputTracer
 
-## Getting Started
+Browser IDE for **running C++** and **tracing what it prints** — aimed at students who have to predict program output.
 
-First, run the development server:
+Live: [outputtracer.devs.surf](https://outputtracer.devs.surf)
+
+## What you can do
+
+- Write multi-file C++ (`main.cpp`, headers) in a Visual Studio–style editor
+- **Run** in an interactive terminal (stdin over WebSocket)
+- **Predict + Trace** to compile, capture stdout, and step through execution with GDB
+- Practice 200+ output-tracing questions under `/practice`
+
+## Run locally
+
+You need Node 20+, `g++`, and (optional) `gdb`, `prlimit`, and `bubblewrap`.
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm test
+npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## How execution is isolated
 
-## Learn More
+User source is written to a temp directory and compiled with `g++` via `execFile` (no shell). The binary is then run with, in order of preference:
 
-To learn more about Next.js, take a look at the following resources:
+1. **bubblewrap** — no network, private PID/UTS, only `/usr`, `/dev`, `/proc`, and the submission dir
+2. **unshare --net** plus `prlimit` (CPU, address space, process count)
+3. **prlimit** alone
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The process still shares the host kernel. For a public internet deployment, put each run in its own container or microVM as well. Set `TRUST_PROXY=1` behind a reverse proxy so rate limits use `X-Forwarded-For`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `CXX_COMPILER` | `g++` | Compiler binary |
+| `MAX_CONCURRENT_RUNS` | `4` | In-flight compile/run sessions |
+| `RATE_LIMIT_PREDICT_MAX` | `20` | `/api/predict` hits per IP per window |
+| `ENABLE_TRACE` | on | Set `0` to skip GDB tracing |
 
-## Deploy on Vercel
+## Docker
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+docker build -t outputtracer .
+docker run --rm -p 3000:3000 --security-opt seccomp=unconfined outputtracer
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`seccomp=unconfined` is only needed if you want bubblewrap user namespaces inside the container. Without it the app still runs with `prlimit` / `unshare` when the kernel allows them.
+
+Health check: `GET /api`.

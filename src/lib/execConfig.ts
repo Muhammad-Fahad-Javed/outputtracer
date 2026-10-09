@@ -56,10 +56,25 @@ export const execConfig = {
   maxCpuSeconds: envInt("MAX_CPU_SECONDS", 5),
   maxProcesses: envInt("MAX_PROCESSES", 32),
 
+  // Cap how many files a single submission may contain.
+  maxSourceFiles: envInt("MAX_SOURCE_FILES", 16),
+
+  // Max concurrent compile/run sessions (predict API + interactive WS).
+  maxConcurrentRuns: envInt("MAX_CONCURRENT_RUNS", 4),
+
+  // Interactive terminal sessions may last longer than batch predict runs.
+  interactiveTimeoutMs: envInt("INTERACTIVE_TIMEOUT_MS", 120_000),
+
+  rateLimitPredictMax: envInt("RATE_LIMIT_PREDICT_MAX", 20),
+  rateLimitPredictWindowMs: envInt("RATE_LIMIT_PREDICT_WINDOW_MS", 60_000),
+  rateLimitWsMax: envInt("RATE_LIMIT_WS_MAX", 8),
+  rateLimitWsWindowMs: envInt("RATE_LIMIT_WS_WINDOW_MS", 60_000),
+
   // GDB tracer settings — used for generating step-by-step dry-run traces.
   // The tracer is best-effort; if GDB is unavailable, the API still returns
   // output but without a detailed trace.
   gdbPath: process.env.GDB_PATH || "gdb",
   maxTraceSteps: envInt("MAX_TRACE_STEPS", 1000),
   traceTimeoutMs: envInt("TRACE_TIMEOUT_MS", 15_000),
+  traceEnabled: process.env.ENABLE_TRACE !== "0",
 };

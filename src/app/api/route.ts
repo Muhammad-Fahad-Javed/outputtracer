@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkCompilerAvailable } from "@/lib/cppRunner";
+import { describeIsolation } from "@/lib/sandbox";
 
 // Lightweight health check: confirms the server is up AND that the C++
 // compiler it depends on is actually reachable. A load balancer / uptime
@@ -7,6 +8,7 @@ import { checkCompilerAvailable } from "@/lib/cppRunner";
 // means code execution works.
 export async function GET() {
   const compiler = await checkCompilerAvailable();
+  const isolation = await describeIsolation();
 
   return NextResponse.json(
     {
@@ -15,6 +17,7 @@ export async function GET() {
         available: compiler.available,
         version: compiler.version || null,
       },
+      isolation,
       time: new Date().toISOString(),
     },
     { status: compiler.available ? 200 : 503 }

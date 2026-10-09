@@ -14,6 +14,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import { execConfig } from "./execConfig";
+import { sanitizedChildEnv } from "./sandbox";
 import { DryRunStep } from "@/types/predictor";
 
 const execFileAsync = promisify(execFile);
@@ -314,6 +315,7 @@ export async function traceExecution(opts: {
       ],
       {
         cwd: opts.tempDir,
+        env: sanitizedChildEnv(opts.tempDir),
         timeout: execConfig.traceTimeoutMs,
         killSignal: "SIGKILL",
         maxBuffer: 10 * 1024 * 1024, // 10 MB — GDB can be verbose

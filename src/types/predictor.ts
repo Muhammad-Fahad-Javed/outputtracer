@@ -16,7 +16,9 @@ export type PredictionErrorKind =
   | "runtime_error"
   | "timeout"
   | "output_limit"
-  | "server_error";
+  | "server_error"
+  | "rate_limited"
+  | "busy";
 
 export interface ExecutionMeta {
   exitCode?: number | null;

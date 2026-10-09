@@ -37,6 +37,9 @@ import {
   AllowedStandard,
 } from "./execConfig";
 import { describeSignal } from "./signals";
+import { inspectSourceFiles } from "./sourceFiles";
+import { planUntrustedRun, sanitizedChildEnv } from "./sandbox";
+import { tryAcquireRun, releaseRun } from "./runGate";
 import { traceExecution, TraceResult } from "./gdbTracer";
 
 const execFileAsync = promisify(execFile);
@@ -49,6 +52,7 @@ export type RunStatus =
   | "runtime_error"
   | "timeout"
   | "output_limit"
+  | "busy"
   | "server_error";
 
 export interface RunResult {
@@ -70,6 +74,7 @@ export interface RunOptions {
   source?: string;
   stdin?: string;
   standard?: string;
+  ownerKey?: string;
 }
 
 // --- Compiler availability (checked lazily, cached for process lifetime) --
@@ -91,23 +96,6 @@ export async function checkCompilerAvailable(): Promise<{ available: boolean; ve
   return compilerAvailability;
 }
 
-// --- prlimit availability (Linux only) -------------------------------------
-let prlimitAvailable: boolean | null = null;
-async function hasPrlimit(): Promise<boolean> {
-  if (prlimitAvailable !== null) return prlimitAvailable;
-  if (os.platform() !== "linux") {
-    prlimitAvailable = false;
-    return prlimitAvailable;
-  }
-  try {
-    await execFileAsync("prlimit", ["--version"], { timeout: 2000 });
-    prlimitAvailable = true;
-  } catch {
-    prlimitAvailable = false;
-  }
-  return prlimitAvailable;
-}
-
 function truncateBytes(input: string, maxBytes: number): { text: string; truncated: boolean } {
   const buf = Buffer.from(input, "utf8");
   if (buf.byteLength <= maxBytes) return { text: input, truncated: false };
@@ -127,23 +115,45 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
   const execId = crypto.randomBytes(6).toString("hex");
 
   const files = opts.files || (opts.source && opts.source.trim().length > 0 ? { "main.cpp": opts.source } : {});
-  if (Object.keys(files).length === 0) {
-    return { status: "invalid_request", title: "No code", message: "Please enter C++ code." };
-  }
-
-  let totalSourceBytes = 0;
-  for (const content of Object.values(files)) {
-    totalSourceBytes += Buffer.byteLength(content, "utf8");
-  }
-
-  if (totalSourceBytes > execConfig.maxSourceBytes) {
+  const inspected = inspectSourceFiles(files, {
+    maxFiles: execConfig.maxSourceFiles,
+    maxSourceBytes: execConfig.maxSourceBytes,
+  });
+  if (!inspected.ok) {
     return {
       status: "invalid_request",
-      title: "Source too large",
-      message: `Source exceeds the ${Math.floor(execConfig.maxSourceBytes / 1024)} KB limit.`,
+      title: inspected.title,
+      message: inspected.message,
+    };
+  }
+  const { cppFiles, totalBytes: totalSourceBytes } = inspected;
+
+  const slot = tryAcquireRun(opts.ownerKey);
+  if (slot !== "ok") {
+    return {
+      status: "busy",
+      title: slot === "user-busy" ? "Already running" : "Server busy",
+      message:
+        slot === "user-busy"
+          ? "You already have a program running. Stop it before starting another."
+          : "Too many programs are running. Wait a moment and try again.",
     };
   }
 
+  try {
+    return await runAcquired(execId, files, cppFiles, totalSourceBytes, opts);
+  } finally {
+    releaseRun(opts.ownerKey);
+  }
+}
+
+async function runAcquired(
+  execId: string,
+  files: Record<string, string>,
+  cppFiles: string[],
+  totalSourceBytes: number,
+  opts: RunOptions
+): Promise<RunResult> {
   const standard: AllowedStandard = (ALLOWED_STANDARDS as readonly string[]).includes(
     opts.standard || ""
   )
@@ -180,21 +190,11 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
 
   const exeName = os.platform() === "win32" ? "main.exe" : "main.out";
   const exePath = path.join(tempDir, exeName);
+  const compileEnv = sanitizedChildEnv(tempDir);
 
   try {
-    const cppFiles = [];
     for (const [filename, content] of Object.entries(files)) {
-      if (filename.includes("/") || filename.includes("\\") || filename.startsWith(".")) {
-        throw new Error(`Invalid filename: ${filename}`);
-      }
-      if (filename.endsWith(".cpp")) {
-        cppFiles.push(filename);
-      }
       await fs.writeFile(path.join(tempDir, filename), content, "utf8");
-    }
-
-    if (cppFiles.length === 0) {
-      throw new Error("No .cpp files found to compile.");
     }
 
     // --- Compile ---------------------------------------------------------
@@ -207,6 +207,7 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
         [...cppFiles, `-std=${standard}`, "-g", "-O0", "-Wall", "-o", exeName],
         {
           cwd: tempDir,
+          env: compileEnv,
           timeout: execConfig.compileTimeoutMs,
           killSignal: "SIGKILL",
           maxBuffer: execConfig.maxDiagnosticBytes * 4,
@@ -242,19 +243,8 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
     log(execId, "compile_completed", { compileTimeMs });
 
     // --- Run ---------------------------------------------------------------
-    const usePrlimit = await hasPrlimit();
-    const runCmd = usePrlimit ? "prlimit" : exePath;
-    const runArgs = usePrlimit
-      ? [
-          `--nproc=${execConfig.maxProcesses}`,
-          `--as=${execConfig.maxMemoryMb * 1024 * 1024}`,
-          `--cpu=${execConfig.maxCpuSeconds}`,
-          "--",
-          exePath,
-        ]
-      : [];
-
-    log(execId, "run_started", { usePrlimit });
+    const plan = await planUntrustedRun({ exePath, tempDir });
+    log(execId, "run_started", { isolation: plan.isolation });
     const runStart = Date.now();
 
     const runResult = await new Promise<RunResult>((resolve) => {
@@ -265,8 +255,9 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
       let timedOut = false;
       let outputExceeded = false;
 
-      const child = spawn(runCmd, runArgs, {
+      const child = spawn(plan.command, plan.args, {
         cwd: tempDir,
+        env: plan.env,
         detached: os.platform() !== "win32",
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -358,6 +349,23 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
           return;
         }
 
+        // prlimit's CPU cap can kill an infinite loop just before the wall-clock timer.
+        if (
+          signal === "SIGXCPU" ||
+          (signal === "SIGKILL" && runTimeMs + 250 >= execConfig.runTimeoutMs)
+        ) {
+          finish({
+            status: "timeout",
+            title: "Time limit exceeded",
+            message: `The program did not finish within ${execConfig.runTimeoutMs}ms (this catches infinite loops).`,
+            stdout: stdoutBuf,
+            stderr: stderrBuf,
+            signal,
+            runTimeMs,
+          });
+          return;
+        }
+
         if (signal) {
           finish({
             status: "runtime_error",
@@ -394,7 +402,7 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
     // Only trace on successful execution — there's nothing useful to trace
     // for compile errors, timeouts, etc.
     let trace: TraceResult = { steps: [], truncated: false };
-    if (runResult.status === "success") {
+    if (runResult.status === "success" && execConfig.traceEnabled) {
       try {
         log(execId, "trace_started");
         trace = await traceExecution({

@@ -20,6 +20,9 @@ import {
   AllowedStandard,
 } from "./execConfig";
 import { describeSignal } from "./signals";
+import { inspectSourceFiles } from "./sourceFiles";
+import { planUntrustedRun, sanitizedChildEnv } from "./sandbox";
+import { tryAcquireRun, releaseRun } from "./runGate";
 
 const execFileAsync = promisify(execFile);
 
@@ -56,6 +59,7 @@ function send(ws: WebSocket, msg: WsMessage) {
 export interface TerminalInitPayload {
   files: Record<string, string>;
   standard?: string;
+  ownerKey?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,21 +71,24 @@ export async function handleTerminalSession(
 ): Promise<void> {
   const { files } = payload;
 
-  if (!files || Object.keys(files).length === 0) {
-    send(ws, { type: "error", data: "No files provided." });
+  const inspected = inspectSourceFiles(files || {}, {
+    maxFiles: execConfig.maxSourceFiles,
+    maxSourceBytes: execConfig.maxSourceBytes,
+  });
+  if (!inspected.ok) {
+    send(ws, { type: "error", data: inspected.message });
     ws.close();
     return;
   }
 
-  // Validate total source size
-  let totalSourceBytes = 0;
-  for (const content of Object.values(files)) {
-    totalSourceBytes += Buffer.byteLength(content, "utf8");
-  }
-  if (totalSourceBytes > execConfig.maxSourceBytes) {
+  const slot = tryAcquireRun(payload.ownerKey);
+  if (slot !== "ok") {
     send(ws, {
       type: "error",
-      data: `Source exceeds the ${Math.floor(execConfig.maxSourceBytes / 1024)} KB limit.`,
+      data:
+        slot === "user-busy"
+          ? "You already have a program running. Stop it before starting another."
+          : "Too many programs are running. Wait a moment and try again.",
     });
     ws.close();
     return;
@@ -94,45 +101,30 @@ export async function handleTerminalSession(
     : DEFAULT_STANDARD;
 
   let tempDir = "";
-  try {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "outputtracer-ws-"));
-  } catch {
-    send(ws, { type: "error", data: "Could not create workspace." });
-    ws.close();
-    return;
-  }
-
+  let acquired = true;
   const cleanup = () => {
+    if (acquired) {
+      acquired = false;
+      releaseRun(payload.ownerKey);
+    }
     if (tempDir) {
       fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
   };
 
   try {
-    // Write all files
-    const cppFiles: string[] = [];
-    for (const [filename, content] of Object.entries(files)) {
-      if (
-        filename.includes("/") ||
-        filename.includes("\\") ||
-        filename.startsWith(".")
-      ) {
-        send(ws, { type: "error", data: `Invalid filename: ${filename}` });
-        ws.close();
-        cleanup();
-        return;
-      }
-      if (filename.endsWith(".cpp")) {
-        cppFiles.push(filename);
-      }
-      await fs.writeFile(path.join(tempDir, filename), content, "utf8");
-    }
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "outputtracer-ws-"));
+  } catch {
+    send(ws, { type: "error", data: "Could not create workspace." });
+    ws.close();
+    cleanup();
+    return;
+  }
 
-    if (cppFiles.length === 0) {
-      send(ws, { type: "error", data: "No .cpp files found to compile." });
-      ws.close();
-      cleanup();
-      return;
+  try {
+    const { cppFiles } = inspected;
+    for (const [filename, content] of Object.entries(files)) {
+      await fs.writeFile(path.join(tempDir, filename), content, "utf8");
     }
 
     // --- Compile -----------------------------------------------------------
@@ -147,6 +139,7 @@ export async function handleTerminalSession(
         [...cppFiles, `-std=${standard}`, "-g", "-O0", "-Wall", "-o", exeName],
         {
           cwd: tempDir,
+          env: sanitizedChildEnv(tempDir),
           timeout: execConfig.compileTimeoutMs,
           killSignal: "SIGKILL",
           maxBuffer: execConfig.maxDiagnosticBytes * 4,
@@ -190,22 +183,13 @@ export async function handleTerminalSession(
     send(ws, { type: "compile_success", compileTimeMs });
 
     // --- Run interactively -------------------------------------------------
-    const usePrlimit = await hasPrlimit();
-    const runCmd = usePrlimit ? "prlimit" : exePath;
-    const runArgs = usePrlimit
-      ? [
-          `--nproc=${execConfig.maxProcesses}`,
-          `--as=${execConfig.maxMemoryMb * 1024 * 1024}`,
-          `--cpu=${execConfig.maxCpuSeconds}`,
-          "--",
-          exePath,
-        ]
-      : [];
+    const plan = await planUntrustedRun({ exePath, tempDir });
 
     send(ws, { type: "ready" });
 
-    const child = spawn(runCmd, runArgs, {
+    const child = spawn(plan.command, plan.args, {
       cwd: tempDir,
+      env: plan.env,
       detached: os.platform() !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -230,7 +214,7 @@ export async function handleTerminalSession(
     const timer = setTimeout(() => {
       timedOut = true;
       killGroup("SIGKILL");
-    }, 5 * 60 * 1000); // 5 minutes timeout for interactive sessions
+    }, execConfig.interactiveTimeoutMs);
 
     const finish = () => {
       if (settled) return;
@@ -300,7 +284,7 @@ export async function handleTerminalSession(
       if (timedOut) {
         send(ws, {
           type: "timeout",
-          data: `Program timed out after 5 minutes.`,
+          data: `Program timed out after ${Math.floor(execConfig.interactiveTimeoutMs / 1000)} seconds.`,
         });
       } else if (signal) {
         send(ws, {
@@ -328,21 +312,4 @@ export async function handleTerminalSession(
     cleanup();
     ws.close();
   }
-}
-
-// --- prlimit availability (reused from cppRunner) --------------------------
-let prlimitAvailable: boolean | null = null;
-async function hasPrlimit(): Promise<boolean> {
-  if (prlimitAvailable !== null) return prlimitAvailable;
-  if (os.platform() !== "linux") {
-    prlimitAvailable = false;
-    return prlimitAvailable;
-  }
-  try {
-    await execFileAsync("prlimit", ["--version"], { timeout: 2000 });
-    prlimitAvailable = true;
-  } catch {
-    prlimitAvailable = false;
-  }
-  return prlimitAvailable;
 }

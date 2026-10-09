@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { compileAndRun, RunStatus } from "@/lib/cppRunner";
+import { execConfig } from "@/lib/execConfig";
+import { clientIpFromForwarded, globalRateLimiter } from "@/lib/rateLimit";
+import { accessFromCookies } from "@/lib/cloud/accessSession";
+import { getHub } from "@/lib/cloud/collabHub";
+import { canEdit } from "@/lib/cloud/roles";
 
 // Only accept plausible JSON bodies before we even try to parse them.
 const MAX_BODY_BYTES = 512 * 1024; // 512 KB — comfortably above maxSourceBytes + maxStdinBytes
@@ -14,6 +19,8 @@ function toHttpStatus(status: RunStatus): number {
       return 200;
     case "invalid_request":
       return 400;
+    case "busy":
+      return 503;
     case "server_error":
       return 500;
     default:
@@ -25,6 +32,33 @@ function toHttpStatus(status: RunStatus): number {
 }
 
 export async function POST(request: Request) {
+  const ip = clientIpFromForwarded(
+    request.headers.get("x-forwarded-for") ?? undefined,
+    undefined,
+    process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true"
+  );
+  const limited = globalRateLimiter.check(
+    `predict:${ip}`,
+    execConfig.rateLimitPredictMax,
+    execConfig.rateLimitPredictWindowMs
+  );
+  if (!limited.ok) {
+    return NextResponse.json(
+      {
+        status: "error",
+        error: {
+          kind: "rate_limited",
+          title: "Too many requests",
+          message: `Slow down. Try again in ${limited.retryAfterSec}s.`,
+        },
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(limited.retryAfterSec) },
+      }
+    );
+  }
+
   const contentLength = request.headers.get("content-length");
   if (contentLength && Number(contentLength) > MAX_BODY_BYTES) {
     return NextResponse.json(
@@ -53,19 +87,71 @@ export async function POST(request: Request) {
     );
   }
 
-  const { source, files, stdin, standard } =
-    (body as { source?: unknown; files?: unknown; stdin?: unknown; standard?: unknown }) ?? {};
+  const { source, files, stdin, standard, projectId } =
+    (body as {
+      source?: unknown;
+      files?: unknown;
+      stdin?: unknown;
+      standard?: unknown;
+      projectId?: unknown;
+    }) ?? {};
 
   const isValidFiles =
     typeof files === "object" &&
     files !== null &&
     Object.values(files).every((v) => typeof v === "string");
 
+  let runFiles = isValidFiles ? (files as Record<string, string>) : undefined;
+  let runSource = typeof source === "string" ? source : "";
+  let runStandard = typeof standard === "string" ? standard : undefined;
+  let ownerKey: string | undefined;
+
+  if (typeof projectId === "string" && projectId) {
+    try {
+      const access = await accessFromCookies(projectId);
+      if (!access) {
+        return NextResponse.json(
+          {
+            status: "error",
+            error: {
+              kind: "invalid_request",
+              title: "Sign in required",
+              message: "You do not have access to run this project.",
+            },
+          },
+          { status: 403 }
+        );
+      }
+      if (runStandard && canEdit(access.role)) {
+        await getHub().setStandard(projectId, runStandard);
+      }
+      const shared = await getHub().readFiles(projectId);
+      runFiles = shared.files;
+      runSource = "";
+      runStandard = shared.standard;
+      ownerKey = access.userId;
+    } catch (error) {
+      const err = error as Error;
+      return NextResponse.json(
+        {
+          status: "error",
+          error: {
+            kind: "server_error",
+            title: "Project unavailable",
+            message: err.message || "Could not load the shared project.",
+          },
+        },
+        { status: 500 }
+      );
+    }
+  }
+
   const result = await compileAndRun({
-    files: isValidFiles ? (files as Record<string, string>) : undefined,
-    source: typeof source === "string" ? source : "",
+    files: runFiles,
+    source: runSource,
     stdin: typeof stdin === "string" ? stdin : undefined,
-    standard: typeof standard === "string" ? standard : undefined,
+    standard: runStandard,
+    ownerKey,
   });
 
   if (result.status === "success") {

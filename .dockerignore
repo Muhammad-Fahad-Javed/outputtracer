@@ -3,4 +3,8 @@ node_modules
 .git
 .DS_Store
 *.log
-README.md
+coverage
+*.md
+.env*
+.cursor
+canvases
