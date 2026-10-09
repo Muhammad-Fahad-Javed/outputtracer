@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
+import { useAuth } from "@/components/AuthProvider";
 
 const NAV_LINKS = [
   { label: "Projects", href: "/projects" },
@@ -12,6 +13,7 @@ const NAV_LINKS = [
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user, isLoading, signOut } = useAuth();
 
   return (
     <header className="sticky top-0 z-50 border-b border-[#DCDCDC] bg-white/95 backdrop-blur-sm">
@@ -32,10 +34,37 @@ export default function Header() {
           ))}
         </nav>
 
-        <div className="hidden md:block">
+        <div className="hidden items-center gap-3 md:flex">
           <span className="rounded-[3px] border border-[#DCDCDC] bg-[#F2F2F2] px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-black">
             C++
           </span>
+
+          {!isLoading && (
+            user ? (
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="max-w-[130px] truncate text-xs font-mono text-[#555555]"
+                  title={user.email ?? ""}
+                >
+                  {user.user_metadata?.display_name || user.email?.split("@")[0]}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void signOut()}
+                  className="rounded-[3px] border border-[#DCDCDC] px-2.5 py-1 text-xs font-medium text-black transition-colors hover:bg-[#F2F2F2]"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="rounded-[3px] bg-black px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[#333333]"
+              >
+                Sign In
+              </Link>
+            )
+          )}
         </div>
 
         <button
@@ -62,6 +91,33 @@ export default function Header() {
                 {link.label}
               </Link>
             ))}
+
+            {!isLoading && (
+              <div className="mt-3 border-t border-[#DCDCDC] pt-3">
+                {user ? (
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <span className="truncate text-xs font-mono text-[#666666]">
+                      {user.email}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { void signOut(); setMenuOpen(false); }}
+                      className="rounded-[3px] border border-[#DCDCDC] px-2.5 py-1 text-xs font-medium text-black hover:bg-[#F2F2F2]"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <Link
+                    href="/login"
+                    onClick={() => setMenuOpen(false)}
+                    className="block rounded-[3px] bg-black px-3 py-2 text-center text-xs font-medium text-white hover:bg-[#333333]"
+                  >
+                    Sign In
+                  </Link>
+                )}
+              </div>
+            )}
           </nav>
         </div>
       )}

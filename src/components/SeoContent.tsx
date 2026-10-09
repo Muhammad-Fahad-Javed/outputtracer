@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 
 export default function SeoContent() {
   return (
@@ -80,10 +81,10 @@ export default function SeoContent() {
         <nav className="mt-8 mb-8">
           <h3 className="text-xl sm:text-2xl font-bold mb-4">Learn More C++</h3>
           <ul className="list-disc pl-6 space-y-2 text-[#444444]">
-            <li><a href="/examples" className="text-blue-600 hover:underline">C++ Programming Examples</a></li>
-            <li><a href="/practice" className="text-blue-600 hover:underline">C++ Output Prediction Practice</a></li>
-            <li><a href="/learn" className="text-blue-600 hover:underline">Learn C++ OutputTracer</a></li>
-            <li><a href="/" className="text-blue-600 hover:underline">Back to C++ Online Compiler</a></li>
+            <li><Link href="/examples" className="text-blue-600 hover:underline">C++ Programming Examples</Link></li>
+            <li><Link href="/practice" className="text-blue-600 hover:underline">C++ Output Prediction Practice</Link></li>
+            <li><Link href="/learn" className="text-blue-600 hover:underline">Learn C++ OutputTracer</Link></li>
+            <li><Link href="/" className="text-blue-600 hover:underline">Back to C++ Online Compiler</Link></li>
           </ul>
         </nav>
       </div>

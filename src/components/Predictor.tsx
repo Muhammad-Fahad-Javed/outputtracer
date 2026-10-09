@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import {
@@ -13,6 +14,7 @@ import {
   AlertTriangle,
   FilePlus,
   Download,
+  Bookmark,
 } from "lucide-react";
 import CodeEditor from "@/components/CodeEditor";
 import DryRunTimeline from "@/components/DryRunTimeline";
@@ -29,6 +31,8 @@ import {
   debugStatusLabel,
   useDebuggerKeys,
 } from "@/components/ide/VsChrome";
+import { useAuth } from "@/components/AuthProvider";
+import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 const InteractiveTerminal = dynamic(
   () => import("@/components/InteractiveTerminal"),
@@ -59,6 +63,7 @@ interface PredictorProps {
 }
 
 export default function Predictor({ files, setFiles }: PredictorProps) {
+  const router = useRouter();
   const [activeFile, setActiveFile] = useState("main.cpp");
   const [result, setResult] = useState<PredictionResult>(IDLE_RESULT);
   const [copied, setCopied] = useState(false);
@@ -69,6 +74,10 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
   const [stopRequest, setStopRequest] = useState(0);
   const [debugStatus, setDebugStatus] = useState("idle");
   const [createRequest, setCreateRequest] = useState(0);
+  const [savedSnippet, setSavedSnippet] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const { user, signOut } = useAuth();
 
   const needsInput = useMemo(() => codeNeedsInput(files), [files]);
 
@@ -224,6 +233,46 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
     setResult(IDLE_RESULT);
   };
 
+  const handleSaveSnippet = async () => {
+    if (!user) {
+      if (
+        typeof window !== "undefined" &&
+        window.confirm(
+          "Sign in to save your C++ code snippets to your account. Go to sign in page?"
+        )
+      ) {
+        router.push("/login?next=/#predictor");
+      }
+      return;
+    }
+
+    const title = window.prompt("Enter a title for this snippet:", "C++ Program");
+    if (!title) return;
+
+    setIsSaving(true);
+    try {
+      const supabase = await getSupabaseBrowser();
+      if (!supabase) { alert("Auth not configured."); return; }
+      const { error } = await supabase.from("saved_snippets").insert({
+        user_id: user.id,
+        title: title.trim(),
+        files,
+        stdin,
+      });
+
+      if (!error) {
+        setSavedSnippet(true);
+        setTimeout(() => setSavedSnippet(false), 2000);
+      } else {
+        alert("Could not save snippet: " + error.message);
+      }
+    } catch {
+      alert("Error saving snippet.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const hasOutput = result.status === "success" || result.status === "error";
   const debugging = debugStatus === "connecting" || debugStatus === "compiling" || debugStatus === "running";
   const startDebug = useCallback(() => {
@@ -257,7 +306,17 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
         <div className="flex items-center gap-1 pr-1">
           <Link href="/practice" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Practice</Link>
           <Link href="/projects" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Projects</Link>
-          <Link href="/login" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Sign in</Link>
+          {user ? (
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]"
+            >
+              Sign out
+            </button>
+          ) : (
+            <Link href="/login" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Sign in</Link>
+          )}
         </div>
       </header>
 
@@ -284,6 +343,14 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
         </button>
         <button onClick={handleLoadExample} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Load example">
           <Sparkles size={14} />
+        </button>
+        <button
+          onClick={() => void handleSaveSnippet()}
+          disabled={isSaving}
+          className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42] disabled:opacity-50"
+          title={user ? "Save snippet to account" : "Sign in to save snippet"}
+        >
+          {savedSnippet ? <Check size={14} className="text-green-400" /> : <Bookmark size={14} />}
         </button>
       </div>
 

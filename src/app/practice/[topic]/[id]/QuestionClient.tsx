@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PracticeQuestion } from "@/lib/practice";
 import Editor from "@monaco-editor/react";
-import { CheckCircle2, XCircle, ChevronRight, Play } from "lucide-react";
+import { CheckCircle2, XCircle, ChevronRight, Play, Check } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/components/AuthProvider";
+import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 export default function QuestionClient({
   question,
@@ -16,17 +18,81 @@ export default function QuestionClient({
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<"idle" | "correct" | "incorrect">("idle");
   const [showExplanation, setShowExplanation] = useState(false);
+  const [isPreviouslyCompleted, setIsPreviouslyCompleted] = useState(false);
 
-  const checkAnswer = () => {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user) return;
+    let isCancelled = false;
+
+    const fetchProgress = async () => {
+      try {
+        const supabase = await getSupabaseBrowser();
+        if (!supabase) return;
+
+        const { data } = await supabase
+          .from("practice_progress")
+          .select("is_completed")
+          .eq("user_id", user.id)
+          .eq("topic_id", question.topicId)
+          .eq("question_id", question.id)
+          .maybeSingle();
+
+        if (!isCancelled && data?.is_completed) {
+          setIsPreviouslyCompleted(true);
+        }
+      } catch {
+        // Silently continue if database is not reachable
+      }
+    };
+
+    fetchProgress();
+    return () => {
+      isCancelled = true;
+    };
+  }, [user, question.topicId, question.id]);
+
+  const checkAnswer = async () => {
     // Basic whitespace normalization for comparison
     const normalizedInput = input.trim().replace(/\s+/g, " ");
     const normalizedAnswer = question.answer.trim().replace(/\s+/g, " ");
+    const isCorrect = normalizedInput === normalizedAnswer;
     
-    if (normalizedInput === normalizedAnswer) {
+    if (isCorrect) {
       setStatus("correct");
       setShowExplanation(true);
+      setIsPreviouslyCompleted(true);
     } else {
       setStatus("incorrect");
+    }
+
+    if (user) {
+      try {
+        const supabase = await getSupabaseBrowser();
+        if (supabase) {
+          await supabase.from("practice_submissions").insert({
+            user_id: user.id,
+            topic_id: question.topicId,
+            question_id: question.id,
+            submitted_output: input,
+            is_correct: isCorrect,
+          });
+
+          await supabase.from("practice_progress").upsert(
+            {
+              user_id: user.id,
+              topic_id: question.topicId,
+              question_id: question.id,
+              is_completed: isCorrect || isPreviouslyCompleted,
+              last_submitted_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,topic_id,question_id" }
+          );
+        }
+      } catch (err) {
+        console.error("Failed to save submission progress:", err);
+      }
     }
   };
 
@@ -73,9 +139,16 @@ export default function QuestionClient({
       {/* Right Column: Interaction */}
       <div className="w-full lg:w-[400px] shrink-0 space-y-6">
         <div className="rounded-[8px] border border-[#EAEAEA] bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[#666666]">
-            Predict the Output
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-[#666666]">
+              Predict the Output
+            </h2>
+            {isPreviouslyCompleted && (
+              <span className="inline-flex items-center gap-1 rounded-[3px] border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-800">
+                <Check size={11} /> Solved
+              </span>
+            )}
+          </div>
           <p className="mt-2 text-sm text-[#333333]">
             What will this program print to the console?
           </p>

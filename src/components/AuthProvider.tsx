@@ -1,0 +1,83 @@
+"use client";
+
+import { createContext, useContext, useEffect, useState } from "react";
+import type { User, Session } from "@supabase/supabase-js";
+import { getSupabaseBrowser } from "@/lib/supabase/browser";
+
+interface AuthContextType {
+  user: User | null;
+  session: Session | null;
+  isLoading: boolean;
+  signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  session: null,
+  isLoading: true,
+  signOut: async () => {},
+  refreshUser: async () => {},
+});
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refreshUser = async () => {
+    try {
+      const supabase = await getSupabaseBrowser();
+      if (!supabase) { setUser(null); return; }
+      const { data } = await supabase.auth.getUser();
+      setUser(data.user);
+    } catch {
+      setUser(null);
+    }
+  };
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
+    void (async () => {
+      const supabase = await getSupabaseBrowser();
+      if (!supabase) {
+        setIsLoading(false);
+        return;
+      }
+
+      // Initial session
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
+      setSession(initialSession);
+      setUser(initialSession?.user ?? null);
+      setIsLoading(false);
+
+      // Listen for auth changes (sign in, sign out, token refresh)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+        setIsLoading(false);
+      });
+      unsubscribe = () => subscription.unsubscribe();
+    })();
+
+    return () => { unsubscribe?.(); };
+  }, []);
+
+  const signOut = async () => {
+    const supabase = await getSupabaseBrowser();
+    if (supabase) await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, session, isLoading, signOut, refreshUser }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  return useContext(AuthContext);
+}
