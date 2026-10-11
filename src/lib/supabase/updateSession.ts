@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseAnonKey, supabaseUrl } from "./env";
+import { requestOrigin } from "./requestOrigin";
 
 const PROTECTED = [/^\/projects(?:\/|$)/, /^\/groups(?:\/|$)/, /^\/p(?:\/|$)/];
 
@@ -32,8 +33,7 @@ export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const needsAuth = PROTECTED.some((pattern) => pattern.test(path));
   if (needsAuth && !user) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/login";
+    const redirectUrl = new URL("/login", requestOrigin(request));
     redirectUrl.searchParams.set("next", path);
     const redirectResponse = NextResponse.redirect(redirectUrl);
     supabaseResponse.cookies.getAll().forEach((cookie) => {
