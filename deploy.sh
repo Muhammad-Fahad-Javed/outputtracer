@@ -14,11 +14,11 @@ sudo systemctl enable docker
 sudo systemctl start docker
 
 # 2. Configure Nginx
-echo "Configuring Nginx for muhammad-fahad-javed.is-a.dev..."
+echo "Configuring Nginx for outputtracer.devs.surf..."
 cat << 'EOF' | sudo tee /etc/nginx/sites-available/outputtracer
 server {
     listen 80;
-    server_name muhammad-fahad-javed.is-a.dev;
+    server_name outputtracer.devs.surf;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -53,5 +53,5 @@ echo "Deployment almost complete!"
 echo "Make sure your code is uploaded to this directory before running."
 echo "For accounts and shared projects, put Supabase keys in .env and run supabase/migrations/0001_cloud_ide.sql once."
 echo "If DNS has propagated, run the following command to get your SSL certificate:"
-echo "sudo certbot --nginx -d muhammad-fahad-javed.is-a.dev"
+echo "sudo certbot --nginx -d outputtracer.devs.surf"
 echo "--------------------------------------------------------"

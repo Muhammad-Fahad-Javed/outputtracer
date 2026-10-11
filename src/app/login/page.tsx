@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; error?: string }>;
 }) {
   const params = await searchParams;
   const nextPath = safeNextPath(params.next);
@@ -16,5 +16,11 @@ export default async function LoginPage({
   const supabase = await createClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   if (user) redirect(nextPath);
-  return <AuthForm mode="login" nextPath={nextPath} />;
+  return (
+    <AuthForm
+      mode="login"
+      nextPath={nextPath}
+      initialError={params.error ?? null}
+    />
+  );
 }
