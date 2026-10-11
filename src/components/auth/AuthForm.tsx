@@ -7,22 +7,17 @@ import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 /** Returns the canonical site origin to use for auth redirect URLs.
  *
- * Priority:
- *  1. NEXT_PUBLIC_SITE_URL  – set this in .env.local for local dev if you
- *     need to test email links (e.g. http://localhost:3000).
- *  2. window.location.origin – correct on the production server because
- *     the browser is already on https://outputtracer.devs.surf.
+ * This component is "use client", so it only runs in the browser.
+ * window.location.origin is always correct:
+ *  - Production: https://outputtracer.devs.surf
+ *  - Local dev:  http://localhost:3000
  *
- * We intentionally never hard-code "localhost" here so that a production
- * build can never accidentally emit a localhost redirect URL.
+ * We deliberately do NOT read NEXT_PUBLIC_SITE_URL here.  NEXT_PUBLIC_*
+ * variables are inlined at build time; if the value was ever "localhost"
+ * during a build it would be permanently baked into the JS bundle and
+ * sent as the OAuth redirectTo even on the live server.
  */
 function siteOrigin(): string {
-  if (
-    typeof process !== "undefined" &&
-    process.env.NEXT_PUBLIC_SITE_URL
-  ) {
-    return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
-  }
   return window.location.origin;
 }
 
