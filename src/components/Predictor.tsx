@@ -16,13 +16,21 @@ import {
   Download,
   Bookmark,
 } from "lucide-react";
-import CodeEditor from "@/components/CodeEditor";
 import DryRunTimeline from "@/components/DryRunTimeline";
 import dynamic from "next/dynamic";
 import { DEFAULT_CODE, examples, consumePendingExample } from "@/lib/examples";
 import { PredictionResult } from "@/types/predictor";
 import { isValidSourceFilename } from "@/lib/sourceFiles";
 import { FileTabs } from "@/components/ide/FileTabs";
+
+const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-[#1E1E1E]">
+      <span className="font-mono text-sm text-[#858585]">Loading editor…</span>
+    </div>
+  ),
+});
 import {
   DebuggerControls,
   IdeMenu,
@@ -304,7 +312,9 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
           </IdeMenu>
         </div>
         <div className="flex items-center gap-1 pr-1">
+          <Link href="/examples" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Examples</Link>
           <Link href="/practice" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Practice</Link>
+          <Link href="/learn" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Learn</Link>
           <Link href="/projects" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Projects</Link>
           {user ? (
             <button
@@ -328,20 +338,21 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
           onClick={() => void handlePredict()}
           className="rounded-[2px] px-2 py-0.5 text-[12px] text-[#D4D4D4] hover:bg-[#3E3E42]"
           title="Show each step"
+          aria-label="Trace execution step by step"
         >
           Trace
         </button>
         <div className="h-4 w-px bg-[#4D4D50]" />
-        <button onClick={handleAddFile} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="New file">
+        <button onClick={handleAddFile} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="New file" aria-label="Create new file">
           <FilePlus size={14} />
         </button>
-        <button onClick={() => void handleDownloadZip()} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Download">
+        <button onClick={() => void handleDownloadZip()} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Download" aria-label="Download project files as ZIP">
           <Download size={14} />
         </button>
-        <button onClick={handleReset} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Reset">
+        <button onClick={handleReset} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Reset" aria-label="Reset code to default template">
           <RotateCcw size={14} />
         </button>
-        <button onClick={handleLoadExample} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Load example">
+        <button onClick={handleLoadExample} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Load example" aria-label="Load random code example">
           <Sparkles size={14} />
         </button>
         <button
@@ -349,6 +360,7 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
           disabled={isSaving}
           className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42] disabled:opacity-50"
           title={user ? "Save snippet to account" : "Sign in to save snippet"}
+          aria-label={user ? "Save snippet to account" : "Sign in to save snippet"}
         >
           {savedSnippet ? <Check size={14} className="text-green-400" /> : <Bookmark size={14} />}
         </button>
@@ -388,10 +400,10 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
             onChange={setPanel}
             extra={panel === "trace" && hasOutput && (result.output || result.stderr) ? (
               <>
-                <button type="button" onClick={handleCopy} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Copy">
+                <button type="button" onClick={handleCopy} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Copy" aria-label="Copy output to clipboard">
                   {copied ? <Check size={13} /> : <Copy size={13} />}
                 </button>
-                <button type="button" onClick={handleClearOutput} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Clear">
+                <button type="button" onClick={handleClearOutput} className="rounded-[2px] p-1 text-[#D4D4D4] hover:bg-[#3E3E42]" title="Clear" aria-label="Clear output window">
                   <Trash2 size={13} />
                 </button>
               </>
@@ -426,7 +438,8 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
                         ? "Enter input values here..."
                         : "Optional stdin..."
                     }
-                    className="flex-1 w-full resize-none bg-[#1E1E1E] text-[#D4D4D4] p-3 font-mono text-[13px] focus:outline-none placeholder:text-[#555555]"
+                    aria-label="Standard input (stdin)"
+                    className="flex-1 w-full resize-none bg-[#1E1E1E] text-[#D4D4D4] p-3 font-mono text-[13px] focus:outline-none placeholder:text-[#767676]"
                   />
                 </div>
 
@@ -434,7 +447,7 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
                 <div className="flex-1 flex flex-col overflow-y-auto bg-[#1E1E1E] p-3 space-y-4">
                   {/* Status Indicator */}
                   {result.status === "idle" && (
-                    <p className="font-mono text-[12px] text-[#555555]">
+                    <p className="font-mono text-[12px] text-[#858585]">
                       Paste input here, then press Trace. The green debugger button runs the program in the Debug tab.
                     </p>
                   )}

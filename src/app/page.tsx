@@ -45,12 +45,13 @@ export default function Home() {
   }, [files]);
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-white">
-      <Predictor files={files} setFiles={setFiles} />
-      {/* Hidden SEO content for crawlers */}
-      <div className="hidden">
-        <SeoContent />
+    <main className="min-h-screen w-full bg-white flex flex-col">
+      {/* Interactive IDE / Compiler Interface */}
+      <div className="h-screen w-full flex flex-col overflow-hidden">
+        <Predictor files={files} setFiles={setFiles} />
       </div>
-    </div>
+      {/* Visible Educational & Architectural Overview */}
+      <SeoContent />
+    </main>
   );
 }

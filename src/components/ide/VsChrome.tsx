@@ -28,6 +28,7 @@ export function DebuggerControls({
         onClick={onStop}
         disabled={!running}
         title="Stop debugging (Shift+F5)"
+        aria-label="Stop debugging"
         className="inline-flex items-center rounded-[2px] px-1.5 py-0.5 hover:bg-[#3E3E42] disabled:hover:bg-transparent"
       >
         <Square
