@@ -5,8 +5,14 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/api/'],
+      disallow: [
+        '/api/',
+        '/auth/',
+        '/projects/',
+        '/groups/',
+        '/p/',
+      ],
     },
-    sitemap: 'https://outputtracer.devs.surf/sitemap.xml',
+    sitemap: 'https://outputtracer.com/sitemap.xml',
   }
 }

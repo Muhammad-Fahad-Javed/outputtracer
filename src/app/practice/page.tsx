@@ -6,8 +6,18 @@ import { getTopics } from "@/lib/practice";
 import { Terminal, Crosshair, Box, Code2, Layers, Cpu } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "C++ Practice Questions | OutputTracer",
-  description: "Test your C++ knowledge with our practice questions. Predict C++ output, practice OOP, pointers, arrays, and algorithms online.",
+  title: "C++ Output Prediction & Execution Practice Questions | OutputTracer",
+  description:
+    "Practice C++ output prediction with 200+ challenges. Test your understanding of pointers, recursion, OOP inheritance, loops, and data structures.",
+  alternates: {
+    canonical: "/practice",
+  },
+  openGraph: {
+    title: "C++ Output Prediction & Execution Practice Questions | OutputTracer",
+    description:
+      "Practice C++ output prediction with 200+ challenges. Test pointers, recursion, OOP, loops, and memory models.",
+    url: "https://outputtracer.com/practice",
+  },
 };
 
 const ICON_MAP: Record<string, React.ElementType> = {

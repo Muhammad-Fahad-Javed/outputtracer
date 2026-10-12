@@ -3,90 +3,107 @@ import Link from "next/link";
 
 export default function SeoContent() {
   return (
-    <section className="mx-auto max-w-4xl px-5 py-12 sm:px-8 text-black">
-      <div className="prose prose-sm sm:prose-base max-w-none prose-headings:font-semibold prose-a:text-blue-600">
-        <h2 className="text-xl sm:text-2xl font-bold mt-8 mb-4">Free C++ Online Compiler</h2>
-        <p className="mb-6 text-[#444444] leading-relaxed">
-          OutputTracer is a fast and easy-to-use C++ online compiler that lets you write, compile, and run C++ programs directly in your browser. No local compiler installation is required to use the browser-based environment.
+    <section className="mx-auto max-w-5xl px-5 py-16 sm:px-8 text-black border-t border-[#EAEAEA]">
+      <header className="mb-12">
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-black mb-4">
+          Write, Run &amp; Trace C++ Code Online
+        </h1>
+        <p className="text-lg text-[#555555] max-w-3xl leading-relaxed">
+          OutputTracer is an interactive browser-based C++ development environment and execution visualizer. 
+          Compile standard C++17 code, provide real-time interactive input, debug output logic, and inspect variable mutations step by step.
         </p>
+      </header>
 
-        <h2 className="text-xl sm:text-2xl font-bold mt-8 mb-4">Run C++ Code Online</h2>
-        <p className="mb-6 text-[#444444] leading-relaxed">
-          Write and test C++ programs online. OutputTracer supports standard input and output, allowing you to provide program input values and interact with your code instantly.
-        </p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+        <div className="border border-[#EAEAEA] rounded-lg p-6 bg-[#FAFAFA]">
+          <h2 className="text-xl font-bold mb-3 text-black">1. Write &amp; Run C++ Online</h2>
+          <p className="text-sm text-[#555555] leading-relaxed">
+            Full C++17 support with interactive terminal emulation (xterm.js) and standard input (stdin). Run algorithms, multi-file projects, and standard library programs instantly without installing toolchains locally.
+          </p>
+        </div>
 
-        <h2 className="text-xl sm:text-2xl font-bold mt-8 mb-4">C++ Compiler for Students</h2>
-        <p className="mb-4 text-[#444444] leading-relaxed">
-          OutputTracer can be useful for:
-        </p>
-        <ul className="list-disc pl-6 mb-6 text-[#444444] space-y-1">
-          <li>C++ programming practice</li>
-          <li>beginner programming</li>
-          <li>OOP exercises</li>
-          <li>arrays</li>
-          <li>pointers</li>
-          <li>functions</li>
-          <li>recursion</li>
-          <li>algorithms</li>
-          <li>programming assignments</li>
-        </ul>
+        <div className="border border-[#EAEAEA] rounded-lg p-6 bg-[#FAFAFA]">
+          <h2 className="text-xl font-bold mb-3 text-black">2. Step-by-Step Code Tracing</h2>
+          <p className="text-sm text-[#555555] leading-relaxed">
+            Unlike basic compilers that only show terminal output, OutputTracer captures a dry-run execution timeline. Watch variable assignments, loop states, pointer arithmetic, and recursive stack frames update at every line.
+          </p>
+        </div>
 
-        <h2 className="text-xl sm:text-2xl font-bold mt-8 mb-4">How to Run C++ Code Online</h2>
-        <ol className="list-decimal pl-6 mb-8 text-[#444444] space-y-1">
-          <li>Open OutputTracer.</li>
-          <li>Write or paste C++ code.</li>
-          <li>Provide program input via stdin or the interactive terminal.</li>
-          <li>Compile/run the program.</li>
-          <li>View the result.</li>
-        </ol>
+        <div className="border border-[#EAEAEA] rounded-lg p-6 bg-[#FAFAFA]">
+          <h2 className="text-xl font-bold mb-3 text-black">3. Practice Output Prediction</h2>
+          <p className="text-sm text-[#555555] leading-relaxed">
+            Sharpen mental execution models with over 200 curated output prediction challenges. Test pointer dereferencing, class hierarchies, order of operations, and tricky recursion before verifying your answers.
+          </p>
+        </div>
+      </div>
 
-        <hr className="my-10 border-[#DCDCDC]" />
+      <div className="prose prose-sm sm:prose-base max-w-none text-[#333333] space-y-10">
+        <div>
+          <h2 className="text-2xl font-bold mb-4 text-black">Why Choose OutputTracer Over Ordinary Online Compilers?</h2>
+          <p className="text-[#444444] leading-relaxed mb-4">
+            Traditional online compilers act like remote black-boxes: you supply source code, click run, and receive the stdout buffer. When unexpected output or infinite loops occur, diagnosing the bug requires inserting dozens of print statements.
+          </p>
+          <p className="text-[#444444] leading-relaxed">
+            OutputTracer is built around <strong>cognitive execution tracing</strong>. By decomposing your C++ execution into an inspectable timeline, students, instructors, and developers can verify hypothesis behavior immediately.
+          </p>
+        </div>
 
-        <h2 className="text-2xl sm:text-3xl font-bold mb-6">Frequently Asked Questions</h2>
-        
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-semibold mb-2">What is a C++ online compiler?</h3>
-            <p className="text-[#444444]">A browser-based C++ compiler allows you to write, compile, and execute C++ code directly in your web browser without installing any software.</p>
-          </div>
-          
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Can I run C++ code online for free?</h3>
-            <p className="text-[#444444]">Yes, OutputTracer is a completely free online C++ compiler.</p>
-          </div>
-          
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Do I need to install C++?</h3>
-            <p className="text-[#444444]">No, an online compiler allows you to compile C++ without installing a local compiler.</p>
-          </div>
-          
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Who can use OutputTracer?</h3>
-            <p className="text-[#444444]">Students, beginners, developers, and programmers can all use OutputTracer to write and test C++ code.</p>
-          </div>
-          
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Can I provide input to my C++ program?</h3>
-            <p className="text-[#444444]">Yes, you can provide input values via the standard input (stdin) panel or use the interactive terminal.</p>
-          </div>
-          
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Which C++ version does OutputTracer support?</h3>
-            <p className="text-[#444444]">OutputTracer supports C++17.</p>
+        <div>
+          <h2 className="text-2xl font-bold mb-4 text-black">How to Run &amp; Trace C++ Code Online</h2>
+          <ol className="list-decimal pl-6 space-y-2 text-[#444444]">
+            <li><strong>Write or Paste Code:</strong> Use the editor above to compose your C++ code. Multi-file headers (.h) and source files (.cpp) are fully supported.</li>
+            <li><strong>Provide Inputs:</strong> For programs utilizing <code className="bg-[#F0F0F0] px-1.5 py-0.5 rounded text-black font-mono text-xs">std::cin</code> or <code className="bg-[#F0F0F0] px-1.5 py-0.5 rounded text-black font-mono text-xs">scanf</code>, supply values in the Standard Input panel or interact directly in the terminal.</li>
+            <li><strong>Execute or Trace:</strong> Click <em>Run</em> (green play button or <kbd className="bg-[#F0F0F0] px-1.5 py-0.5 rounded text-xs font-mono">F5</kbd>) for live console interaction, or click <em>Trace</em> to view step-by-step state changes.</li>
+            <li><strong>Inspect Variable States:</strong> Review the Dry Run timeline to inspect how variables, conditionals, and iterations evolve from entry to termination.</li>
+          </ol>
+        </div>
+
+        <hr className="my-10 border-[#EAEAEA]" />
+
+        <div>
+          <h2 className="text-2xl font-bold mb-6 text-black">Frequently Asked Questions</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="border border-[#EAEAEA] p-5 rounded-md">
+              <h3 className="text-base font-bold mb-2 text-black">What is an online C++ compiler?</h3>
+              <p className="text-sm text-[#555555] leading-relaxed">
+                An online C++ compiler runs source code on a remote server environment and delivers compilation errors, standard output, and execution logs directly to your web browser without local configuration.
+              </p>
+            </div>
+            <div className="border border-[#EAEAEA] p-5 rounded-md">
+              <h3 className="text-base font-bold mb-2 text-black">Is OutputTracer free to use?</h3>
+              <p className="text-sm text-[#555555] leading-relaxed">
+                Yes. All core compilation, execution tracing, and practice problems are completely free without requiring credit cards or paid tiers.
+              </p>
+            </div>
+            <div className="border border-[#EAEAEA] p-5 rounded-md">
+              <h3 className="text-base font-bold mb-2 text-black">What C++ standard is supported?</h3>
+              <p className="text-sm text-[#555555] leading-relaxed">
+                OutputTracer compiles code using standard modern C++17 with full support for the standard template library (STL), strings, vectors, maps, and algorithms.
+              </p>
+            </div>
+            <div className="border border-[#EAEAEA] p-5 rounded-md">
+              <h3 className="text-base font-bold mb-2 text-black">How does execution tracing work?</h3>
+              <p className="text-sm text-[#555555] leading-relaxed">
+                The tracer analyzes control-flow changes, loop counter increments, and memory references to reconstruct a sequential breakdown of each program step.
+              </p>
+            </div>
           </div>
         </div>
-        
-        <hr className="my-10 border-[#DCDCDC]" />
 
-        <nav className="mt-8 mb-8">
-          <h3 className="text-xl sm:text-2xl font-bold mb-4">Learn More C++</h3>
-          <ul className="list-disc pl-6 space-y-2 text-[#444444]">
-            <li><Link href="/examples" className="text-blue-600 hover:underline">C++ Programming Examples</Link></li>
-            <li><Link href="/practice" className="text-blue-600 hover:underline">C++ Output Prediction Practice</Link></li>
-            <li><Link href="/learn" className="text-blue-600 hover:underline">Learn C++ OutputTracer</Link></li>
-            <li><Link href="/" className="text-blue-600 hover:underline">Back to C++ Online Compiler</Link></li>
-          </ul>
-        </nav>
+        <div className="pt-6 border-t border-[#EAEAEA]">
+          <h2 className="text-xl font-bold mb-4 text-black">Explore C++ Learning Resources</h2>
+          <div className="flex flex-wrap gap-4">
+            <Link href="/examples" className="inline-flex items-center px-4 py-2 border border-[#DCDCDC] rounded text-sm font-medium hover:bg-[#F7F7F7] transition-colors">
+              Browse C++ Code Examples &rarr;
+            </Link>
+            <Link href="/practice" className="inline-flex items-center px-4 py-2 border border-[#DCDCDC] rounded text-sm font-medium hover:bg-[#F7F7F7] transition-colors">
+              C++ Output Prediction Questions &rarr;
+            </Link>
+            <Link href="/learn" className="inline-flex items-center px-4 py-2 border border-[#DCDCDC] rounded text-sm font-medium hover:bg-[#F7F7F7] transition-colors">
+              Tracing Concepts Guide &rarr;
+            </Link>
+          </div>
+        </div>
       </div>
 
       {/* JSON-LD FAQ Schema */}

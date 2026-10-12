@@ -152,6 +152,7 @@ export function FileTabs({
                   onDelete(name);
                 }}
                 title="Delete file"
+                aria-label={`Delete ${name}`}
               >
                 <X size={12} />
               </button>
@@ -181,6 +182,7 @@ export function FileTabs({
             setError(null);
           }}
           title="New file"
+          aria-label="New file"
           className="mb-0.5 ml-1 inline-flex h-6 w-6 items-center justify-center rounded-[2px] text-[#D4D4D4] hover:bg-[#3E3E42]"
         >
           <Plus size={14} />

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
@@ -16,6 +17,35 @@ export async function generateStaticParams() {
     }
   }
   return params;
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ topic: string; id: string }>;
+}): Promise<Metadata> {
+  const resolvedParams = await params;
+  const [topic, question] = await Promise.all([
+    getTopicById(resolvedParams.topic),
+    getQuestion(resolvedParams.topic, resolvedParams.id),
+  ]);
+
+  if (!topic || !question) {
+    return { title: "Question Not Found | OutputTracer" };
+  }
+
+  return {
+    title: `${question.title} – ${topic.title} C++ Output Question | OutputTracer`,
+    description: `Predict the output of this C++ program on ${topic.title}. Difficulty: ${question.difficulty}. Test and trace your answer on OutputTracer.`,
+    alternates: {
+      canonical: `/practice/${topic.id}/${question.id}`,
+    },
+    openGraph: {
+      title: `${question.title} – ${topic.title} C++ Question`,
+      description: `Predict the output of this C++ program on ${topic.title}. Test and trace on OutputTracer.`,
+      url: `https://outputtracer.com/practice/${topic.id}/${question.id}`,
+    },
+  };
 }
 
 export default async function QuestionPage({
@@ -42,9 +72,43 @@ export default async function QuestionPage({
     currentIndex !== -1 && currentIndex < questions.length - 1
       ? questions[currentIndex + 1].id
       : null;
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "https://outputtracer.com"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Practice",
+        "item": "https://outputtracer.com/practice"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": topic.title,
+        "item": `https://outputtracer.com/practice/${topic.id}`
+      },
+      {
+        "@type": "ListItem",
+        "position": 4,
+        "name": question.title,
+        "item": `https://outputtracer.com/practice/${topic.id}/${question.id}`
+      }
+    ]
+  };
 
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <Header />
       <main className="min-h-screen bg-[#FAFAFA] pb-20">
         <section className="mx-auto max-w-6xl px-5 pt-12 sm:px-8 sm:pt-16">

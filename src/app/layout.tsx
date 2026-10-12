@@ -3,24 +3,46 @@ import { AuthProvider } from "@/components/AuthProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://outputtracer.devs.surf"),
-  title: "C++ Online Compiler – Run C++ Code Online | OutputTracer",
+  metadataBase: new URL("https://outputtracer.com"),
+  title: "Online C++ Compiler | OutputTracer",
   description:
-    "Run C++ code online with OutputTracer. A fast, free C++ online compiler and code runner for students, developers, and programming practice.",
+    "Write and run C++ code online with OutputTracer. Trace execution step by step, inspect variables, debug programs, and practice C++ in your browser.",
   alternates: {
-    canonical: "https://outputtracer.devs.surf",
+    canonical: "/",
   },
   openGraph: {
-    title: "C++ Online Compiler | OutputTracer",
-    description: "Write, compile, and run C++ code online with OutputTracer.",
+    title: "Online C++ Compiler | OutputTracer",
+    description:
+      "Write and run C++ code online with OutputTracer. Trace execution step by step, inspect variables, debug programs, and practice C++ in your browser.",
     siteName: "OutputTracer",
     type: "website",
-    url: "https://outputtracer.devs.surf",
+    url: "https://outputtracer.com",
+    images: [
+      {
+        url: "/brand/logo-tile.svg",
+        width: 512,
+        height: 512,
+        alt: "OutputTracer Online C++ Compiler and Tracer Logo",
+      },
+    ],
   },
   twitter: {
-    card: "summary_large_image",
-    title: "C++ Online Compiler | OutputTracer",
-    description: "Write, compile, and run C++ code online with OutputTracer.",
+    card: "summary",
+    title: "Online C++ Compiler | OutputTracer",
+    description:
+      "Write and run C++ code online with OutputTracer. Trace execution step by step, inspect variables, debug programs, and practice C++ in your browser.",
+    images: ["/brand/logo-tile.svg"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
   },
   verification: {
     google: "ArFSOkOn9GFsDDg6VLikwvgSxdnlDjj7-LGpTHOMR9Y",
@@ -42,7 +64,9 @@ export default function RootLayout({
               "@context": "https://schema.org",
               "@type": "WebSite",
               "name": "OutputTracer",
-              "url": "https://outputtracer.devs.surf/"
+              "alternateName": "OutputTracer Online C++ Compiler",
+              "url": "https://outputtracer.com/",
+              "description": "Online C++ compiler, code runner, and step-by-step execution tracer."
             })
           }}
         />
@@ -51,15 +75,36 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               "@context": "https://schema.org",
-              "@type": "SoftwareApplication",
-              "name": "OutputTracer C++ Online Compiler",
+              "@type": "Organization",
+              "name": "OutputTracer",
+              "url": "https://outputtracer.com/",
+              "logo": "https://outputtracer.com/brand/logo-tile.svg"
+            })
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebApplication",
+              "name": "OutputTracer Online C++ Compiler",
               "applicationCategory": "DeveloperApplication",
-              "operatingSystem": "Any",
+              "operatingSystem": "All modern browsers (Chrome, Firefox, Safari, Edge)",
+              "browserRequirements": "Requires JavaScript. Supports standard C++17.",
+              "url": "https://outputtracer.com/",
               "offers": {
                 "@type": "Offer",
                 "price": "0",
                 "priceCurrency": "USD"
-              }
+              },
+              "featureList": [
+                "Write and run C++ code online",
+                "Step-by-step execution tracing and timeline",
+                "Interactive terminal with standard input/output",
+                "Variable inspection and dry-run state tracking",
+                "Curated output prediction practice questions"
+              ]
             })
           }}
         />

@@ -7,9 +7,18 @@ import Topics from "@/components/Topics";
 import FAQ from "@/components/FAQ";
 
 export const metadata: Metadata = {
-  title: "Learn C++ | OutputTracer",
+  title: "Learn C++ Execution Tracing & Output Prediction | OutputTracer",
   description:
-    "Learn C++ programming online. Understand how OutputTracer predicts C++ output and traces execution, and which topics it covers.",
+    "Learn C++ execution tracing and mental model debugging. Understand how OutputTracer decomposes C++ memory, variables, loops, and recursion step by step.",
+  alternates: {
+    canonical: "/learn",
+  },
+  openGraph: {
+    title: "Learn C++ Execution Tracing & Output Prediction | OutputTracer",
+    description:
+      "Understand how OutputTracer decomposes C++ memory, variables, loops, and recursion step by step.",
+    url: "https://outputtracer.com/learn",
+  },
 };
 
 export default function LearnPage() {

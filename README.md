@@ -2,7 +2,7 @@
 
 Browser IDE for **running C++** and **tracing what it prints** — aimed at students who have to predict program output.
 
-Live: [outputtracer.devs.surf](https://outputtracer.devs.surf)
+Live: [outputtracer.com](https://outputtracer.com)
 
 ## What you can do
 

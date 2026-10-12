@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
@@ -8,6 +9,30 @@ import { ChevronRight, ArrowLeft } from "lucide-react";
 export async function generateStaticParams() {
   const topics = await getTopics();
   return topics.map((t) => ({ topic: t.id }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ topic: string }>;
+}): Promise<Metadata> {
+  const resolvedParams = await params;
+  const topic = await getTopicById(resolvedParams.topic);
+  if (!topic) {
+    return { title: "Topic Not Found | OutputTracer" };
+  }
+  return {
+    title: `${topic.title} C++ Practice Questions | OutputTracer`,
+    description: `Solve ${topic.title} C++ output prediction questions. ${topic.description} Test your dry-run and tracing accuracy online.`,
+    alternates: {
+      canonical: `/practice/${topic.id}`,
+    },
+    openGraph: {
+      title: `${topic.title} C++ Practice Questions | OutputTracer`,
+      description: `Practice ${topic.title} output prediction questions online with OutputTracer.`,
+      url: `https://outputtracer.com/practice/${topic.id}`,
+    },
+  };
 }
 
 export default async function TopicPage({ params }: { params: Promise<{ topic: string }> }) {
@@ -22,8 +47,37 @@ export default async function TopicPage({ params }: { params: Promise<{ topic: s
     notFound();
   }
 
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "https://outputtracer.com"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Practice",
+        "item": "https://outputtracer.com/practice"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": topic.title,
+        "item": `https://outputtracer.com/practice/${topic.id}`
+      }
+    ]
+  };
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <Header />
       <main className="min-h-screen pb-20">
         <section className="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">

@@ -9,7 +9,7 @@ import { getSupabaseBrowser } from "@/lib/supabase/browser";
  *
  * This component is "use client", so it only runs in the browser.
  * window.location.origin is always correct:
- *  - Production: https://outputtracer.devs.surf
+ *  - Production: https://outputtracer.com
  *  - Local dev:  http://localhost:3000
  *
  * We deliberately do NOT read NEXT_PUBLIC_SITE_URL here.  NEXT_PUBLIC_*
