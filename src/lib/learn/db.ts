@@ -22,9 +22,9 @@ import {
 } from "./initialData";
 
 // --- In-memory mutable store for local development / fallback ---
-let fallbackLanguages: LearnLanguage[] = [...INITIAL_LANGUAGES];
+const fallbackLanguages: LearnLanguage[] = [...INITIAL_LANGUAGES];
 let fallbackCourses: LearnCourse[] = [...INITIAL_COURSES];
-let fallbackModules: LearnModule[] = [...INITIAL_MODULES];
+const fallbackModules: LearnModule[] = [...INITIAL_MODULES];
 let fallbackLessons: LearnLesson[] = [...INITIAL_LESSONS];
 let fallbackQuestions: LearnQuestion[] = [...INITIAL_QUESTIONS];
 
@@ -44,6 +44,7 @@ const fallbackAttempts: Array<{
 // Normalizers to guarantee consistent snake_case and camelCase access
 // ==============================================================================
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function normalizeCourse(c: any): LearnCourse {
   const languageSlug =
     c.language_id === "asm8086" || c.language_id === "8086-assembly" || c.languageSlug === "8086-assembly"
@@ -68,6 +69,7 @@ export function normalizeCourse(c: any): LearnCourse {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function normalizeLesson(l: any): LearnLesson {
   return {
     ...l,
@@ -81,6 +83,7 @@ export function normalizeLesson(l: any): LearnLesson {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function normalizeQuestion(q: any, maskAnswer = true): LearnQuestion {
   return {
     ...q,
@@ -540,7 +543,7 @@ export async function markLessonCompleted(params: {
 
 export async function getStudentDashboardSummary(userId: string): Promise<StudentDashboardSummary> {
   const publishedCourses = await getPublishedCourses();
-  const enrolledCourses: any[] = [];
+  const enrolledCourses: StudentDashboardSummary["enrolledCourses"] = [];
   let totalLessonsAcrossAllCourses = 0;
 
   // Calculate total lessons across all courses
@@ -581,7 +584,7 @@ export async function getStudentDashboardSummary(userId: string): Promise<Studen
       for (const row of completionsRes.data || []) {
         completedLessonIds.add(row.lesson_id as string);
       }
-      userAttempts = (attemptsRes.data || []).map((row: any) => ({
+      userAttempts = (attemptsRes.data || []).map((row: Record<string, unknown>) => ({
         questionId: row.question_id as string,
         submittedAnswer: (row.submitted_answer as string) || "",
         isCorrect: Boolean(row.is_correct),
@@ -707,11 +710,13 @@ export async function getAllQuestionsAdmin(): Promise<LearnQuestion[]> {
       .from("learn_questions")
       .select("*")
       .order("display_order", { ascending: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (!error && data && data.length > 0) return data.map((q: any) => normalizeQuestion(q, false));
   }
   return fallbackQuestions.map((q) => normalizeQuestion(q, false)); // unmasked for admin
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function adminUpsertCourse(course: any): Promise<LearnCourse> {
   const adminSupabase = createAdminClient();
   if (adminSupabase) {
@@ -757,6 +762,7 @@ export async function adminDeleteCourse(courseId: string): Promise<boolean> {
   return true;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function adminUpsertLesson(lesson: any): Promise<LearnLesson> {
   const adminSupabase = createAdminClient();
   if (adminSupabase) {
@@ -802,6 +808,7 @@ export async function adminDeleteLesson(lessonId: string): Promise<boolean> {
   return true;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function adminUpsertQuestion(question: any): Promise<LearnQuestion> {
   const adminSupabase = createAdminClient();
   if (adminSupabase) {

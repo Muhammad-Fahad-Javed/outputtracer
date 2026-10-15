@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 // A mutable mock client so each test can control exactly what the privileged
 // Supabase admin client returns. `vi.mock` is hoisted, so `mockClient` is read
 // lazily by `createAdminClient` at call time.
-let mockClient: any = null;
+let mockClient: unknown = null;
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => mockClient,
@@ -34,11 +34,14 @@ function clearSupabase() {
 }
 
 // A PostgREST-style builder that is awaitable and also supports `.order()`.
-function queryResult(data: any, error: any = null) {
+function queryResult(data: unknown, error: unknown = null) {
   const p = Promise.resolve({ data, error });
   return {
     order: () => p,
-    then: (resolve: any, reject: any) => p.then(resolve, reject),
+    then: <TResult1 = unknown, TResult2 = never>(
+      resolve?: ((value: unknown) => TResult1 | PromiseLike<TResult1>) | null,
+      reject?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+    ) => p.then(resolve, reject),
   };
 }
 
