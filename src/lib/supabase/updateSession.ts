@@ -3,7 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { supabaseAnonKey, supabaseUrl } from "./env";
 import { requestOrigin } from "./requestOrigin";
 
-const PROTECTED = [/^\/projects(?:\/|$)/, /^\/groups(?:\/|$)/, /^\/p(?:\/|$)/];
+const PROTECTED = [
+  /^\/projects(?:\/|$)/,
+  /^\/groups(?:\/|$)/,
+  /^\/p(?:\/|$)/,
+  /^\/admin(?:\/|$)/,
+];
 
 export async function updateSession(request: NextRequest) {
   const url = supabaseUrl();
