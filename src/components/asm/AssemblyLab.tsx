@@ -106,6 +106,17 @@ export default function AssemblyLab() {
     editorRef.current.revealLineInCenterIfOutsideViewport(line);
   }, []);
 
+  // Pick up any pending assembly code transferred from Learn lessons
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const pendingAsm = window.localStorage.getItem("pending_asm_code");
+      if (pendingAsm) {
+        setCode(pendingAsm);
+        window.localStorage.removeItem("pending_asm_code");
+      }
+    }
+  }, []);
+
   // Assemble source code
   const handleAssemble = async () => {
     setIsLoading(true);
