@@ -13,12 +13,14 @@ import {
   Clock,
   FileCode,
   ShieldCheck,
+  Megaphone,
 } from "lucide-react";
 import {
   Classroom,
   ClassroomAssignment,
   ClassroomMember,
 } from "@/lib/classroom/types";
+import { ClassroomAnnouncement } from "@/lib/classroom/communicationTypes";
 
 export default function ClassroomDetailPage({
   params,
@@ -32,9 +34,10 @@ export default function ClassroomDetailPage({
   const [isTeacher, setIsTeacher] = useState(false);
   const [assignments, setAssignments] = useState<ClassroomAssignment[]>([]);
   const [members, setMembers] = useState<ClassroomMember[]>([]);
+  const [announcements, setAnnouncements] = useState<ClassroomAnnouncement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"assignments" | "roster">("assignments");
+  const [activeTab, setActiveTab] = useState<"assignments" | "announcements" | "roster">("assignments");
 
   useEffect(() => {
     let active = true;
@@ -43,8 +46,9 @@ export default function ClassroomDetailPage({
       fetch(`/api/classroom/${classId}`).then((r) => r.json()),
       fetch(`/api/classroom/${classId}/assignments`).then((r) => r.json()),
       fetch(`/api/classroom/${classId}/roster`).then((r) => r.json()),
+      fetch(`/api/classroom/${classId}/announcements`).then((r) => r.json()),
     ])
-      .then(([classData, asgData, rosterData]) => {
+      .then(([classData, asgData, rosterData, annData]) => {
         if (!active) return;
         if (!classData.success) {
           setError(classData.error || "Failed loading classroom.");
@@ -54,6 +58,7 @@ export default function ClassroomDetailPage({
         setIsTeacher(Boolean(classData.isTeacher));
         if (asgData.success) setAssignments(asgData.assignments || []);
         if (rosterData.success) setMembers(rosterData.members || []);
+        if (annData.success) setAnnouncements(annData.announcements || []);
       })
       .catch(() => {
         if (active) setError("A network error occurred while loading classroom.");
@@ -157,6 +162,16 @@ export default function ClassroomDetailPage({
                   <BookOpen size={13} /> Assignments ({assignments.length})
                 </button>
                 <button
+                  onClick={() => setActiveTab("announcements")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                    activeTab === "announcements"
+                      ? "bg-black text-white"
+                      : "text-[#666666] hover:bg-[#F0F0F0] hover:text-black"
+                  }`}
+                >
+                  <Megaphone size={13} /> Announcements ({announcements.length})
+                </button>
+                <button
                   onClick={() => setActiveTab("roster")}
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                     activeTab === "roster"
@@ -232,6 +247,55 @@ export default function ClassroomDetailPage({
                           View Assignment & Code &rarr;
                         </span>
                       </Link>
+                    ))}
+                  </div>
+                )
+              ) : activeTab === "announcements" ? (
+                /* Announcements Tab */
+                announcements.length === 0 ? (
+                  <div className="rounded-2xl border border-[#EAEAEA] bg-white p-12 text-center shadow-xs">
+                    <Megaphone size={32} className="mx-auto text-[#AAAAAA] mb-2" />
+                    <h3 className="text-sm font-bold text-black">No announcements yet</h3>
+                    <p className="mt-1 text-xs text-[#666666]">
+                      {isTeacher
+                        ? "Post updates and broadcasts to keep your students informed."
+                        : "Your instructor hasn't posted any announcements yet."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {announcements.map((ann) => (
+                      <div
+                        key={ann.id}
+                        className={`rounded-xl border p-5 bg-white shadow-xs space-y-2 ${
+                          ann.isPinned ? "border-amber-400 bg-amber-50/20" : "border-[#EAEAEA]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            {ann.isPinned && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                PINNED
+                              </span>
+                            )}
+                            <h3 className="text-sm font-bold text-black">{ann.title}</h3>
+                          </div>
+                          <span className="text-[11px] text-[#888888]">
+                            {new Date(ann.createdAt).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#444444] whitespace-pre-wrap leading-relaxed">{ann.content}</p>
+                        {ann.authorName && (
+                          <div className="pt-2 border-t border-[#F0F0F0] text-[11px] text-[#777777]">
+                            Posted by {ann.authorName}
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )
