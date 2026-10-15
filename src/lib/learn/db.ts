@@ -3,6 +3,7 @@
 
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isAuthConfigured } from "@/lib/supabase/env";
 import {
   LearnLanguage,
   LearnCourse,
@@ -330,14 +331,18 @@ export async function getQuestionsForLesson(
     if (supabase) {
       let query = supabase
         .from("learn_questions")
-        .select("*")
+        .select(
+          (includeAnswers
+            ? "*"
+            : "id,lesson_id,course_id,type,title,question_text,code_snippet,options,explanation,hint,points,difficulty,display_order,is_published,created_at,updated_at") as string,
+        )
         .eq("lesson_id", lessonId)
         .order("display_order", { ascending: true });
       if (!includeDrafts) {
         query = query.eq("is_published", true);
       }
       const { data } = await query;
-      if (data && data.length > 0) questions = data;
+      if (data && data.length > 0) questions = data as unknown as LearnQuestion[];
     }
   } catch {
     // Fallback
@@ -440,9 +445,9 @@ export async function recordStudentAttempt(params: {
   isCorrect: boolean;
   points: number;
 }): Promise<boolean> {
-  try {
-    const adminSupabase = createAdminClient();
-    if (adminSupabase) {
+  const adminSupabase = createAdminClient();
+  if (adminSupabase) {
+    try {
       const { error } = await adminSupabase.from("learn_question_attempts").insert({
         user_id: params.userId,
         course_id: params.courseId,
@@ -452,22 +457,36 @@ export async function recordStudentAttempt(params: {
         points_awarded: params.points,
       });
       if (!error) return true;
+      console.warn("Failed recording attempt to database:", error.message);
+    } catch (err) {
+      console.warn("Failed recording attempt to database:", err);
     }
-  } catch (err) {
-    console.warn("Failed recording attempt to database:", err);
+    // A configured database write failed: do NOT report success and do NOT
+    // silently fall back to process-local storage.
+    return false;
   }
 
-  fallbackAttempts.push({
-    userId: params.userId,
-    courseId: params.courseId,
-    questionId: params.questionId,
-    submittedAnswer: params.submittedAnswer,
-    isCorrect: params.isCorrect,
-    points: params.points,
-    createdAt: new Date().toISOString(),
-  });
+  // No database configured at all (local development / tests): keep the
+  // in-memory store so the feature still works without Supabase.
+  if (!isAuthConfigured()) {
+    fallbackAttempts.push({
+      userId: params.userId,
+      courseId: params.courseId,
+      questionId: params.questionId,
+      submittedAnswer: params.submittedAnswer,
+      isCorrect: params.isCorrect,
+      points: params.points,
+      createdAt: new Date().toISOString(),
+    });
+    return true;
+  }
 
-  return true;
+  // Supabase is configured but the privileged client is unavailable
+  // (e.g. missing service-role key): a write cannot be persisted.
+  console.warn(
+    "Learn persistence unavailable: Supabase is configured but the service role key is missing.",
+  );
+  return false;
 }
 
 export async function markLessonCompleted(params: {
@@ -475,16 +494,19 @@ export async function markLessonCompleted(params: {
   courseId: string;
   lessonId: string;
 }): Promise<boolean> {
-  try {
-    const adminSupabase = createAdminClient();
-    if (adminSupabase) {
+  const adminSupabase = createAdminClient();
+  if (adminSupabase) {
+    try {
       // Upsert enrollment
-      await adminSupabase.from("learn_enrollments").upsert({
+      const { error: enrollError } = await adminSupabase.from("learn_enrollments").upsert({
         user_id: params.userId,
         course_id: params.courseId,
         last_accessed_lesson_id: params.lessonId,
         updated_at: new Date().toISOString(),
       });
+      if (enrollError) {
+        console.warn("Failed upserting enrollment:", enrollError.message);
+      }
 
       // Upsert lesson completion
       const { error } = await adminSupabase.from("learn_lesson_completions").upsert({
@@ -495,21 +517,30 @@ export async function markLessonCompleted(params: {
       });
 
       if (!error) return true;
+      console.warn("Failed marking lesson completed in database:", error.message);
+    } catch (err) {
+      console.warn("Failed marking lesson completed in database:", err);
     }
-  } catch (err) {
-    console.warn("Failed marking lesson completed in database:", err);
+    // A configured database write failed: do not fake a successful save.
+    return false;
   }
 
-  fallbackCompletions.add(`${params.userId}:${params.lessonId}`);
-  return true;
+  // No database configured at all (local development / tests).
+  if (!isAuthConfigured()) {
+    fallbackCompletions.add(`${params.userId}:${params.lessonId}`);
+    return true;
+  }
+
+  // Supabase is configured but the privileged client is unavailable.
+  console.warn(
+    "Learn persistence unavailable: Supabase is configured but the service role key is missing.",
+  );
+  return false;
 }
 
 export async function getStudentDashboardSummary(userId: string): Promise<StudentDashboardSummary> {
   const publishedCourses = await getPublishedCourses();
   const enrolledCourses: any[] = [];
-  let totalLessonsCompleted = 0;
-  let totalQuestionsAttempted = 0;
-  let correctAttempts = 0;
   let totalLessonsAcrossAllCourses = 0;
 
   // Calculate total lessons across all courses
@@ -519,13 +550,69 @@ export async function getStudentDashboardSummary(userId: string): Promise<Studen
     totalLessonsAcrossAllCourses += count;
   }
 
-  // Fallback / memory completions
-  const userCompletions = Array.from(fallbackCompletions).filter((k) => k.startsWith(`${userId}:`));
-  const userAttempts = fallbackAttempts.filter((a) => a.userId === userId);
+  // Load the student's own progress. Prefer the database so progress is
+  // durable across requests and restarts; only fall back to the process-local
+  // store when Supabase is not configured at all (local development / tests).
+  const completedLessonIds = new Set<string>();
+  let userAttempts: Array<{
+    questionId: string;
+    submittedAnswer: string;
+    isCorrect: boolean;
+    points: number;
+    createdAt: string;
+  }> = [];
 
-  totalLessonsCompleted = userCompletions.length;
-  totalQuestionsAttempted = userAttempts.length;
-  correctAttempts = userAttempts.filter((a) => a.isCorrect).length;
+  const adminSupabase = createAdminClient();
+  let loadedFromDb = false;
+  if (adminSupabase) {
+    try {
+      const [completionsRes, attemptsRes] = await Promise.all([
+        adminSupabase.from("learn_lesson_completions").select("lesson_id").eq("user_id", userId),
+        adminSupabase
+          .from("learn_question_attempts")
+          .select("question_id, submitted_answer, is_correct, points_awarded, created_at")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: true }),
+      ]);
+
+      if (completionsRes.error) throw completionsRes.error;
+      if (attemptsRes.error) throw attemptsRes.error;
+
+      for (const row of completionsRes.data || []) {
+        completedLessonIds.add(row.lesson_id as string);
+      }
+      userAttempts = (attemptsRes.data || []).map((row: any) => ({
+        questionId: row.question_id as string,
+        submittedAnswer: (row.submitted_answer as string) || "",
+        isCorrect: Boolean(row.is_correct),
+        points: Number(row.points_awarded) || 0,
+        createdAt: (row.created_at as string) || "",
+      }));
+      loadedFromDb = true;
+    } catch (err) {
+      console.warn("Failed loading student progress from database:", err);
+    }
+  }
+
+  if (!loadedFromDb) {
+    for (const key of fallbackCompletions) {
+      const [uid, lessonId] = key.split(":");
+      if (uid === userId) completedLessonIds.add(lessonId);
+    }
+    userAttempts = fallbackAttempts
+      .filter((a) => a.userId === userId)
+      .map((a) => ({
+        questionId: a.questionId,
+        submittedAnswer: a.submittedAnswer,
+        isCorrect: a.isCorrect,
+        points: a.points,
+        createdAt: a.createdAt,
+      }));
+  }
+
+  const totalLessonsCompleted = completedLessonIds.size;
+  const totalQuestionsAttempted = userAttempts.length;
+  const correctAttempts = userAttempts.filter((a) => a.isCorrect).length;
 
   for (const course of publishedCourses) {
     const fullCourse = await getCourseBySlug(course.id, false);
@@ -534,9 +621,7 @@ export async function getStudentDashboardSummary(userId: string): Promise<Studen
       m.lessons?.forEach((l) => allLessonIds.push(l.id));
     });
 
-    const completedInCourse = allLessonIds.filter((lid) =>
-      fallbackCompletions.has(`${userId}:${lid}`)
-    ).length;
+    const completedInCourse = allLessonIds.filter((lid) => completedLessonIds.has(lid)).length;
     const totalInCourse = allLessonIds.length || course.totalLessons || 4;
     const progress = totalInCourse > 0 ? Math.round((completedInCourse / totalInCourse) * 100) : 0;
 
@@ -592,14 +677,38 @@ export async function getStudentDashboardSummary(userId: string): Promise<Studen
 // ==============================================================================
 
 export async function getAllCoursesAdmin(): Promise<LearnCourse[]> {
+  const adminSupabase = createAdminClient();
+  if (adminSupabase) {
+    const { data, error } = await adminSupabase
+      .from("learn_courses")
+      .select("*")
+      .order("display_order", { ascending: true });
+    if (!error && data && data.length > 0) return data.map(normalizeCourse);
+  }
   return fallbackCourses.map(normalizeCourse);
 }
 
 export async function getAllLessonsAdmin(): Promise<LearnLesson[]> {
+  const adminSupabase = createAdminClient();
+  if (adminSupabase) {
+    const { data, error } = await adminSupabase
+      .from("learn_lessons")
+      .select("*")
+      .order("display_order", { ascending: true });
+    if (!error && data && data.length > 0) return data.map(normalizeLesson);
+  }
   return fallbackLessons.map(normalizeLesson);
 }
 
 export async function getAllQuestionsAdmin(): Promise<LearnQuestion[]> {
+  const adminSupabase = createAdminClient();
+  if (adminSupabase) {
+    const { data, error } = await adminSupabase
+      .from("learn_questions")
+      .select("*")
+      .order("display_order", { ascending: true });
+    if (!error && data && data.length > 0) return data.map((q: any) => normalizeQuestion(q, false));
+  }
   return fallbackQuestions.map((q) => normalizeQuestion(q, false)); // unmasked for admin
 }
 

@@ -53,16 +53,20 @@ export async function POST(request: Request) {
         submittedAnswer: answer,
       });
 
-      // Record student attempt if user is authenticated or guest session
-      const studentId = user?.id || "guest-session";
-      await recordStudentAttempt({
-        userId: studentId,
-        courseId,
-        questionId,
-        submittedAnswer: answer,
-        isCorrect: result.isCorrect,
-        points: result.earnedPoints,
-      });
+      // Persist the attempt only for authenticated users. Guests cannot be
+      // persisted (the column is a uuid referencing auth.users), and a failed
+      // write must never be reported as a saved attempt.
+      let persisted = false;
+      if (user) {
+        persisted = await recordStudentAttempt({
+          userId: user.id,
+          courseId,
+          questionId,
+          submittedAnswer: answer,
+          isCorrect: result.isCorrect,
+          points: result.earnedPoints,
+        });
+      }
 
       return NextResponse.json({
         success: true,
@@ -70,6 +74,7 @@ export async function POST(request: Request) {
         explanation: result.explanation,
         earnedPoints: result.earnedPoints,
         points: result.earnedPoints,
+        persisted,
       });
     } catch (err: unknown) {
       const error = err as Error;
@@ -83,12 +88,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing lessonId" }, { status: 400 });
     }
 
-    const studentId = user?.id || "guest-session";
-    await markLessonCompleted({
-      userId: studentId,
+    // Progress is private per-student data, so it requires an authenticated user.
+    if (!user) {
+      return NextResponse.json(
+        { error: "Sign in to save your lesson progress." },
+        { status: 401 },
+      );
+    }
+
+    const saved = await markLessonCompleted({
+      userId: user.id,
       courseId,
       lessonId,
     });
+
+    if (!saved) {
+      return NextResponse.json(
+        { error: "Could not save your progress. Please try again." },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({ success: true, message: "Lesson marked completed" });
   }
