@@ -2,16 +2,20 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 
 const NAV_LINKS = [
+  { label: "8086 Assembly", href: "/assembly" },
   { label: "Projects", href: "/projects" },
   { label: "Practice", href: "/practice" },
   { label: "Learn", href: "/learn" },
 ];
 
 export default function Header() {
+  const pathname = usePathname();
+  const isAssembly = pathname?.startsWith("/assembly");
   const [menuOpen, setMenuOpen] = useState(false);
   const { user, isLoading, signOut } = useAuth();
 
@@ -27,7 +31,9 @@ export default function Header() {
             <Link
               key={link.href}
               href={link.href}
-              className="text-[13px] text-[#000000] transition-opacity hover:opacity-55"
+              className={`text-[13px] transition-opacity hover:opacity-55 ${
+                pathname === link.href ? "font-semibold text-black underline underline-offset-4" : "text-[#000000]"
+              }`}
             >
               {link.label}
             </Link>
@@ -35,9 +41,15 @@ export default function Header() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          <span className="rounded-[3px] border border-[#DCDCDC] bg-[#F2F2F2] px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-black">
-            C++
-          </span>
+          {isAssembly ? (
+            <span className="rounded-[3px] border border-[#007ACC] bg-[#094771] px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-white">
+              8086 / DOS
+            </span>
+          ) : (
+            <span className="rounded-[3px] border border-[#DCDCDC] bg-[#F2F2F2] px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-black">
+              C++
+            </span>
+          )}
 
           {!isLoading && (
             user ? (
