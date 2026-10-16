@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
+import NotificationBell from "@/components/NotificationBell";
 
 const NAV_LINKS = [
   { label: "8086 Assembly", href: "/assembly" },
@@ -55,6 +56,7 @@ export default function Header() {
           {!isLoading && (
             user ? (
               <div className="flex items-center gap-2.5">
+                <NotificationBell />
                 <span
                   className="max-w-[130px] truncate text-xs font-mono text-[#555555]"
                   title={user.email ?? ""}
