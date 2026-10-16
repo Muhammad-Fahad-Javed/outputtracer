@@ -19,6 +19,7 @@ import {
 } from "@/lib/classroom/versioningService";
 import { createSubmissionSnapshot } from "@/lib/classroom/gradingService";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isAuthConfigured } from "@/lib/supabase/env";
 
 export async function POST(
   request: Request,
@@ -114,11 +115,18 @@ export async function POST(
       submissionId = data.id as string;
     } catch (err: unknown) {
       const e = err as Error;
-      // Fall back to a generated ID for memory-only tests
+      if (isAuthConfigured()) {
+        console.error("Critical submission database persistence failure:", e.message);
+        return NextResponse.json({ success: false, error: "Submission could not be saved to durable database." }, { status: 500 });
+      }
+      // Fall back to a generated ID for offline unit tests
       submissionId = `sub-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      console.warn("Submission DB write failed, using memory ID:", e.message);
+      console.warn("Submission DB write failed, using memory ID for test:", e.message);
     }
   } else {
+    if (isAuthConfigured()) {
+      return NextResponse.json({ success: false, error: "Database service client is unavailable." }, { status: 500 });
+    }
     submissionId = `sub-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 

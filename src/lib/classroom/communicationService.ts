@@ -9,6 +9,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isAuthConfigured } from "@/lib/supabase/env";
 import { getClassroom } from "./classroomService";
 import type {
   ClassroomAnnouncement,
@@ -90,9 +91,16 @@ export async function createAnnouncement(
           },
         };
       }
-    } catch {
-      // Memory fallback below
+      console.warn("Failed creating announcement in database:", error?.message);
+      return { success: false, error: error?.message || "Failed to create announcement in database." };
+    } catch (err: unknown) {
+      console.warn("Database error creating announcement:", err);
+      return { success: false, error: "Database error occurred while creating announcement." };
     }
+  }
+
+  if (isAuthConfigured()) {
+    return { success: false, error: "Durable database client is unavailable. Cannot save announcement to transient memory." };
   }
 
   const announcement: ClassroomAnnouncement = {
@@ -222,9 +230,16 @@ export async function createDiscussionPost(
           },
         };
       }
-    } catch {
-      // Memory fallback below
+      console.warn("Failed creating discussion post in database:", error?.message);
+      return { success: false, error: error?.message || "Failed to create discussion post in database." };
+    } catch (err: unknown) {
+      console.warn("Database error creating discussion post:", err);
+      return { success: false, error: "Database error occurred while creating discussion post." };
     }
+  }
+
+  if (isAuthConfigured()) {
+    return { success: false, error: "Durable database client is unavailable. Cannot save discussion post to transient memory." };
   }
 
   const post: ClassroomDiscussionPost = {
@@ -393,9 +408,16 @@ export async function createNotification(
           },
         };
       }
-    } catch {
-      // Memory fallback below
+      console.warn("Failed creating notification in database:", error?.message);
+      return { success: false, error: error?.message || "Failed to create notification in database." };
+    } catch (err: unknown) {
+      console.warn("Database error creating notification:", err);
+      return { success: false, error: "Database error occurred while creating notification." };
     }
+  }
+
+  if (isAuthConfigured()) {
+    return { success: false, error: "Durable database client is unavailable. Cannot save notification to transient memory." };
   }
 
   const notif: ClassroomNotification = {

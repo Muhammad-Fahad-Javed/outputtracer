@@ -496,8 +496,12 @@ export async function exportGradebookCsv(
   ];
 
   const escapeCsv = (val: string | number | boolean) => {
-    const str = String(val).replace(/"/g, '""');
-    return `"${str}"`;
+    let str = String(val);
+    // Sanitize formula injection triggers (=, +, -, @, tab, CR)
+    if (/^[=+\-@\t\r]/.test(str)) {
+      str = `'${str}`;
+    }
+    return `"${str.replace(/"/g, '""')}"`;
   };
 
   const csvLines = [

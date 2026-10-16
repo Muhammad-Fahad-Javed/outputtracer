@@ -41,7 +41,7 @@ export async function POST(request: Request) {
   let body: {
     target: "course" | "lesson" | "question";
     action: "upsert" | "delete";
-    data?: any;
+    data?: Record<string, unknown>;
     id?: string;
   };
 

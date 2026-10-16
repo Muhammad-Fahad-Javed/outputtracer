@@ -10,6 +10,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isAuthConfigured } from "@/lib/supabase/env";
 import { runTestCase } from "./executionClient";
 import {
   createSubmissionSnapshot,
@@ -71,9 +72,16 @@ export async function upsertRubric(
         const d = data as any;
         return { id: d.id, assignmentId: d.assignment_id, items: d.items as RubricItem[], createdAt: d.created_at, updatedAt: d.updated_at };
       }
-    } catch {
-      // Fall through
+      console.warn("Failed upserting rubric to database:", error?.message);
+      throw new Error(error?.message || "Failed to upsert rubric.");
+    } catch (err) {
+      console.warn("Database error in upsertRubric:", err);
+      throw err;
     }
+  }
+
+  if (isAuthConfigured()) {
+    throw new Error("Durable database client is unavailable. Cannot save rubric to transient memory.");
   }
 
   const rubric: AssignmentRubric = {
@@ -301,9 +309,16 @@ async function writeGrade(input: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return mapGrade(data as any);
       }
-    } catch {
-      // Fall through
+      console.warn("Failed saving grade to database:", error?.message);
+      throw new Error(error?.message || "Failed to save submission grade.");
+    } catch (err) {
+      console.warn("Database error in writeGrade:", err);
+      throw err;
     }
+  }
+
+  if (isAuthConfigured()) {
+    throw new Error("Durable database client is unavailable. Cannot save grade to transient memory.");
   }
 
   const grade: SubmissionGrade = {
@@ -393,9 +408,16 @@ export async function addFeedback(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return mapFeedback(data as any);
       }
-    } catch {
-      // Fall through
+      console.warn("Failed saving feedback to database:", error?.message);
+      throw new Error(error?.message || "Failed to save submission feedback.");
+    } catch (err) {
+      console.warn("Database error in addFeedback:", err);
+      throw err;
     }
+  }
+
+  if (isAuthConfigured()) {
+    throw new Error("Durable database client is unavailable. Cannot save feedback to transient memory.");
   }
 
   const item: SubmissionFeedbackItem = {

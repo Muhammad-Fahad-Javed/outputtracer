@@ -6,6 +6,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isAuthConfigured } from "@/lib/supabase/env";
 import { createHash } from "crypto";
 import type {
   CodeVersion,
@@ -67,50 +68,75 @@ export async function saveCodeVersion(input: SaveVersionInput): Promise<CodeVers
 
   const admin = createAdminClient();
   if (admin) {
-    try {
-      // Get the latest version number for this owner
-      const { data: existing } = await admin
-        .from("assignment_code_versions")
-        .select("version_number")
-        .eq("assignment_id", input.assignmentId)
-        .eq(input.studentId ? "student_id" : "group_id", (input.studentId ?? input.groupId)!)
-        .order("version_number", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const ownerCol = input.studentId ? "student_id" : "group_id";
+    const ownerVal = (input.studentId ?? input.groupId)!;
+    const maxRetries = 3;
 
-      const nextVersion = ((existing?.version_number as number | null) ?? 0) + 1;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const { data: existing } = await admin
+          .from("assignment_code_versions")
+          .select("version_number")
+          .eq("assignment_id", input.assignmentId)
+          .eq(ownerCol, ownerVal)
+          .order("version_number", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      const { data, error } = await admin
-        .from("assignment_code_versions")
-        .insert({
-          assignment_id: input.assignmentId,
-          student_id: input.studentId ?? null,
-          group_id: input.groupId ?? null,
-          version_number: nextVersion,
-          code_files: input.codeFiles,
-          content_hash: contentHash,
-          language: input.language ?? "cpp",
-        })
-        .select()
-        .single();
+        const nextVersion = ((existing?.version_number as number | null) ?? 0) + 1;
 
-      if (!error && data) {
-        return {
-          id: data.id,
-          assignmentId: data.assignment_id,
-          studentId: data.student_id ?? undefined,
-          groupId: data.group_id ?? undefined,
-          versionNumber: data.version_number,
-          codeFiles: data.code_files as Record<string, string>,
-          contentHash: data.content_hash,
-          language: data.language,
-          createdAt: data.created_at,
-        };
+        const { data, error } = await admin
+          .from("assignment_code_versions")
+          .insert({
+            assignment_id: input.assignmentId,
+            student_id: input.studentId ?? null,
+            group_id: input.groupId ?? null,
+            version_number: nextVersion,
+            code_files: input.codeFiles,
+            content_hash: contentHash,
+            language: input.language ?? "cpp",
+          })
+          .select()
+          .single();
+
+        if (!error && data) {
+          return {
+            id: data.id,
+            assignmentId: data.assignment_id,
+            studentId: data.student_id ?? undefined,
+            groupId: data.group_id ?? undefined,
+            versionNumber: data.version_number,
+            codeFiles: data.code_files as Record<string, string>,
+            contentHash: data.content_hash,
+            language: data.language,
+            createdAt: data.created_at,
+          };
+        }
+
+        // Check if error is a unique constraint collision on version_number (Postgres code 23505)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pgErr = error as any;
+        if (pgErr?.code === "23505" && attempt < maxRetries - 1) {
+          continue; // retry to fetch next increment
+        }
+
+        console.warn("Failed saving code version to database:", error?.message);
+        throw new Error(error?.message || "Database insert failed for code version.");
+      } catch (err: unknown) {
+        if (attempt === maxRetries - 1) {
+          console.warn("Failed saving code version after retries:", err);
+          throw err;
+        }
       }
-    } catch {
-      // Fall through to memory store
     }
   }
+
+  // If Supabase is configured but admin client failed or threw, do not fake in-memory persistence in production
+  if (isAuthConfigured()) {
+    throw new Error("Durable database client is unavailable. Cannot save code version to transient memory.");
+  }
+
+  // Memory fallback for offline local tests
 
   // Memory fallback
   const existing = memVersions.get(ownerKey) ?? [];
@@ -269,9 +295,17 @@ export async function createSubmissionSnapshot(input: {
           isLate: d.is_late,
         };
       }
-    } catch {
-      // Fall through
+
+      console.warn("Failed creating submission snapshot in database:", error?.message);
+      throw new Error(error?.message || "Failed to insert submission snapshot.");
+    } catch (err) {
+      console.warn("Error in createSubmissionSnapshot database operation:", err);
+      throw err;
     }
+  }
+
+  if (isAuthConfigured()) {
+    throw new Error("Durable database client is unavailable. Cannot create snapshot in transient memory.");
   }
 
   const snapshot: SubmissionSnapshot = {
