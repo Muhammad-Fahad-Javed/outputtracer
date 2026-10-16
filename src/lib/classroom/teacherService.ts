@@ -118,7 +118,7 @@ export async function submitTeacherApplication(
 
       if (error) {
         console.warn("Database error submitting teacher application:", error.message);
-        return { success: false, error: "Could not save application to database" };
+        return { success: false, error: `Could not save application to database: ${error.message}` };
       }
 
       const app = normalizeApplication(data as Record<string, unknown>);

@@ -161,7 +161,21 @@ create index if not exists idx_classrooms_archived on public.classrooms(is_archi
 
 alter table public.classrooms enable row level security;
 
--- Classrooms can be viewed by their enrolled members or platform admins
+-- 5. CLASSROOM MEMBERS (Roster) - Created before classrooms policies reference it
+create table if not exists public.classroom_members (
+  classroom_id uuid not null references public.classrooms(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  role text not null default 'student' check (role in ('teacher', 'assistant', 'student')),
+  joined_at timestamptz not null default now(),
+  primary key (classroom_id, user_id)
+);
+
+create index if not exists idx_classroom_members_user on public.classroom_members(user_id);
+create index if not exists idx_classroom_members_class on public.classroom_members(classroom_id, role);
+
+alter table public.classroom_members enable row level security;
+
+-- Classrooms RLS policies
 create policy "Members and admins can view classrooms"
   on public.classrooms for select
   using (
@@ -185,20 +199,6 @@ create policy "Verified teachers can insert classrooms"
 create policy "Classroom owner can update classroom"
   on public.classrooms for update
   using (auth.uid() = teacher_id or public.is_admin());
-
--- 5. CLASSROOM MEMBERS (Roster)
-create table if not exists public.classroom_members (
-  classroom_id uuid not null references public.classrooms(id) on delete cascade,
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  role text not null default 'student' check (role in ('teacher', 'assistant', 'student')),
-  joined_at timestamptz not null default now(),
-  primary key (classroom_id, user_id)
-);
-
-create index if not exists idx_classroom_members_user on public.classroom_members(user_id);
-create index if not exists idx_classroom_members_class on public.classroom_members(classroom_id, role);
-
-alter table public.classroom_members enable row level security;
 
 -- Enrolled members can view the classroom roster
 create policy "Classroom members can view roster"
