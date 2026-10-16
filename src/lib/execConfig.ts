@@ -56,6 +56,22 @@ export const execConfig = {
   maxCpuSeconds: envInt("MAX_CPU_SECONDS", 5),
   maxProcesses: envInt("MAX_PROCESSES", 32),
 
+  // Resource limits for the *compiler* (g++). These are deliberately larger
+  // than the runtime limits: g++ legitimately needs more memory than a
+  // student program, and a template-metaprogramming bomb is bounded by
+  // compileTimeoutMs first. Applied via the same sandbox as the program so
+  // the compiler is resource-bounded too.
+  compileMaxMemoryMb: envInt("COMPILE_MAX_MEMORY_MB", 1024),
+  compileMaxCpuSeconds: envInt("COMPILE_MAX_CPU_SECONDS", 20),
+  compileMaxProcesses: envInt("COMPILE_MAX_PROCESSES", 64),
+
+  // Resource limits for the GDB tracer. GDB itself is memory-hungry, so the
+  // ceilings are higher than the plain runtime limits; the wall-clock
+  // traceTimeoutMs is the primary bound.
+  traceMaxMemoryMb: envInt("TRACE_MAX_MEMORY_MB", 1024),
+  traceMaxCpuSeconds: envInt("TRACE_MAX_CPU_SECONDS", 30),
+  traceMaxProcesses: envInt("TRACE_MAX_PROCESSES", 64),
+
   // Cap how many files a single submission may contain.
   maxSourceFiles: envInt("MAX_SOURCE_FILES", 16),
 
@@ -70,6 +86,18 @@ export const execConfig = {
   rateLimitWsMax: envInt("RATE_LIMIT_WS_MAX", 8),
   rateLimitWsWindowMs: envInt("RATE_LIMIT_WS_WINDOW_MS", 60_000),
 
+  // Interactive-terminal stdin caps. `maxStdinBytes` (above) is the total a
+  // session may forward; `maxWsStdinMessageBytes` bounds a single WebSocket
+  // message so one oversized frame cannot be buffered before we reject it.
+  maxWsStdinMessageBytes: envInt("MAX_WS_STDIN_MESSAGE_BYTES", 8 * 1024), // 8 KB
+  // Max size of any single WebSocket frame (terminal init + collab updates).
+  wsMaxPayloadBytes: envInt("WS_MAX_PAYLOAD_BYTES", 1024 * 1024), // 1 MB
+
+  // WebSocket Origin allow-list (comma-separated), used to block
+  // cross-site WebSocket hijacking. outputtracer.com is always allowed;
+  // localhost is additionally allowed in development.
+  wsAllowedOrigins: process.env.WS_ALLOWED_ORIGINS || "",
+
   // GDB tracer settings — used for generating step-by-step dry-run traces.
   // The tracer is best-effort; if GDB is unavailable, the API still returns
   // output but without a detailed trace.
@@ -78,3 +106,7 @@ export const execConfig = {
   traceTimeoutMs: envInt("TRACE_TIMEOUT_MS", 15_000),
   traceEnabled: process.env.ENABLE_TRACE !== "0",
 };
+// NOTE: unsandboxed-execution policy (ALLOW_UNSANDBOXED_EXECUTION /
+// TRACE_ALLOW_UNSANDBOXED) lives in ./sandbox (unsandboxedExecutionAllowed /
+// unsandboxedTraceAllowed) so it is evaluated at call time and is always
+// refused in production.

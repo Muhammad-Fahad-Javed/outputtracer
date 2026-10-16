@@ -38,9 +38,26 @@ import {
 } from "./execConfig";
 import { describeSignal } from "./signals";
 import { inspectSourceFiles } from "./sourceFiles";
-import { planUntrustedRun, sanitizedChildEnv } from "./sandbox";
+import {
+  planUntrustedRun,
+  planSandboxedCommand,
+  selectIsolation,
+  unsandboxedExecutionAllowed,
+  type ResourceLimits,
+} from "./sandbox";
 import { tryAcquireRun, releaseRun } from "./runGate";
 import { traceExecution, TraceResult } from "./gdbTracer";
+import { detectNondeterminism, buildDeterminismNote } from "./traceDeterminism";
+
+// The compiler is heavier than the student program, so it gets its own
+// (larger) ceilings — see execConfig.
+function compileLimits(): ResourceLimits {
+  return {
+    maxMemoryMb: execConfig.compileMaxMemoryMb,
+    maxCpuSeconds: execConfig.compileMaxCpuSeconds,
+    maxProcesses: execConfig.compileMaxProcesses,
+  };
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -128,6 +145,21 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
   }
   const { cppFiles, totalBytes: totalSourceBytes } = inspected;
 
+  // Fail closed: when no isolation mechanism is available (no bubblewrap,
+  // unshare, or prlimit) we would be executing untrusted code directly on the
+  // host. Refuse rather than fall back to an unsandboxed run. Production can
+  // never opt into this; non-production requires an explicit opt-in flag.
+  const isolation = await selectIsolation();
+  if (isolation === "none" && !unsandboxedExecutionAllowed()) {
+    log(execId, "execution_refused_no_isolation", { isolation });
+    return {
+      status: "server_error",
+      title: "Execution unavailable",
+      message:
+        "Code execution is unavailable because this server has no sandbox available. Please try again later.",
+    };
+  }
+
   const slot = tryAcquireRun(opts.ownerKey);
   if (slot !== "ok") {
     return {
@@ -190,7 +222,6 @@ async function runAcquired(
 
   const exeName = os.platform() === "win32" ? "main.exe" : "main.out";
   const exePath = path.join(tempDir, exeName);
-  const compileEnv = sanitizedChildEnv(tempDir);
 
   try {
     for (const [filename, content] of Object.entries(files)) {
@@ -201,18 +232,28 @@ async function runAcquired(
     log(execId, "compile_started", { standard, sourceBytes: totalSourceBytes });
     const compileStart = Date.now();
     let compileTimeMs = 0;
+
+    // The compiler itself is untrusted-adjacent: a malicious translation unit
+    // can try to #include host files into its own output. Run g++ in the same
+    // sandbox as the program — read-only /usr, only the submission dir
+    // writable, no network, sanitized env (so no Supabase key is reachable).
+    const compilePlan = await planSandboxedCommand({
+      tempDir,
+      command: execConfig.compiler,
+      args: [...cppFiles, `-std=${standard}`, "-g", "-O0", "-Wall", "-o", exeName],
+      limits: compileLimits(),
+      remapTempDirPaths: false,
+    });
+    log(execId, "compile_isolation", { isolation: compilePlan.isolation });
+
     try {
-      await execFileAsync(
-        execConfig.compiler,
-        [...cppFiles, `-std=${standard}`, "-g", "-O0", "-Wall", "-o", exeName],
-        {
-          cwd: tempDir,
-          env: compileEnv,
-          timeout: execConfig.compileTimeoutMs,
-          killSignal: "SIGKILL",
-          maxBuffer: execConfig.maxDiagnosticBytes * 4,
-        }
-      );
+      await execFileAsync(compilePlan.command, compilePlan.args, {
+        cwd: tempDir,
+        env: compilePlan.env,
+        timeout: execConfig.compileTimeoutMs,
+        killSignal: "SIGKILL",
+        maxBuffer: execConfig.maxDiagnosticBytes * 4,
+      });
       compileTimeMs = Date.now() - compileStart;
     } catch (error) {
       const err = error as Error & { killed?: boolean; signal?: string; stderr?: string; stdout?: string };
@@ -415,6 +456,17 @@ async function runAcquired(
         const err = error as Error;
         log(execId, "trace_failed", { error: err.message || String(err) });
         // Non-fatal — we still return the program output.
+      }
+
+      // The trace is a SECOND execution; flag programs that read the clock,
+      // draw random numbers or print addresses so the two can't silently
+      // disagree. See traceDeterminism.ts.
+      if (trace.steps.length > 0) {
+        const reasons = detectNondeterminism(files);
+        if (reasons.length > 0) {
+          trace = { ...trace, determinismWarning: buildDeterminismNote(reasons) };
+          log(execId, "trace_nondeterministic", { reasons: reasons.length });
+        }
       }
     }
 

@@ -500,7 +500,11 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
                           <span className="block text-[11px] font-semibold text-[#858585] mb-3 uppercase tracking-wider">
                             Execution Trace
                           </span>
-                          <DryRunTimeline steps={result.dryRun ?? []} truncated={result.traceTruncated} />
+                          <DryRunTimeline
+                            steps={result.dryRun ?? []}
+                            truncated={result.traceTruncated}
+                            note={result.traceNote}
+                          />
                         </div>
                       )}
                       

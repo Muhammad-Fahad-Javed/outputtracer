@@ -1,15 +1,22 @@
-// Plans how to spawn an untrusted compiled binary.
+// Plans how to spawn untrusted code — the compiled student binary, the C++
+// *compiler* that builds it, and the GDB tracer that re-runs it — under the
+// strongest isolation the host can provide.
 //
-// Preference order:
-//   1. bubblewrap: no network, fresh PID/UTS, only /usr + /dev + /proc + the
-//      submission directory visible
-//   2. unshare --net (+ prlimit)
-//   3. prlimit only
-//   4. bare spawn (non-Linux / missing tools)
+// Preference order (identical for all three call sites):
+//   1. bubblewrap (bwrap): fresh PID/UTS namespaces, no network, only /usr
+//      (+ /lib64 if present), /dev, /proc, a private /tmp, and the submission
+//      directory are visible. This is the ONLY mode that also restricts the
+//      filesystem the untrusted process can read.
+//   2. unshare --net (+ prlimit): removes outbound network and bounds
+//      resources, but the host filesystem remains fully visible.
+//   3. prlimit only: bounds CPU/memory/processes. No isolation.
+//   4. bare spawn (non-Linux / missing tools): NO isolation. Marked
+//      "none" and never used for graded execution.
 //
-// None of these is a substitute for a dedicated microVM. They do close the
-// easy holes: inherited env secrets, outbound network, and unbounded
-// fork/memory/CPU.
+// None of these is a substitute for a dedicated container/microVM per run.
+// They close the easy holes: inherited environment secrets, outbound
+// network, host filesystem access (bwrap only), and unbounded
+// fork/memory/CPU. See the README security section.
 
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -22,6 +29,12 @@ const execFileAsync = promisify(execFile);
 
 export type IsolationLevel = "bwrap" | "unshare-net" | "prlimit" | "none";
 
+export interface ResourceLimits {
+  maxMemoryMb: number;
+  maxCpuSeconds: number;
+  maxProcesses: number;
+}
+
 export interface RunPlan {
   command: string;
   args: string[];
@@ -29,9 +42,17 @@ export interface RunPlan {
   isolation: IsolationLevel;
 }
 
+// The directory the submission is mounted at inside a bubblewrap sandbox.
+const SANDBOX_DIR = "/sandbox";
+
+// Allow-list of environment variables handed to the compiler and the program.
+// Everything else in process.env — including SUPABASE_SERVICE_ROLE_KEY and any
+// other secret loaded from .env.local — is deliberately dropped.
 export function sanitizedChildEnv(homeDir: string): NodeJS.ProcessEnv {
   return {
-    PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    PATH:
+      process.env.PATH ||
+      "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     HOME: homeDir,
     TMPDIR: homeDir,
     TMP: homeDir,
@@ -39,6 +60,14 @@ export function sanitizedChildEnv(homeDir: string): NodeJS.ProcessEnv {
     LANG: "C.UTF-8",
     LC_ALL: "C.UTF-8",
     NODE_ENV: "production",
+  };
+}
+
+export function defaultResourceLimits(): ResourceLimits {
+  return {
+    maxMemoryMb: execConfig.maxMemoryMb,
+    maxCpuSeconds: execConfig.maxCpuSeconds,
+    maxProcesses: execConfig.maxProcesses,
   };
 }
 
@@ -98,11 +127,9 @@ export async function getUnshareMode(): Promise<UnshareMode> {
     return unshareMode;
   }
   try {
-    await execFileAsync(
-      "unshare",
-      ["--user", "--map-root-user", "--net", "true"],
-      { timeout: 2000 }
-    );
+    await execFileAsync("unshare", ["--user", "--map-root-user", "--net", "true"], {
+      timeout: 2000,
+    });
     unshareMode = "user-net";
     return unshareMode;
   } catch {
@@ -118,13 +145,31 @@ export async function getUnshareMode(): Promise<UnshareMode> {
   }
 }
 
-function prlimitPrefix(exePath: string): { command: string; args: string[] } {
+// The isolation level that planSandboxedCommand() will actually use, without
+// building the argument list. Callers that need to know the mode *before*
+// assembling paths (the GDB tracer does) use this directly.
+export async function selectIsolation(): Promise<IsolationLevel> {
+  if (await hasBubblewrap()) return "bwrap";
+  const unshare = await getUnshareMode();
+  if (unshare !== "none") return "unshare-net";
+  if (await hasPrlimit()) return "prlimit";
+  return "none";
+}
+
+export async function describeIsolation(): Promise<IsolationLevel> {
+  return selectIsolation();
+}
+
+function prlimitPrefix(
+  exePath: string,
+  limits: ResourceLimits
+): { command: string; args: string[] } {
   return {
     command: "prlimit",
     args: [
-      `--nproc=${execConfig.maxProcesses}`,
-      `--as=${execConfig.maxMemoryMb * 1024 * 1024}`,
-      `--cpu=${execConfig.maxCpuSeconds}`,
+      `--nproc=${limits.maxProcesses}`,
+      `--as=${limits.maxMemoryMb * 1024 * 1024}`,
+      `--cpu=${limits.maxCpuSeconds}`,
       "--",
       exePath,
     ],
@@ -138,6 +183,19 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// Rewrites an absolute path that lives under `tempDir` to its equivalent path
+// inside the sandbox (e.g. /tmp/outputtracer-x/main.out -> /sandbox/main.out).
+// Paths outside tempDir are returned unchanged.
+function remapToSandbox(tempDir: string, p: string): string {
+  const base = path.resolve(tempDir);
+  const norm = path.resolve(p);
+  if (norm === base) return SANDBOX_DIR;
+  if (norm.startsWith(base + path.sep)) {
+    return SANDBOX_DIR + norm.slice(base.length);
+  }
+  return p;
 }
 
 async function bwrapPrefix(
@@ -170,16 +228,16 @@ async function bwrapPrefix(
     "/tmp",
     "--bind",
     tempDir,
-    "/sandbox",
+    SANDBOX_DIR,
     "--chdir",
-    "/sandbox",
+    SANDBOX_DIR,
     "--clearenv",
     "--setenv",
     "PATH",
     "/usr/bin:/bin",
     "--setenv",
     "HOME",
-    "/sandbox",
+    SANDBOX_DIR,
     "--setenv",
     "TMPDIR",
     "/tmp",
@@ -199,41 +257,61 @@ async function bwrapPrefix(
   return args;
 }
 
-function remapExeToSandbox(exePath: string): string {
-  return `/sandbox/${path.basename(exePath)}`;
+export interface SandboxedCommandOptions {
+  /** The submission directory (contains the sources / compiled binary). */
+  tempDir: string;
+  /**
+   * Host command to run. May be a bare name resolved via PATH ("g++", "gdb"),
+   * an absolute path under /usr, or the compiled binary's host path.
+   */
+  command: string;
+  args: string[];
+  limits?: ResourceLimits;
+  /**
+   * When true (the default) absolute paths under `tempDir` are rewritten to
+   * their /sandbox equivalents. The compiled binary needs this; the compiler
+   * and GDB tracer pass relative names / already-sandbox-safe paths and set
+   * this to false.
+   */
+  remapTempDirPaths?: boolean;
 }
 
-export async function planUntrustedRun(opts: {
-  exePath: string;
-  tempDir: string;
-}): Promise<RunPlan> {
+export async function planSandboxedCommand(
+  opts: SandboxedCommandOptions
+): Promise<RunPlan> {
   const env = sanitizedChildEnv(opts.tempDir);
-  const usePrlimit = await hasPrlimit();
-  const sandboxExe = remapExeToSandbox(opts.exePath);
-  const hostInner = usePrlimit
-    ? prlimitPrefix(opts.exePath)
-    : { command: opts.exePath, args: [] as string[] };
-  const sandboxInner = usePrlimit
-    ? prlimitPrefix(sandboxExe)
-    : { command: sandboxExe, args: [] as string[] };
+  const limits = opts.limits ?? defaultResourceLimits();
+  const remap = opts.remapTempDirPaths !== false;
 
-  if (await hasBubblewrap()) {
+  const hostCommand = opts.command;
+  const hostArgs = opts.args;
+  const sandboxCommand = remap ? remapToSandbox(opts.tempDir, opts.command) : opts.command;
+  const sandboxArgs = remap
+    ? opts.args.map((a) => remapToSandbox(opts.tempDir, a))
+    : opts.args;
+
+  const usePrlimit = await hasPrlimit();
+  const isolation = await selectIsolation();
+
+  const hostInner = usePrlimit
+    ? prlimitPrefix(hostCommand, limits)
+    : { command: hostCommand, args: hostArgs };
+  const sandboxInner = usePrlimit
+    ? prlimitPrefix(sandboxCommand, limits)
+    : { command: sandboxCommand, args: sandboxArgs };
+
+  if (isolation === "bwrap") {
     return {
       command: "bwrap",
-      args: await bwrapPrefix(
-        opts.tempDir,
-        sandboxInner.command,
-        sandboxInner.args
-      ),
+      args: await bwrapPrefix(opts.tempDir, sandboxInner.command, sandboxInner.args),
       env,
       isolation: "bwrap",
     };
   }
 
-  const unshare = await getUnshareMode();
-  if (unshare !== "none") {
+  if (isolation === "unshare-net") {
     const unshareFlags =
-      unshare === "user-net"
+      (await getUnshareMode()) === "user-net"
         ? ["--user", "--map-root-user", "--net", "--"]
         : ["--net", "--"];
     return {
@@ -244,7 +322,7 @@ export async function planUntrustedRun(opts: {
     };
   }
 
-  if (usePrlimit) {
+  if (isolation === "prlimit") {
     return {
       command: hostInner.command,
       args: hostInner.args,
@@ -254,17 +332,54 @@ export async function planUntrustedRun(opts: {
   }
 
   return {
-    command: opts.exePath,
-    args: [],
+    command: hostCommand,
+    args: hostArgs,
     env,
     isolation: "none",
   };
 }
 
-export async function describeIsolation(): Promise<IsolationLevel> {
-  if (await hasBubblewrap()) return "bwrap";
-  const unshare = await getUnshareMode();
-  if (unshare !== "none") return "unshare-net";
-  if (await hasPrlimit()) return "prlimit";
-  return "none";
+export async function planUntrustedRun(opts: {
+  exePath: string;
+  tempDir: string;
+}): Promise<RunPlan> {
+  return planSandboxedCommand({
+    tempDir: opts.tempDir,
+    command: opts.exePath,
+    args: [],
+    limits: defaultResourceLimits(),
+    remapTempDirPaths: true,
+  });
+}
+
+// Exported for the GDB tracer, which must build /sandbox paths in the Python
+// script it generates when bubblewrap is in use.
+export function sandboxDir(): string {
+  return SANDBOX_DIR;
+}
+
+// ---------------------------------------------------------------------------
+// Unsandboxed-execution policy
+// ---------------------------------------------------------------------------
+// When NO isolation mechanism is available (isolation === "none") untrusted
+// code would run directly on the host. That is never acceptable in
+// production, so it is refused there regardless of any environment variable.
+// Outside production it still requires an explicit opt-in, and the default is
+// off — local convenience must never become the security boundary.
+//
+// process.env is read at call time (not at module load) so the decision always
+// reflects the running configuration and remains unit-testable.
+function envFlag(name: string): boolean {
+  const value = process.env[name];
+  return value === "1" || value === "true";
+}
+
+export function unsandboxedExecutionAllowed(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  return envFlag("ALLOW_UNSANDBOXED_EXECUTION");
+}
+
+export function unsandboxedTraceAllowed(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  return envFlag("ALLOW_UNSANDBOXED_EXECUTION") || envFlag("TRACE_ALLOW_UNSANDBOXED");
 }

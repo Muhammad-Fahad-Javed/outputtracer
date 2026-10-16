@@ -309,7 +309,11 @@ export default function CloudIde(props: CloudIdeProps) {
                 {result.error && <p className="mt-2 font-mono text-[12px] text-[#F48771]">{result.error.title}: {result.error.message}</p>}
                 {(result.dryRun ?? []).length > 0 && (
                   <div className="mt-4 border-t border-[#333333] pt-3">
-                    <DryRunTimeline steps={result.dryRun ?? []} truncated={result.traceTruncated} />
+                    <DryRunTimeline
+                      steps={result.dryRun ?? []}
+                      truncated={result.traceTruncated}
+                      note={result.traceNote}
+                    />
                   </div>
                 )}
               </div>
