@@ -315,6 +315,7 @@ export default function Predictor({ files, setFiles }: PredictorProps) {
           <Link href="/examples" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Examples</Link>
           <Link href="/practice" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Practice</Link>
           <Link href="/learn" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Learn</Link>
+          <Link href="/classroom" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Classroom</Link>
           <Link href="/projects" className="rounded-[2px] px-2 py-0.5 hover:bg-[#3E3E42]">Projects</Link>
           {user ? (
             <button
