@@ -21,7 +21,7 @@ import {
 } from "./execConfig";
 import { describeSignal } from "./signals";
 import { inspectSourceFiles } from "./sourceFiles";
-import { planUntrustedRun, sanitizedChildEnv } from "./sandbox";
+import { planUntrustedRun, planSandboxedCommand, selectIsolation, unsandboxedExecutionAllowed } from "./sandbox";
 import { tryAcquireRun, releaseRun } from "./runGate";
 
 const execFileAsync = promisify(execFile);
@@ -81,6 +81,18 @@ export async function handleTerminalSession(
     return;
   }
 
+  // Fail closed: never execute untrusted code when no isolation mechanism is
+  // available. Production can never opt into this; non-production requires an
+  // explicit opt-in flag (see sandbox.unsandboxedExecutionAllowed).
+  if ((await selectIsolation()) === "none" && !unsandboxedExecutionAllowed()) {
+    send(ws, {
+      type: "error",
+      data: "Code execution is unavailable because this server has no sandbox available.",
+    });
+    ws.close();
+    return;
+  }
+
   const slot = tryAcquireRun(payload.ownerKey);
   if (slot !== "ok") {
     send(ws, {
@@ -134,12 +146,25 @@ export async function handleTerminalSession(
     const compileStart = Date.now();
 
     try {
+      // Compile inside the same sandbox as the run (see cppRunner for why).
+      const compilePlan = await planSandboxedCommand({
+        tempDir,
+        command: execConfig.compiler,
+        args: [...cppFiles, `-std=${standard}`, "-g", "-O0", "-Wall", "-o", exeName],
+        limits: {
+          maxMemoryMb: execConfig.compileMaxMemoryMb,
+          maxCpuSeconds: execConfig.compileMaxCpuSeconds,
+          maxProcesses: execConfig.compileMaxProcesses,
+        },
+        remapTempDirPaths: false,
+      });
+
       const compileResult = await execFileAsync(
-        execConfig.compiler,
-        [...cppFiles, `-std=${standard}`, "-g", "-O0", "-Wall", "-o", exeName],
+        compilePlan.command,
+        compilePlan.args,
         {
           cwd: tempDir,
-          env: sanitizedChildEnv(tempDir),
+          env: compilePlan.env,
           timeout: execConfig.compileTimeoutMs,
           killSignal: "SIGKILL",
           maxBuffer: execConfig.maxDiagnosticBytes * 4,
@@ -253,21 +278,57 @@ export async function handleTerminalSession(
       send(ws, { type: "stderr", data: chunk.toString("utf8") });
     });
 
-    // Forward keystrokes from client to process stdin
+    // Forward keystrokes from client to process stdin, bounded so a client
+    // cannot stream unbounded input into the child (per message and per
+    // session). Exceeding either cap kills the run.
+    let stdinBytes = 0;
+    let stdinRejected = false;
     ws.on("message", (data) => {
-      const msg = data.toString();
+      if (stdinRejected) return;
+
+      const raw = data.toString();
+      let text = raw;
       try {
-        const parsed = JSON.parse(msg);
-        if (parsed.type === "stdin" && typeof parsed.data === "string") {
-          if (!child.killed && child.stdin.writable) {
-            child.stdin.write(parsed.data);
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          if (parsed.type === "stdin" && typeof parsed.data === "string") {
+            text = parsed.data;
+          } else {
+            return; // control message we don't handle
           }
         }
       } catch {
-        // Not JSON — treat as raw stdin
-        if (!child.killed && child.stdin.writable) {
-          child.stdin.write(msg);
-        }
+        // Not JSON — treat the frame as raw stdin.
+      }
+
+      const textBytes = Buffer.byteLength(text, "utf8");
+      if (textBytes > execConfig.maxWsStdinMessageBytes) {
+        stdinRejected = true;
+        send(ws, {
+          type: "error",
+          data: `Input message exceeds the ${Math.floor(
+            execConfig.maxWsStdinMessageBytes / 1024
+          )} KB limit.`,
+        });
+        killGroup("SIGKILL");
+        return;
+      }
+
+      stdinBytes += textBytes;
+      if (stdinBytes > execConfig.maxStdinBytes) {
+        stdinRejected = true;
+        send(ws, {
+          type: "error",
+          data: `Input exceeds the ${Math.floor(
+            execConfig.maxStdinBytes / 1024
+          )} KB session limit.`,
+        });
+        killGroup("SIGKILL");
+        return;
+      }
+
+      if (!child.killed && child.stdin.writable) {
+        child.stdin.write(text);
       }
     });
 

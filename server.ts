@@ -14,6 +14,7 @@ import {
 } from "./src/lib/wsTerminal.js";
 import { execConfig } from "./src/lib/execConfig.js";
 import { clientIpFromForwarded, globalRateLimiter } from "./src/lib/rateLimit.js";
+import { isOriginAllowed, parseAllowedOrigins } from "./src/lib/wsOrigin.js";
 import { getHub } from "./src/lib/cloud/collabHub.js";
 import { accessFromToken } from "./src/lib/cloud/accessToken.js";
 import { canEdit } from "./src/lib/cloud/roles.js";
@@ -48,6 +49,10 @@ async function resolveTerminalPayload(
 
 const port = parseInt(process.env.PORT || "3000", 10);
 const dev = process.env.NODE_ENV !== "production";
+const wsOriginPolicy = {
+  allowedOrigins: parseAllowedOrigins(execConfig.wsAllowedOrigins),
+  isDev: dev,
+};
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
@@ -57,11 +62,33 @@ app.prepare().then(() => {
     handle(req, res, parsedUrl);
   });
 
-  // WebSocket server — only handles upgrades on /ws/terminal
-  const wss = new WebSocketServer({ noServer: true });
+  // WebSocket server — only handles upgrades on /ws/terminal and /ws/collab.
+  // maxPayload caps any single frame (terminal init, collab updates) so one
+  // oversized message cannot be buffered.
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: execConfig.wsMaxPayloadBytes,
+  });
 
   server.on("upgrade", (req, socket, head) => {
     const { pathname } = parse(req.url!, true);
+
+    // Reject cross-site WebSocket handshakes (CSWSH). browsers always send
+    // Origin; non-browser clients that omit it are allowed (see wsOrigin.ts).
+    if (pathname === "/ws/collab" || pathname === "/ws/terminal") {
+      if (!isOriginAllowed(req.headers.origin, wsOriginPolicy)) {
+        console.warn(
+          JSON.stringify({
+            event: "ws_origin_rejected",
+            origin: req.headers.origin ?? null,
+            path: pathname,
+          })
+        );
+        socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+    }
 
     if (pathname === "/ws/collab") {
       const ip = clientIpFromForwarded(

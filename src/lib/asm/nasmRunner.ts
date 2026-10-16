@@ -1,5 +1,11 @@
 // Native NASM Assembler Adapter with graceful fallback to BuiltinAssembler
 // Safely invokes native `nasm` via execFile without a shell when installed.
+//
+// NASM processes *untrusted* user source (its preprocessor can read host files
+// via %include/incbin and even run commands via %!), so the native assembler is
+// executed under the same sandbox as the C++ toolchain. When no sandbox is
+// available the pure-JS builtin assembler is used instead — never an
+// unsandboxed native run.
 
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -8,6 +14,7 @@ import path from "path";
 import os from "os";
 import { assemble8086 } from "./assembler";
 import { AssembleResult, AsmDiagnostic } from "./types";
+import { planSandboxedCommand, selectIsolation, unsandboxedExecutionAllowed } from "../sandbox";
 
 const execFileAsync = promisify(execFile);
 
@@ -27,9 +34,16 @@ export async function checkNasmAvailable(): Promise<{ available: boolean; versio
   nasmCheckPromise = (async () => {
     try {
       const checkCmd = process.platform === "win32" ? "where" : "which";
-      await execFileAsync(checkCmd, ["nasm"], { timeout: 1000 });
-      const { stdout } = await execFileAsync("nasm", ["-v"], { timeout: 2000 });
-      nasmPath = "nasm";
+      const located = await execFileAsync(checkCmd, ["nasm"], { timeout: 1000 });
+      // Resolve an absolute path so the assembler is still reachable inside a
+      // bubblewrap sandbox (whose PATH is limited to /usr/bin:/bin).
+      const resolved =
+        (located.stdout || "")
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)[0] || "nasm";
+      const { stdout } = await execFileAsync(resolved, ["-v"], { timeout: 2000 });
+      nasmPath = resolved;
       nasmVersionString = stdout.trim().split("\n")[0];
       nasmAvailabilityChecked = true;
       return { available: true, version: nasmVersionString };
@@ -47,9 +61,14 @@ export async function checkNasmAvailable(): Promise<{ available: boolean; versio
 export async function assembleWithNasmOrFallback(source: string): Promise<AssembleResult> {
   const nasmInfo = await checkNasmAvailable();
 
-  if (nasmInfo.available) {
+  // Never run the native assembler on untrusted source without isolation.
+  // With no sandbox available we use the pure-JS builtin assembler instead
+  // (production can never opt into an unsandboxed run).
+  const sandboxed = (await selectIsolation()) !== "none" || unsandboxedExecutionAllowed();
+
+  if (nasmInfo.available && sandboxed && nasmPath) {
     try {
-      return await runNativeNasm(source);
+      return await runNativeNasm(source, nasmPath);
     } catch {
       // If native NASM fails with an execution error, fall back to builtin assembler
     }
@@ -59,7 +78,7 @@ export async function assembleWithNasmOrFallback(source: string): Promise<Assemb
   return assemble8086(source);
 }
 
-async function runNativeNasm(source: string): Promise<AssembleResult> {
+async function runNativeNasm(source: string, nasmPath: string): Promise<AssembleResult> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "outputtracer-nasm-"));
   const srcFile = path.join(tmpDir, "source.asm");
   const binFile = path.join(tmpDir, "output.com");
@@ -68,9 +87,18 @@ async function runNativeNasm(source: string): Promise<AssembleResult> {
   try {
     await fs.writeFile(srcFile, source, "utf8");
 
-    // Invoke nasm: argv array, no shell execution
-    await execFileAsync("nasm", ["-f", "bin", "-o", binFile, "-l", lstFile, srcFile], {
+    // Invoke nasm: argv array, no shell execution, inside the host sandbox.
+    const plan = await planSandboxedCommand({
+      tempDir: tmpDir,
+      command: nasmPath,
+      args: ["-f", "bin", "-o", binFile, "-l", lstFile, srcFile],
+      remapTempDirPaths: true,
+    });
+    await execFileAsync(plan.command, plan.args, {
+      cwd: tmpDir,
+      env: plan.env,
       timeout: 5000,
+      killSignal: "SIGKILL",
     });
 
     const binary = await fs.readFile(binFile);

@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { checkCompilerAvailable } from "@/lib/cppRunner";
-import { describeIsolation } from "@/lib/sandbox";
 
 // Lightweight health check: confirms the server is up AND that the C++
 // compiler it depends on is actually reachable. A load balancer / uptime
 // monitor should hit this rather than assuming the process being alive
 // means code execution works.
+//
+// This endpoint is public, so it deliberately does NOT report the active
+// isolation level (bwrap/unshare/prlimit/none) or any other detail that would
+// help an attacker fingerprint the host.
 export async function GET() {
   const compiler = await checkCompilerAvailable();
-  const isolation = await describeIsolation();
 
   return NextResponse.json(
     {
@@ -17,7 +19,6 @@ export async function GET() {
         available: compiler.available,
         version: compiler.version || null,
       },
-      isolation,
       time: new Date().toISOString(),
     },
     { status: compiler.available ? 200 : 503 }
