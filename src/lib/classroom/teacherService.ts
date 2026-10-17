@@ -8,6 +8,10 @@ import {
   TeacherApplicationStatus,
 } from "./types";
 import { _setMemoryTeacherAppStatus, _setMemoryTeacherProfile } from "./roles";
+import {
+  notifyPlatformOwnerNewTeacherApplication,
+  notifyTeacherApplicationDecision,
+} from "./emailProvider";
 
 // In-memory fallback stores for test environments
 const memoryApplications: TeacherApplication[] = [];
@@ -135,6 +139,32 @@ export async function submitTeacherApplication(
         },
         ip_address: ipAddress || null,
       });
+
+      // 4. Dispatch email notification to platform owner (if not draft)
+      if (!input.isDraft) {
+        try {
+          const { data: profile } = await admin
+            .from("profiles")
+            .select("display_name, email, full_name")
+            .eq("id", userId)
+            .maybeSingle();
+
+          const applicantName = profile?.full_name || profile?.display_name || "Applicant";
+          const applicantEmail = input.institutionEmail || profile?.email || "Unknown Email";
+          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+          void notifyPlatformOwnerNewTeacherApplication({
+            applicantName,
+            applicantEmail,
+            institutionName,
+            department: input.department?.trim() || undefined,
+            submittedAt: now,
+            reviewUrl: `${siteUrl}/admin/teachers`,
+          }).catch((err) => console.warn("Failed sending owner notification email:", err));
+        } catch {
+          // Non-blocking notification failure
+        }
+      }
 
       return { success: true, application: app };
     } catch (err) {
@@ -332,7 +362,7 @@ export async function decideTeacherApplicationAdmin(
         return { success: false, error: updateErr.message };
       }
 
-      // 3. Update or create teacher profile based on decision
+      // 3. Update or create teacher profile and app_roles based on decision
       if (newStatus === "approved") {
         await admin.from("teacher_profiles").upsert({
           user_id: applicantUserId,
@@ -342,6 +372,12 @@ export async function decideTeacherApplicationAdmin(
           verified_at: now,
           updated_at: now,
         });
+
+        // Also sync role in app_roles table
+        await admin.from("app_roles").upsert(
+          { user_id: applicantUserId, role: "teacher" },
+          { onConflict: "user_id,role" }
+        );
       } else if (newStatus === "suspended") {
         await admin
           .from("teacher_profiles")
@@ -368,6 +404,34 @@ export async function decideTeacherApplicationAdmin(
         },
         ip_address: ipAddress || null,
       });
+
+      // 5. Dispatch decision notification email to the applicant
+      if (newStatus === "approved" || newStatus === "rejected") {
+        try {
+          const { data: applicantProfile } = await admin
+            .from("profiles")
+            .select("display_name, email, full_name")
+            .eq("id", applicantUserId)
+            .maybeSingle();
+
+          const recipientEmail = (targetApp.institution_email as string) || applicantProfile?.email;
+          if (recipientEmail) {
+            const recipientName = applicantProfile?.full_name || applicantProfile?.display_name || "Educator";
+            const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+            const actionUrl = newStatus === "approved" ? `${siteUrl}/classroom` : `${siteUrl}/classroom/teach/apply`;
+
+            void notifyTeacherApplicationDecision({
+              recipientEmail,
+              recipientName,
+              decision: newStatus,
+              reviewerNotes: reviewerNotes?.trim() || undefined,
+              actionUrl,
+            }).catch((err) => console.warn("Failed sending applicant decision notification:", err));
+          }
+        } catch {
+          // Non-blocking notification error
+        }
+      }
 
       return {
         success: true,

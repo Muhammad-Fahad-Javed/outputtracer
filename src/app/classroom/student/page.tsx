@@ -61,6 +61,9 @@ export default function StudentDashboardPage() {
     enrolledCount: 0,
     pendingAssignmentsCount: 0,
     unreadCount: 0,
+    completedLessonsCount: 0,
+    solvedProblemsCount: 0,
+    savedProjectsCount: 0,
   });
   const [classrooms, setClassrooms] = useState<ClassroomSummary[]>([]);
   const [upcomingDeadlines, setUpcomingDeadlines] = useState<Deadline[]>([]);
@@ -159,47 +162,59 @@ export default function StudentDashboardPage() {
           )}
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-            <div className="rounded-2xl border border-[#EAEAEA] bg-white p-5 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#888888]">
-                  Enrolled Classes
-                </p>
-                <p className="text-2xl font-bold text-black mt-1">
-                  {loading ? "..." : stats.enrolledCount}
-                </p>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#DCDCDC] bg-[#F9F9F9] text-black">
-                <BookOpen className="w-5 h-5" />
-              </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
+            <div className="rounded-xl border border-[#EAEAEA] bg-white p-4 shadow-xs">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#888888]">
+                Enrolled Classes
+              </p>
+              <p className="text-xl font-bold text-black mt-1 font-mono">
+                {loading ? "..." : stats.enrolledCount}
+              </p>
             </div>
 
-            <div className="rounded-2xl border border-[#EAEAEA] bg-white p-5 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#888888]">
-                  Pending Assignments
-                </p>
-                <p className="text-2xl font-bold text-black mt-1">
-                  {loading ? "..." : stats.pendingAssignmentsCount}
-                </p>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700">
-                <Clock className="w-5 h-5" />
-              </div>
+            <div className="rounded-xl border border-[#EAEAEA] bg-white p-4 shadow-xs">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#888888]">
+                Assignments
+              </p>
+              <p className="text-xl font-bold text-black mt-1 font-mono">
+                {loading ? "..." : stats.pendingAssignmentsCount}
+              </p>
             </div>
 
-            <div className="rounded-2xl border border-[#EAEAEA] bg-white p-5 shadow-xs flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#888888]">
-                  Unread Alerts
-                </p>
-                <p className="text-2xl font-bold text-black mt-1">
-                  {loading ? "..." : stats.unreadCount}
-                </p>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-[#007ACC]">
-                <Bell className="w-5 h-5" />
-              </div>
+            <div className="rounded-xl border border-[#EAEAEA] bg-white p-4 shadow-xs">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#888888]">
+                Lessons Done
+              </p>
+              <p className="text-xl font-bold text-black mt-1 font-mono">
+                {loading ? "..." : stats.completedLessonsCount}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-[#EAEAEA] bg-white p-4 shadow-xs">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#888888]">
+                Practice Solved
+              </p>
+              <p className="text-xl font-bold text-black mt-1 font-mono">
+                {loading ? "..." : stats.solvedProblemsCount}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-[#EAEAEA] bg-white p-4 shadow-xs">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#888888]">
+                Saved Projects
+              </p>
+              <p className="text-xl font-bold text-black mt-1 font-mono">
+                {loading ? "..." : stats.savedProjectsCount}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 shadow-xs">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-800">
+                Unread Alerts
+              </p>
+              <p className="text-xl font-bold text-blue-900 mt-1 font-mono">
+                {loading ? "..." : stats.unreadCount}
+              </p>
             </div>
           </div>
 

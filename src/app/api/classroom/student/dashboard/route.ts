@@ -40,7 +40,7 @@ export async function GET(_req: NextRequest) {
           name,
           subject,
           description,
-          teacher:profiles!classrooms_teacher_id_fkey(full_name, username)
+          teacher:profiles!classrooms_teacher_id_fkey(full_name, username, display_name)
         )
       `)
       .eq("user_id", user.id)
@@ -169,12 +169,22 @@ export async function GET(_req: NextRequest) {
       };
     });
 
+    // 6. Persistent learning & project metrics
+    const [lessonsRes, practiceRes, projectsRes] = await Promise.all([
+      admin.from("learn_lesson_completions").select("*", { count: "exact", head: true }).eq("user_id", user.id),
+      admin.from("practice_progress").select("*", { count: "exact", head: true }).eq("user_id", user.id),
+      admin.from("projects").select("*", { count: "exact", head: true }).eq("owner_id", user.id),
+    ]);
+
     return NextResponse.json({
       success: true,
       stats: {
         enrolledCount: classrooms.length,
         pendingAssignmentsCount,
         unreadCount,
+        completedLessonsCount: lessonsRes.count ?? 0,
+        solvedProblemsCount: practiceRes.count ?? 0,
+        savedProjectsCount: projectsRes.count ?? 0,
       },
       classrooms,
       upcomingDeadlines: upcomingDeadlines.slice(0, 10),

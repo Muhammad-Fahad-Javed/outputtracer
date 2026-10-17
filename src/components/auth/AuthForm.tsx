@@ -57,10 +57,12 @@ export default function AuthForm({
   mode,
   nextPath,
   initialError = null,
+  role,
 }: {
   mode: "login" | "signup";
   nextPath: string;
   initialError?: string | null;
+  role?: "learner" | "teacher" | "admin";
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -156,17 +158,44 @@ export default function AuthForm({
     else setMessage("Password reset email sent — check your inbox.");
   };
 
+  const roleMeta: Record<string, { label: string; desc: string; color: string }> = {
+    learner: {
+      label: "Learner / Student",
+      desc: "Learn programming, join classrooms, track progress, and build projects.",
+      color: "bg-blue-50 text-blue-700 border-blue-200",
+    },
+    teacher: {
+      label: "Teacher / Educator",
+      desc: "Teach students, manage classrooms, create assignments, and review submissions.",
+      color: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    },
+    admin: {
+      label: "Administrator",
+      desc: "Manage users, verify educators, administer courses, and oversee the platform.",
+      color: "bg-amber-50 text-amber-700 border-amber-200",
+    },
+  };
+
+  const rm = role ? roleMeta[role] : null;
+
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-16">
       <Link href="/" className="text-[14px] font-semibold">
         OutputTracer
       </Link>
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight">
+
+      {/* ── Role badge ── */}
+      {rm && (
+        <div className={`mt-6 inline-flex items-center gap-2 self-start rounded-full border px-3 py-1 text-xs font-semibold ${rm.color}`}>
+          {rm.label}
+        </div>
+      )}
+
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight">
         {mode === "login" ? "Sign in" : "Create an account"}
       </h1>
       <p className="mt-2 text-sm text-[#666666]">
-        Save projects, invite editors and viewers, and work in the same files at
-        the same time.
+        {rm ? rm.desc : "Save projects, invite editors and viewers, and work in the same files at the same time."}
       </p>
 
       {/* ── Google OAuth ── */}
@@ -255,7 +284,7 @@ export default function AuthForm({
       {error && <p className="mt-4 text-sm text-[#9B1C1C]">{error}</p>}
       {message && <p className="mt-4 text-sm text-[#166534]">{message}</p>}
 
-      <p className="mt-8 text-sm text-[#666666]">
+      <div className="mt-8 flex flex-col gap-2 text-sm text-[#666666]">
         {mode === "login" ? (
           <Link
             href={`/signup?next=${encodeURIComponent(nextPath)}`}
@@ -271,7 +300,15 @@ export default function AuthForm({
             Already have an account
           </Link>
         )}
-      </p>
+        {role && (
+          <Link
+            href="/login"
+            className="text-[#666666] hover:text-black text-xs"
+          >
+            ← Switch to a different role
+          </Link>
+        )}
+      </div>
     </main>
   );
 }
