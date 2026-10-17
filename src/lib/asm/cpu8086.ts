@@ -1,8 +1,6 @@
 // Accurate 8086 CPU emulator with DOS INT 21h compatibility and execution tracking
 
 import {
-  CpuRegisters,
-  CpuFlags,
   CpuStateSnapshot,
   MemoryAccess,
   StackChange,

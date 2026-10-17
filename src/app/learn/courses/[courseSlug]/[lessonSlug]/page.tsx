@@ -18,10 +18,7 @@ import {
   HelpCircle,
   Cpu,
   Code2,
-  ChevronRight,
-  BookOpen,
   CheckCircle2,
-  ListOrdered,
 } from "lucide-react";
 
 interface LessonPageProps {

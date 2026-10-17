@@ -216,5 +216,15 @@ describe("Unified Profiles, Roles & Administrative Control System", () => {
       const caps = await getUserCapabilities("applicant-to-approve");
       expect(caps.isVerifiedTeacher).toBe(true);
     });
+
+    it("lists platform users and allows updating user roles", async () => {
+      process.env.ADMIN_USER_IDS = "admin-tester-id";
+      const usersRes = await listUsersAdmin("admin-tester-id");
+      expect(usersRes.success).toBe(true);
+      expect(Array.isArray(usersRes.users)).toBe(true);
+
+      const updateRoleRes = await updateUserRoleAdmin("admin-tester-id", "test-user-id", "teacher", "add");
+      expect(updateRoleRes.success).toBe(true);
+    });
   });
 });

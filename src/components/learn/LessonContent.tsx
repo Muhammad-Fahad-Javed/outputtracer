@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Info, Sparkles, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Info } from "lucide-react";
 
 interface LessonContentProps {
   content: string;

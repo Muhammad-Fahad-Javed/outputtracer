@@ -59,6 +59,19 @@ export default function CourseCatalog({ initialCourses }: CourseCatalogProps) {
           <Cpu size={13} />
           8086 NASM Assembly
         </button>
+
+        <button
+          type="button"
+          onClick={() => setSelectedLanguage("python")}
+          className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all ${
+            selectedLanguage === "python"
+              ? "bg-[#306998] text-white shadow-sm"
+              : "border border-[#DCDCDC] bg-white text-[#555555] hover:border-[#306998] hover:text-[#306998]"
+          }`}
+        >
+          <Terminal size={13} />
+          Python 3
+        </button>
       </div>
 
       {/* Courses Grid */}

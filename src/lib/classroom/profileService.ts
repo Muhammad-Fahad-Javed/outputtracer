@@ -78,10 +78,9 @@ export async function getUserProfile(userId: string): Promise<UserProfileData | 
   const admin = createAdminClient();
   if (admin) {
     try {
-      const [profileRes, rolesRes, teacherProfileRes, capabilities] = await Promise.all([
+      const [profileRes, rolesRes, capabilities] = await Promise.all([
         admin.from("profiles").select("*").eq("id", userId).maybeSingle(),
         admin.from("app_roles").select("role").eq("user_id", userId),
-        admin.from("teacher_profiles").select("status").eq("user_id", userId).maybeSingle(),
         getUserCapabilities(userId),
       ]);
 

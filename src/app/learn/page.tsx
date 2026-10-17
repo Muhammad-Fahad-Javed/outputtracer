@@ -9,10 +9,7 @@ import {
   ArrowRight,
   Cpu,
   Layers,
-  Terminal,
-  Compass,
   CheckCircle2,
-  BookOpen,
 } from "lucide-react";
 
 export const metadata: Metadata = {

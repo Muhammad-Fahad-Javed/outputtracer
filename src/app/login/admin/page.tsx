@@ -5,7 +5,7 @@ import SetupRequired from "@/components/cloud/SetupRequired";
 import { isAuthConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { checkIsAdmin } from "@/lib/learn/db";
-import { ShieldAlert, ArrowLeft } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 
 export default async function AdminLoginPage({
   searchParams,

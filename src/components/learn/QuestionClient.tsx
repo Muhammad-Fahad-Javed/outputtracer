@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, XCircle, HelpCircle, ArrowRight, Sparkles, AlertCircle } from "lucide-react";
+import { CheckCircle2, XCircle, HelpCircle, ArrowRight, Sparkles } from "lucide-react";
 import { LearnQuestion } from "@/lib/learn/types";
 
 interface QuestionClientProps {
   questions: LearnQuestion[];
   courseId: string;
-  lessonId: string;
-  courseSlug: string;
+  lessonId?: string;
+  courseSlug?: string;
 }
 
 interface QuestionState {
@@ -26,8 +26,6 @@ interface QuestionState {
 export default function QuestionClient({
   questions,
   courseId,
-  lessonId,
-  courseSlug,
 }: QuestionClientProps) {
   const [states, setStates] = useState<Record<string, QuestionState>>({});
 

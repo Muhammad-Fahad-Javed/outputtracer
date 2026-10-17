@@ -76,8 +76,39 @@ export default function AdminTeacherManager() {
   };
 
   useEffect(() => {
-    loadApplications(statusFilter);
-    loadAdminInvitations();
+    let active = true;
+    const fetchAdminData = async () => {
+      try {
+        const url = statusFilter && statusFilter !== "all"
+          ? `/api/admin/teachers?status=${encodeURIComponent(statusFilter)}`
+          : "/api/admin/teachers";
+        const [appRes, invRes] = await Promise.all([
+          fetch(url),
+          fetch("/api/admin/invitations"),
+        ]);
+        if (!active) return;
+        if (appRes.ok) {
+          const appData = await appRes.json();
+          if (appData.success && active) setApplications(appData.applications || []);
+        }
+        if (invRes.ok) {
+          const invData = await invRes.json();
+          if (invData.success && active) setAdminInvitations(invData.invitations || []);
+        }
+      } catch {
+        if (active) setFeedback({ type: "error", message: "Failed loading teacher applications." });
+      } finally {
+        if (active) {
+          setLoading(false);
+          setLoadingInvitations(false);
+        }
+      }
+    };
+
+    void fetchAdminData();
+    return () => {
+      active = false;
+    };
   }, [statusFilter]);
 
   const handleOpenDecision = (app: TeacherApplication, type: "approve" | "reject" | "request_info" | "suspend") => {

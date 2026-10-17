@@ -12,7 +12,6 @@ import {
   User,
   ArrowLeft,
   AlertCircle,
-  ShieldAlert,
 } from "lucide-react";
 import type { ClassroomMessage } from "@/lib/classroom/communicationTypes";
 import type { ConversationSummary } from "@/lib/classroom/messagingService";
@@ -75,8 +74,36 @@ export default function ClassroomMessagesPage() {
 
   // Initial load
   useEffect(() => {
-    loadConversations();
-    loadMessages();
+    let active = true;
+    const fetchInitialData = async () => {
+      try {
+        const [convRes, msgRes] = await Promise.all([
+          fetch(`/api/classroom/${classId}/messages/conversations`),
+          fetch(`/api/classroom/${classId}/messages?limit=50`),
+        ]);
+        if (!active) return;
+        if (convRes.ok) {
+          const cData = await convRes.json();
+          if (cData.success && active) setConversations(cData.conversations || []);
+        }
+        if (msgRes.ok) {
+          const mData = await msgRes.json();
+          if (mData.success && active) setMessages(mData.messages || []);
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (active) {
+          setLoadingConversations(false);
+          setLoadingMessages(false);
+        }
+      }
+    };
+
+    void fetchInitialData();
+    return () => {
+      active = false;
+    };
   }, [classId]);
 
   // Polling for updates every 10 seconds only when tab is visible
@@ -88,6 +115,7 @@ export default function ClassroomMessagesPage() {
 
     const interval = setInterval(handlePoll, 10000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId, selectedPartnerId]);
 
   // Auto-scroll to bottom when messages update

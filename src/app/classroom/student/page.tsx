@@ -10,10 +10,8 @@ import {
   Calendar,
   Award,
   Bell,
-  Clock,
   ArrowRight,
   AlertCircle,
-  FileText,
   MessageSquare,
   Sparkles,
 } from "lucide-react";
@@ -70,6 +68,7 @@ export default function StudentDashboardPage() {
   const [recentGrades, setRecentGrades] = useState<GradeItem[]>([]);
   const [recentActivity, setRecentActivity] = useState<NotificationItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -83,6 +82,7 @@ export default function StudentDashboardPage() {
         }
         const data = await res.json();
         if (active && data.success) {
+          setCurrentTime(Date.now());
           setStats(data.stats);
           setClassrooms(data.classrooms || []);
           setUpcomingDeadlines(data.upcomingDeadlines || []);
@@ -105,7 +105,8 @@ export default function StudentDashboardPage() {
   }, []);
 
   const formatDueDiff = (dateStr: string) => {
-    const diff = new Date(dateStr).getTime() - Date.now();
+    if (currentTime === null) return { text: "Due soon", color: "text-[#666666] bg-[#F2F2F2] border-[#DCDCDC]" };
+    const diff = new Date(dateStr).getTime() - currentTime;
     const hours = Math.round(diff / (1000 * 60 * 60));
     if (hours < 0) return { text: "Past due", color: "text-rose-600 bg-rose-50 border-rose-200" };
     if (hours < 24) return { text: `Due in ${hours}h`, color: "text-rose-700 bg-rose-50 border-rose-200 font-semibold" };

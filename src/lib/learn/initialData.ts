@@ -17,6 +17,14 @@ export const INITIAL_LANGUAGES: LearnLanguage[] = [
     display_order: 2,
     is_published: true,
   },
+  {
+    id: "python",
+    name: "Python 3",
+    description: "Modern, readable, high-level programming language widely used in AI, data science, and web development.",
+    icon: "Terminal",
+    display_order: 3,
+    is_published: true,
+  },
 ];
 
 export const INITIAL_COURSES: LearnCourse[] = [

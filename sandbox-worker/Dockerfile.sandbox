@@ -1,0 +1,21 @@
+# Sandbox image for OutputTracer Python execution.
+# Contains ONLY the interpreter and the two worker scripts. No pip packages,
+# no compilers, no shell utilities beyond what the slim base ships.
+FROM python:3.12-slim
+
+# Unprivileged identity; the sandbox worker also passes --user at run time.
+RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin pyrunner
+
+COPY py/run_worker.py /opt/worker/run_worker.py
+COPY py/trace_worker.py /opt/worker/trace_worker.py
+RUN chmod 0444 /opt/worker/*.py && chmod 0555 /opt/worker
+
+USER 10001:10001
+WORKDIR /tmp
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=0 \
+    PYTHONIOENCODING=utf-8 \
+    PYTHONUNBUFFERED=1
+
+# Deliberately no ENTRYPOINT: the sandbox worker chooses the script.
+CMD ["python3", "-I", "/opt/worker/run_worker.py"]

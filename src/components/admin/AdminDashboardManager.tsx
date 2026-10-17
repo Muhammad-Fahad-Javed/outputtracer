@@ -9,16 +9,12 @@ import {
   FolderCode,
   ShieldCheck,
   Search,
-  Filter,
   CheckCircle2,
   AlertCircle,
   Clock,
-  ShieldAlert,
   ArrowRight,
   RefreshCw,
   ExternalLink,
-  Archive,
-  Eye,
 } from "lucide-react";
 import AdminTeacherManager from "./AdminTeacherManager";
 
@@ -92,18 +88,6 @@ export default function AdminDashboardManager() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
 
-  useEffect(() => {
-    loadOverview();
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === "users") {
-      loadUsers();
-    } else if (activeTab === "audit") {
-      loadAuditLogs();
-    }
-  }, [activeTab]);
-
   const loadOverview = async () => {
     try {
       setLoadingOverview(true);
@@ -161,6 +145,77 @@ export default function AdminDashboardManager() {
       setLoadingAudit(false);
     }
   };
+
+  useEffect(() => {
+    let active = true;
+    const fetchOverview = async () => {
+      try {
+        const res = await fetch("/api/admin/overview");
+        if (!active) return;
+        const data = await res.json();
+        if (data.success && active) {
+          setStats(data.stats);
+          setRecentClassrooms(data.recentClassrooms || []);
+          setRecentCourses(data.recentCourses || []);
+        }
+      } catch {
+        if (active) setActionFeedback({ type: "error", message: "Failed loading platform metrics." });
+      } finally {
+        if (active) setLoadingOverview(false);
+      }
+    };
+    void fetchOverview();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (activeTab === "users") {
+      const fetchUsers = async () => {
+        try {
+          const res = await fetch("/api/admin/users");
+          if (!active) return;
+          const data = await res.json();
+          if (data.success && active) {
+            setUsers(data.users || []);
+            if (data.stats) {
+              setUserStats({
+                learnerCount: data.stats.learnerCount,
+                teacherCount: data.stats.teacherCount,
+                adminCount: data.stats.adminCount,
+              });
+            }
+          }
+        } catch {
+          if (active) setActionFeedback({ type: "error", message: "Failed loading user roster." });
+        } finally {
+          if (active) setLoadingUsers(false);
+        }
+      };
+      void fetchUsers();
+    } else if (activeTab === "audit") {
+      const fetchAudit = async () => {
+        try {
+          const res = await fetch("/api/admin/audit");
+          if (!active) return;
+          const data = await res.json();
+          if (data.success && active) {
+            setAuditLogs(data.logs || []);
+          }
+        } catch {
+          // ignore
+        } finally {
+          if (active) setLoadingAudit(false);
+        }
+      };
+      void fetchAudit();
+    }
+    return () => {
+      active = false;
+    };
+  }, [activeTab]);
 
   const handleRoleChange = async (
     targetUserId: string,

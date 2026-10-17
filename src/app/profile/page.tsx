@@ -96,37 +96,41 @@ export default function ProfilePage() {
     }
 
     if (user) {
-      loadProfile();
+      let active = true;
+      const fetchProfile = async () => {
+        try {
+          const res = await fetch("/api/profile");
+          if (!active) return;
+          if (res.status === 401) {
+            router.push("/login?next=/profile");
+            return;
+          }
+          const data = await res.json();
+          if (data.success && data.profile && active) {
+            const p: ProfileData = data.profile;
+            setProfile(p);
+            setFullName(p.fullName || "");
+            setDisplayName(p.displayName || "");
+            setUsername(p.username || "");
+            setPhone(p.phone || "");
+            setBio(p.bio || "");
+            setCountry(p.country || "");
+            setCity(p.city || "");
+            setSelectedLanguages(p.preferredLanguages || ["cpp"]);
+          }
+        } catch {
+          if (active) setErrorMsg("Failed to load profile data.");
+        } finally {
+          if (active) setLoading(false);
+        }
+      };
+
+      void fetchProfile();
+      return () => {
+        active = false;
+      };
     }
   }, [user, authLoading, router]);
-
-  const loadProfile = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("/api/profile");
-      if (res.status === 401) {
-        router.push("/login?next=/profile");
-        return;
-      }
-      const data = await res.json();
-      if (data.success && data.profile) {
-        const p: ProfileData = data.profile;
-        setProfile(p);
-        setFullName(p.fullName || "");
-        setDisplayName(p.displayName || "");
-        setUsername(p.username || "");
-        setPhone(p.phone || "");
-        setBio(p.bio || "");
-        setCountry(p.country || "");
-        setCity(p.city || "");
-        setSelectedLanguages(p.preferredLanguages || ["cpp"]);
-      }
-    } catch {
-      setErrorMsg("Failed to load profile data.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();

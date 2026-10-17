@@ -12,12 +12,8 @@ import {
   Trophy,
   Target,
   ArrowRight,
-  Clock,
   Compass,
-  Play,
   Award,
-  Cpu,
-  Code2,
 } from "lucide-react";
 
 export const metadata: Metadata = {

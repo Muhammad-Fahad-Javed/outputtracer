@@ -49,14 +49,21 @@ export function normalizeCourse(c: any): LearnCourse {
   const languageSlug =
     c.language_id === "asm8086" || c.language_id === "8086-assembly" || c.languageSlug === "8086-assembly"
       ? "8086-assembly"
+      : c.language_id === "python" || c.languageSlug === "python"
+      ? "python"
       : "cpp";
-  const languageName = languageSlug === "8086-assembly" ? "8086 NASM Assembly" : "C++";
+  const languageName =
+    languageSlug === "8086-assembly"
+      ? "8086 NASM Assembly"
+      : languageSlug === "python"
+      ? "Python 3"
+      : "C++";
 
   return {
     ...c,
     slug: c.id,
-    language_id: c.language_id || (languageSlug === "cpp" ? "cpp" : "asm8086"),
-    languageId: c.language_id || (languageSlug === "cpp" ? "cpp" : "asm8086"),
+    language_id: c.language_id || (languageSlug === "cpp" ? "cpp" : languageSlug === "python" ? "python" : "asm8086"),
+    languageId: c.language_id || (languageSlug === "cpp" ? "cpp" : languageSlug === "python" ? "python" : "asm8086"),
     languageSlug,
     languageName,
     difficulty: c.difficulty || "Beginner",

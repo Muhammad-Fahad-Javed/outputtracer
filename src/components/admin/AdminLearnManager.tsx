@@ -8,21 +8,12 @@ import {
   LearnQuestion,
 } from "@/lib/learn/types";
 import {
-  Users,
   BookOpen,
-  CheckCircle2,
   Trophy,
   Layers,
   HelpCircle,
-  Plus,
-  Trash2,
-  Edit,
   Eye,
   EyeOff,
-  Cpu,
-  Code2,
-  RefreshCw,
-  Sparkles,
 } from "lucide-react";
 
 interface AdminLearnManagerProps {
@@ -39,7 +30,7 @@ export default function AdminLearnManager({
   initialQuestions,
 }: AdminLearnManagerProps) {
   const [activeTab, setActiveTab] = useState<"analytics" | "courses" | "lessons" | "questions">("analytics");
-  const [analytics, setAnalytics] = useState(initialAnalytics);
+  const analytics = initialAnalytics;
   const [courses, setCourses] = useState(initialCourses);
   const [lessons, setLessons] = useState(initialLessons);
   const [questions, setQuestions] = useState(initialQuestions);
@@ -49,9 +40,6 @@ export default function AdminLearnManager({
 
   // Selected filter for lessons and questions
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>("all");
-
-  // Edit / Create course state
-  const [editingCourse, setEditingCourse] = useState<Partial<LearnCourse> | null>(null);
 
   const showNotification = (type: "success" | "error", text: string) => {
     setMessage({ type, text });

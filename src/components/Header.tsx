@@ -18,6 +18,7 @@ import NotificationBell from "@/components/NotificationBell";
 
 const NAV_LINKS = [
   { label: "8086 Assembly", href: "/assembly" },
+  { label: "Python 3", href: "/python" },
   { label: "Projects", href: "/projects" },
   { label: "Practice", href: "/practice" },
   { label: "Learn", href: "/learn" },
@@ -36,11 +37,7 @@ export default function Header() {
   const [isTeacher, setIsTeacher] = useState(false);
 
   useEffect(() => {
-    if (!user) {
-      setIsAdmin(false);
-      setIsTeacher(false);
-      return;
-    }
+    if (!user) return;
 
     let active = true;
     fetch("/api/profile")
@@ -55,6 +52,8 @@ export default function Header() {
 
     return () => {
       active = false;
+      setIsAdmin(false);
+      setIsTeacher(false);
     };
   }, [user]);
 

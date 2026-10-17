@@ -7,7 +7,7 @@ import {
   revokeAdminInvitation,
 } from "@/lib/classroom/adminRoleService";
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const supabase = await createClient();
   if (!supabase) {
     return NextResponse.json({ success: false, error: "Auth service unavailable" }, { status: 503 });
