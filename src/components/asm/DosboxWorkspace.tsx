@@ -3,22 +3,13 @@
 import { useState } from "react";
 import { saveAs } from "file-saver";
 import {
-  Terminal,
-  Activity,
-  HardDrive,
-  Layers,
-  HelpCircle,
-  Play,
-  RotateCcw,
   Download,
   Trash2,
   CheckCircle2,
   AlertTriangle,
-  Clock,
-  Cpu,
   Info,
   ChevronDown,
-  type LucideIcon,
+  Clock,
 } from "lucide-react";
 import { AsmExecutionStatus, AsmDiagnostic } from "@/lib/asm/types";
 import { WorkspaceTabId } from "@/lib/workspaceConfig";
@@ -28,11 +19,11 @@ interface DosboxWorkspaceProps {
   diagnostics: AsmDiagnostic[];
   engineUsed: string;
   executionTimeMs: number | null;
-  activeTab: WorkspaceTabId;
-  onTabChange: (tab: WorkspaceTabId) => void;
-  onRun: () => void;
-  onStep: () => void;
-  onReset: () => void;
+  activeTab?: WorkspaceTabId;
+  onTabChange?: (tab: WorkspaceTabId) => void;
+  onRun?: () => void;
+  onStep?: () => void;
+  onReset?: () => void;
   onClear: () => void;
   sourceCode: string;
   isLoading: boolean;
@@ -44,11 +35,6 @@ export default function DosboxWorkspace({
   diagnostics,
   engineUsed,
   executionTimeMs,
-  activeTab,
-  onTabChange,
-  onRun,
-  onStep,
-  onReset,
   onClear,
   sourceCode,
   isLoading,
@@ -182,73 +168,8 @@ export default function DosboxWorkspace({
     saveAs(blob, "dosbox_execution_report.txt");
   };
 
-  const tabs: { id: WorkspaceTabId; label: string; icon: LucideIcon }[] = [
-    { id: "output", label: "Output", icon: Terminal },
-    { id: "dosbox", label: "DOSBox", icon: Cpu },
-    { id: "registers", label: "Registers", icon: Activity },
-    { id: "memory", label: "Memory", icon: HardDrive },
-    { id: "stack", label: "Stack", icon: Layers },
-    { id: "trace", label: "Trace", icon: Clock },
-    { id: "input", label: "Input", icon: Terminal },
-    { id: "instructionHelp", label: "Instruction Help", icon: HelpCircle },
-  ];
-
   return (
     <div className="flex h-full w-full flex-col bg-[#0A0A0A] text-[#CCCCCC] font-sans overflow-hidden select-none">
-      {/* Top Workspace Navigation Tabs (Horizontal Compact Tabs) */}
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[#2E2E2E] bg-[#181818] px-3">
-        <div className="flex h-full items-center gap-1 overflow-x-auto">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => onTabChange(tab.id)}
-                className={`flex h-full items-center gap-1.5 px-3 text-[12px] font-semibold transition-all border-b-2 ${
-                  isActive
-                    ? "border-white bg-[#121212] text-white"
-                    : "border-transparent text-[#888888] hover:text-[#CCCCCC] hover:bg-[#1E1E1E]"
-                }`}
-              >
-                <Icon size={14} className={isActive ? "text-white" : "text-[#888888]"} />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onRun}
-            disabled={isLoading}
-            className="flex items-center gap-1 rounded bg-[#238636] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#2EA043] transition-colors disabled:opacity-50 shadow-sm"
-          >
-            <Play size={12} fill="white" />
-            <span>Assemble & Run</span>
-          </button>
-          <button
-            type="button"
-            onClick={onStep}
-            disabled={isLoading || (!status.canStepForward && status.state !== "ready")}
-            className="flex items-center gap-1 rounded border border-[#2E2E2E] bg-[#121212] px-2.5 py-1 text-[11px] font-medium text-white hover:bg-[#252526] transition-colors disabled:opacity-40"
-          >
-            <span>Step</span>
-          </button>
-          <button
-            type="button"
-            onClick={onReset}
-            disabled={isLoading}
-            className="flex items-center gap-1 rounded border border-[#2E2E2E] bg-[#121212] px-2.5 py-1 text-[11px] font-medium text-[#888888] hover:text-white transition-colors"
-          >
-            <RotateCcw size={12} />
-            <span>Reset</span>
-          </button>
-        </div>
-      </div>
-
       {/* Main Two-Column Layout (Left ~73% Terminal, Right ~27% Status & Details) */}
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
         {/* Left Side: Large Black DOSBox Terminal */}

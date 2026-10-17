@@ -1300,8 +1300,40 @@ export default function UnifiedShell() {
             })}
           </div>
 
-          {/* Download Controls on Right Side of Tab Bar */}
-          {activeTab !== "dosbox" && (
+          {/* Controls on Right Side of Tab Bar */}
+          {lang === "assembly" && activeTab === "dosbox" ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleAsmRun}
+                disabled={asmIsLoading}
+                className="flex h-6 items-center gap-1 rounded bg-[#238636] px-2 text-[11px] font-semibold text-white hover:bg-[#2EA043] transition-colors disabled:opacity-50 shadow-sm cursor-pointer"
+                title="Assemble and run assembly code"
+              >
+                <Play size={11} fill="white" />
+                <span>Assemble & Run</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleAsmStep}
+                disabled={asmIsLoading || (!asmStatus.canStepForward && asmStatus.state !== "ready")}
+                className="flex h-6 items-center gap-1 rounded border border-[#2E2E2E] bg-[#121212] px-2 text-[11px] font-medium text-white hover:bg-[#252526] transition-colors disabled:opacity-40 cursor-pointer"
+                title="Step forward one instruction"
+              >
+                <span>Step</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleAsmReset}
+                disabled={asmIsLoading}
+                className="flex h-6 items-center gap-1 rounded border border-[#2E2E2E] bg-[#121212] px-2 text-[11px] font-medium text-[#888888] hover:text-white transition-colors cursor-pointer"
+                title="Reset execution to beginning"
+              >
+                <RotateCcw size={11} />
+                <span>Reset</span>
+              </button>
+            </div>
+          ) : (
             <div className="flex items-center gap-1.5">
               <select
                 value={downloadFormat}
