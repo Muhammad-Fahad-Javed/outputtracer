@@ -428,8 +428,8 @@ export default function UnifiedShell() {
         range: new monaco.Range(line, 1, line, 1),
         options: {
           isWholeLine: true,
-          className: "bg-[#007ACC]/20 border-l-4 border-[#007ACC]",
-          glyphMarginClassName: "text-[#007ACC] font-bold",
+          className: "bg-white/10 border-l-4 border-white",
+          glyphMarginClassName: "text-white font-bold",
         },
       },
     ]);
@@ -860,7 +860,7 @@ export default function UnifiedShell() {
       case "output":
         return <Terminal size={13} />;
       case "dosbox":
-        return <Cpu size={13} className="text-[#3794FF]" />;
+        return <Cpu size={13} />;
       case "registers":
         return <Cpu size={13} />;
       case "memory":
@@ -884,11 +884,11 @@ export default function UnifiedShell() {
 
   return (
     <div
-      className="flex h-screen w-full flex-col overflow-hidden bg-[#1E1E1E] text-[#CCCCCC] antialiased select-none"
+      className="flex h-screen w-full flex-col overflow-hidden bg-[#0A0A0A] text-[#CCCCCC] antialiased select-none"
       style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}
     >
       {/* 1. Compact Top Bar (Height 34px, Visual Studio Style) */}
-      <nav className="flex h-[34px] shrink-0 items-center justify-between border-b border-[#3E3E42] bg-[#2D2D30] px-3 select-none text-[12px]">
+      <nav className="flex h-[34px] shrink-0 items-center justify-between border-b border-[#2E2E2E] bg-[#181818] px-3 select-none text-[12px]">
         {/* Left: Original Uploaded OutputTracer Logo + Brand Tagline */}
         <div className="flex items-center gap-2.5">
           <Link href="/" className="flex items-center gap-2 group">
@@ -902,7 +902,7 @@ export default function UnifiedShell() {
               priority
             />
             <span className="font-semibold tracking-tight text-white text-[13px]">
-              Output<span className="text-[#3794FF]">Tracer</span>
+              OutputTracer
             </span>
           </Link>
           <span className="text-[11px] text-[#858585] tracking-wider hidden sm:inline ml-1 font-mono">
@@ -919,19 +919,19 @@ export default function UnifiedShell() {
               onClick={() => setExamplesOpen(!examplesOpen)}
               className={`flex items-center gap-1 rounded-[3px] px-2 py-1 text-[12px] font-medium transition-colors cursor-pointer ${
                 examplesOpen
-                  ? "bg-[#094771] text-white"
-                  : "text-[#CCCCCC] hover:bg-[#3E3E42] hover:text-white"
+                  ? "bg-[#2E2E2E] text-white"
+                  : "text-[#CCCCCC] hover:bg-[#2E2E2E] hover:text-white"
               }`}
             >
-              <FolderOpen size={13} className="text-[#3794FF]" />
+              <FolderOpen size={13} className="text-[#CCCCCC]" />
               <span>Examples</span>
               <ChevronDown size={11} className={`transition-transform ${examplesOpen ? "rotate-180" : ""}`} />
             </button>
 
             {/* Examples Dropdown Menu */}
             {examplesOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 w-80 sm:w-88 rounded border border-[#454545] bg-[#252526] p-2.5 shadow-2xl text-left">
-                <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#3E3E42]">
+              <div className="absolute right-0 top-full mt-1 z-50 w-80 sm:w-88 rounded border border-[#2E2E2E] bg-[#181818] p-2.5 shadow-2xl text-left">
+                <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#2E2E2E]">
                   <span className="font-semibold text-xs text-white">Example Programs</span>
                   <span className="text-[10px] text-[#858585]">5 Categories</span>
                 </div>
@@ -944,10 +944,10 @@ export default function UnifiedShell() {
                     value={exampleSearch}
                     onChange={(e) => setExampleSearch(e.target.value)}
                     placeholder="Search examples..."
-                    className="w-full rounded border border-[#3E3E42] bg-[#1E1E1E] py-1 pl-7 pr-12 text-[11px] text-white placeholder-[#858585] outline-none focus:border-[#007ACC]"
+                    className="w-full rounded border border-[#2E2E2E] bg-[#121212] py-1 pl-7 pr-12 text-[11px] text-white placeholder-[#858585] outline-none focus:border-[#555555]"
                     autoFocus
                   />
-                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded bg-[#333333] px-1 py-0.2 font-mono text-[9px] text-[#858585]">
+                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded bg-[#2A2A2A] px-1 py-0.2 font-mono text-[9px] text-[#858585]">
                     Ctrl+K
                   </span>
                 </div>
@@ -965,13 +965,13 @@ export default function UnifiedShell() {
                           key={ex.id}
                           type="button"
                           onClick={() => handleSelectExample(ex)}
-                          className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-[#094771] text-[#CCCCCC] hover:text-white transition-colors"
+                          className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-[#252526] text-[#CCCCCC] hover:text-white transition-colors"
                         >
                           <div>
                             <div className="font-medium text-white">{ex.title}</div>
                             <div className="text-[10px] text-[#858585]">{ex.category}</div>
                           </div>
-                          <span className="text-[10px] text-[#3794FF] font-mono">Load →</span>
+                          <span className="text-[10px] text-[#CCCCCC] font-mono">Load →</span>
                         </button>
                       ))
                     )}
@@ -982,14 +982,14 @@ export default function UnifiedShell() {
                       const Icon = cat.icon;
                       const isExpanded = expandedCategory === cat.id;
                       return (
-                        <div key={cat.id} className="rounded border border-[#333333] bg-[#1E1E1E] overflow-hidden">
+                        <div key={cat.id} className="rounded border border-[#2E2E2E] bg-[#121212] overflow-hidden">
                           <button
                             type="button"
                             onClick={() => setExpandedCategory(isExpanded ? null : cat.id)}
-                            className="flex w-full items-center justify-between p-2 text-left hover:bg-[#3E3E42] transition-colors cursor-pointer"
+                            className="flex w-full items-center justify-between p-2 text-left hover:bg-[#252526] transition-colors cursor-pointer"
                           >
                             <div className="flex items-center gap-2">
-                              <Icon size={13} className="text-[#3794FF]" />
+                              <Icon size={13} className="text-[#CCCCCC]" />
                               <div>
                                 <div className="text-[11px] font-semibold text-white">{cat.title}</div>
                                 <div className="text-[10px] text-[#858585]">{cat.desc}</div>
@@ -997,21 +997,21 @@ export default function UnifiedShell() {
                             </div>
                             <ChevronRight
                               size={12}
-                              className={`text-[#858585] transition-transform ${isExpanded ? "rotate-90 text-[#3794FF]" : ""}`}
+                              className={`text-[#858585] transition-transform ${isExpanded ? "rotate-90 text-white" : ""}`}
                             />
                           </button>
 
                           {isExpanded && (
-                            <div className="border-t border-[#333333] bg-[#252526] p-1 space-y-0.5">
+                            <div className="border-t border-[#2E2E2E] bg-[#181818] p-1 space-y-0.5">
                               {cat.examples.map((ex) => (
                                 <button
                                   key={ex.id}
                                   type="button"
                                   onClick={() => handleSelectExample(ex)}
-                                  className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] text-[#CCCCCC] hover:bg-[#094771] hover:text-white transition-colors"
+                                  className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] text-[#CCCCCC] hover:bg-[#252526] hover:text-white transition-colors"
                                 >
                                   <span>{ex.title}</span>
-                                  <span className="text-[10px] text-[#3794FF] font-mono">Load →</span>
+                                  <span className="text-[10px] text-[#CCCCCC] font-mono">Load →</span>
                                 </button>
                               ))}
                             </div>
@@ -1022,11 +1022,11 @@ export default function UnifiedShell() {
                   </div>
                 )}
 
-                <div className="my-1.5 border-t border-[#3E3E42]" />
+                <div className="my-1.5 border-t border-[#2E2E2E]" />
                 <Link
                   href="/examples"
                   onClick={() => setExamplesOpen(false)}
-                  className="flex items-center justify-between rounded px-2 py-1 text-[11px] font-medium text-[#3794FF] hover:bg-[#3E3E42] transition-colors"
+                  className="flex items-center justify-between rounded px-2 py-1 text-[11px] font-medium text-white hover:text-[#CCCCCC] hover:bg-[#252526] transition-colors"
                 >
                   <span>View All Examples</span>
                   <ArrowRight size={11} />
@@ -1037,23 +1037,23 @@ export default function UnifiedShell() {
 
           <Link
             href="/practice"
-            className="flex items-center gap-1 rounded-[3px] px-2 py-1 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#3E3E42] hover:text-white transition-colors"
+            className="flex items-center gap-1 rounded-[3px] px-2 py-1 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#2E2E2E] hover:text-white transition-colors"
           >
-            <Target size={13} className="text-[#3794FF]" />
+            <Target size={13} className="text-[#CCCCCC]" />
             <span>Practice</span>
           </Link>
 
           <Link
             href="/learn"
-            className="flex items-center gap-1 rounded-[3px] px-2 py-1 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#3E3E42] hover:text-white transition-colors"
+            className="flex items-center gap-1 rounded-[3px] px-2 py-1 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#2E2E2E] hover:text-white transition-colors"
           >
-            <BookOpen size={13} className="text-[#3794FF]" />
+            <BookOpen size={13} className="text-[#CCCCCC]" />
             <span>Learn</span>
           </Link>
 
           <Link
             href="/projects"
-            className="rounded-[3px] px-2 py-1 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#3E3E42] hover:text-white transition-colors"
+            className="rounded-[3px] px-2 py-1 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#2E2E2E] hover:text-white transition-colors"
           >
             Projects
           </Link>
@@ -1064,9 +1064,9 @@ export default function UnifiedShell() {
               <button
                 type="button"
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-1 rounded-[3px] border border-[#3E3E42] px-2 py-0.5 text-[11px] text-[#CCCCCC] hover:bg-[#3E3E42] hover:text-white transition-colors"
+                className="flex items-center gap-1 rounded-[3px] border border-[#2E2E2E] px-2 py-0.5 text-[11px] text-[#CCCCCC] hover:bg-[#2E2E2E] hover:text-white transition-colors"
               >
-                <div className="flex h-4 w-4 items-center justify-center rounded-full bg-[#007ACC] font-bold text-[9px] text-white">
+                <div className="flex h-4 w-4 items-center justify-center rounded-full bg-[#2E2E2E] border border-[#444444] font-bold text-[9px] text-white">
                   {user.email ? user.email.charAt(0).toUpperCase() : "U"}
                 </div>
                 <ChevronDown size={11} />
@@ -1074,21 +1074,21 @@ export default function UnifiedShell() {
             ) : (
               <Link
                 href="/login"
-                className="rounded-[3px] border border-[#007ACC] px-2.5 py-0.5 text-[11px] font-semibold text-[#3794FF] hover:bg-[#007ACC] hover:text-white transition-colors"
+                className="rounded-[3px] border border-[#444444] px-2.5 py-0.5 text-[11px] font-semibold text-[#E5E5E5] hover:bg-[#2E2E2E] hover:text-white transition-colors"
               >
                 Sign in
               </Link>
             )}
 
             {userMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded border border-[#454545] bg-[#252526] py-1 shadow-xl text-left">
-                <div className="px-3 py-1.5 text-[11px] text-[#858585] border-b border-[#3E3E42]">
+              <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded border border-[#2E2E2E] bg-[#181818] py-1 shadow-xl text-left">
+                <div className="px-3 py-1.5 text-[11px] text-[#858585] border-b border-[#2E2E2E]">
                   {user?.email}
                 </div>
                 <Link
                   href="/projects"
                   onClick={() => setUserMenuOpen(false)}
-                  className="block px-3 py-1 text-xs text-[#CCCCCC] hover:bg-[#094771] hover:text-white"
+                  className="block px-3 py-1 text-xs text-[#CCCCCC] hover:bg-[#252526] hover:text-white"
                 >
                   My Projects
                 </Link>
@@ -1098,7 +1098,7 @@ export default function UnifiedShell() {
                     setUserMenuOpen(false);
                     void signOut();
                   }}
-                  className="block w-full px-3 py-1 text-left text-xs text-[#F85149] hover:bg-[#3E3E42]"
+                  className="block w-full px-3 py-1 text-left text-xs text-[#F85149] hover:bg-[#252526]"
                 >
                   Sign out
                 </button>
@@ -1109,7 +1109,7 @@ export default function UnifiedShell() {
       </nav>
 
       {/* 2. Compact Visual Studio-Inspired Toolbar (Height 36px) */}
-      <div className="flex h-[36px] shrink-0 items-center gap-2 border-b border-[#3E3E42] bg-[#252526] px-3 select-none text-[12px]">
+      <div className="flex h-[36px] shrink-0 items-center gap-2 border-b border-[#2E2E2E] bg-[#181818] px-3 select-none text-[12px]">
         {/* Compiler / Language Selector */}
         <div className="flex items-center gap-1.5">
           <label htmlFor="lang-select" className="text-[11px] font-semibold text-[#858585] uppercase">
@@ -1119,7 +1119,7 @@ export default function UnifiedShell() {
             id="lang-select"
             value={lang}
             onChange={(e) => handleLanguageChange(e.target.value as SupportedLanguage)}
-            className="h-6 rounded-[2px] border border-[#3E3E42] bg-[#1E1E1E] px-2 text-[12px] font-medium text-white outline-none cursor-pointer focus:border-[#007ACC]"
+            className="h-6 rounded-[2px] border border-[#2E2E2E] bg-[#121212] px-2 text-[12px] font-medium text-white outline-none cursor-pointer focus:border-[#555555]"
           >
             <option value="cpp">C++</option>
             <option value="python">Python 3</option>
@@ -1145,7 +1145,7 @@ export default function UnifiedShell() {
         <button
           type="button"
           onClick={handleStop}
-          className="flex h-6 items-center gap-1.5 rounded-[2px] border border-[#3E3E42] bg-[#1E1E1E] px-2 text-[12px] font-semibold text-[#F85149] transition-colors hover:bg-[#3E3E42] cursor-pointer"
+          className="flex h-6 items-center gap-1.5 rounded-[2px] border border-[#2E2E2E] bg-[#121212] px-2 text-[12px] font-semibold text-[#F85149] transition-colors hover:bg-[#252526] cursor-pointer"
           title="Stop execution"
         >
           <Square size={11} fill="#F85149" />
@@ -1153,13 +1153,13 @@ export default function UnifiedShell() {
         </button>
 
         {/* Vertical Divider */}
-        <div className="h-4 w-px bg-[#3E3E42] mx-0.5" />
+        <div className="h-4 w-px bg-[#2E2E2E] mx-0.5" />
 
         {/* New Button */}
         <button
           type="button"
           onClick={handleNewFile}
-          className="flex h-6 items-center gap-1 rounded-[2px] border border-transparent px-2 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#3E3E42] hover:text-white transition-colors cursor-pointer"
+          className="flex h-6 items-center gap-1 rounded-[2px] border border-transparent px-2 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#252526] hover:text-white transition-colors cursor-pointer"
           title="New file (Ctrl+N)"
         >
           <FilePlus size={13} />
@@ -1170,7 +1170,7 @@ export default function UnifiedShell() {
         <button
           type="button"
           onClick={handleDownloadCode}
-          className="flex h-6 items-center gap-1 rounded-[2px] border border-transparent px-2 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#3E3E42] hover:text-white transition-colors cursor-pointer"
+          className="flex h-6 items-center gap-1 rounded-[2px] border border-transparent px-2 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#252526] hover:text-white transition-colors cursor-pointer"
           title="Download file (Ctrl+S)"
         >
           <Download size={13} />
@@ -1181,7 +1181,7 @@ export default function UnifiedShell() {
         <button
           type="button"
           onClick={handleResetCode}
-          className="flex h-6 items-center gap-1 rounded-[2px] border border-transparent px-2 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#3E3E42] hover:text-white transition-colors cursor-pointer"
+          className="flex h-6 items-center gap-1 rounded-[2px] border border-transparent px-2 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#252526] hover:text-white transition-colors cursor-pointer"
           title="Reset code (Ctrl+R)"
         >
           <RotateCcw size={13} />
@@ -1192,7 +1192,7 @@ export default function UnifiedShell() {
         <button
           type="button"
           onClick={() => alert(`Saved ${fileMeta.name} locally.`)}
-          className="flex h-6 items-center gap-1 rounded-[2px] border border-transparent px-2 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#3E3E42] hover:text-white transition-colors cursor-pointer"
+          className="flex h-6 items-center gap-1 rounded-[2px] border border-transparent px-2 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#252526] hover:text-white transition-colors cursor-pointer"
           title="Save file locally"
         >
           <Save size={13} />
@@ -1203,15 +1203,15 @@ export default function UnifiedShell() {
       </div>
 
       {/* 3. Compact File Tab Bar (Height 30px) */}
-      <div className="flex h-[30px] shrink-0 items-center justify-between border-b border-[#3E3E42] bg-[#252526] px-2 select-none text-[12px]">
+      <div className="flex h-[30px] shrink-0 items-center justify-between border-b border-[#2E2E2E] bg-[#181818] px-2 select-none text-[12px]">
         <div className="flex h-full items-center">
-          <div className="flex h-full items-center gap-1.5 border-r border-[#3E3E42] border-t-2 border-t-[#007ACC] bg-[#1E1E1E] px-3 font-mono text-[12px] font-medium text-white">
-            <FileCode size={13} className="text-[#3794FF]" />
+          <div className="flex h-full items-center gap-1.5 border-r border-[#2E2E2E] border-t-2 border-t-white bg-[#121212] px-3 font-mono text-[12px] font-medium text-white">
+            <FileCode size={13} className="text-[#CCCCCC]" />
             <span>{fileMeta.name}</span>
             <button
               type="button"
               onClick={() => {}}
-              className="ml-1 rounded p-0.5 text-[#858585] hover:bg-[#3E3E42] hover:text-white transition-colors"
+              className="ml-1 rounded p-0.5 text-[#858585] hover:bg-[#252526] hover:text-white transition-colors"
               title="Close tab"
               aria-label="Close tab"
             >
@@ -1221,7 +1221,7 @@ export default function UnifiedShell() {
           <button
             type="button"
             onClick={handleNewFile}
-            className="ml-1 flex h-6 w-6 items-center justify-center rounded text-[#858585] hover:bg-[#3E3E42] hover:text-white transition-colors cursor-pointer"
+            className="ml-1 flex h-6 w-6 items-center justify-center rounded text-[#858585] hover:bg-[#252526] hover:text-white transition-colors cursor-pointer"
             title="Add new file"
             aria-label="Add new file"
           >
@@ -1231,7 +1231,7 @@ export default function UnifiedShell() {
       </div>
 
       {/* 4. Main Code Editor (Fills remaining height) */}
-      <div className="relative flex min-h-[140px] flex-1 overflow-hidden bg-[#1E1E1E]">
+      <div className="relative flex min-h-[140px] flex-1 overflow-hidden bg-[#121212]">
         <Editor
           height="100%"
           language={fileMeta.monacoLang}
@@ -1258,16 +1258,16 @@ export default function UnifiedShell() {
       {/* 5. Compact Drag Handle (Height 8px) */}
       <div
         onMouseDown={handleMouseDown}
-        className="flex h-2 shrink-0 cursor-row-resize items-center justify-center border-y border-[#3E3E42] bg-[#252526] hover:bg-[#007ACC]/50 transition-colors select-none"
+        className="flex h-2 shrink-0 cursor-row-resize items-center justify-center border-y border-[#2E2E2E] bg-[#181818] hover:bg-[#252526] transition-colors select-none"
         title="Drag to resize bottom panel"
       >
-        <div className="h-0.5 w-8 rounded-full bg-[#555555]" />
+        <div className="h-0.5 w-8 rounded-full bg-[#444444]" />
       </div>
 
       {/* 6. Bottom Panel with Language-Aware Tabs (Default 280px) */}
-      <div className="flex shrink-0 flex-col overflow-hidden bg-[#1E1E1E]" style={{ height: `${panelHeight}px` }}>
+      <div className="flex shrink-0 flex-col overflow-hidden bg-[#121212]" style={{ height: `${panelHeight}px` }}>
         {/* Tab Strip */}
-        <div className="flex h-8 shrink-0 items-center justify-between border-b border-[#3E3E42] bg-[#252526] px-2 select-none text-[12px]">
+        <div className="flex h-8 shrink-0 items-center justify-between border-b border-[#2E2E2E] bg-[#181818] px-2 select-none text-[12px]">
           <div className="flex h-full items-center gap-1 overflow-x-auto">
             {config.tabs.map((tab) => {
               const isActive = activeTab === tab.id;
@@ -1278,7 +1278,7 @@ export default function UnifiedShell() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex h-full items-center gap-1.5 border-b-2 px-3 text-[12px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                     isActive
-                      ? "border-[#007ACC] bg-[#1E1E1E] text-white"
+                      ? "border-white bg-[#121212] text-white"
                       : "border-transparent text-[#858585] hover:text-[#CCCCCC]"
                   }`}
                 >
@@ -1295,7 +1295,7 @@ export default function UnifiedShell() {
               <select
                 value={downloadFormat}
                 onChange={(e) => setDownloadFormat(e.target.value as ".txt" | ".csv" | ".pdf" | ".png")}
-                className="h-6 rounded-[2px] border border-[#3E3E42] bg-[#1E1E1E] px-1.5 text-[11px] text-white outline-none cursor-pointer"
+                className="h-6 rounded-[2px] border border-[#2E2E2E] bg-[#121212] px-1.5 text-[11px] text-white outline-none cursor-pointer"
                 aria-label="Download format"
               >
                 <option value=".txt">.txt</option>
@@ -1307,7 +1307,7 @@ export default function UnifiedShell() {
                 <button
                   type="button"
                   onClick={handleDownloadTrace}
-                  className="flex h-6 items-center gap-1 rounded-[2px] bg-[#007ACC] px-2 text-[11px] font-semibold text-white hover:bg-[#0098FF] transition-colors cursor-pointer"
+                  className="flex h-6 items-center gap-1 rounded-[2px] border border-[#3E3E3E] bg-[#222222] px-2 text-[11px] font-medium text-white hover:bg-[#2E2E2E] transition-colors cursor-pointer"
                 >
                   <Download size={11} />
                   <span>Download trace</span>
@@ -1316,7 +1316,7 @@ export default function UnifiedShell() {
                 <button
                   type="button"
                   onClick={handleDownloadOutput}
-                  className="flex h-6 items-center gap-1 rounded-[2px] border border-[#3E3E42] bg-[#1E1E1E] px-2 text-[11px] font-medium text-white hover:bg-[#3E3E42] transition-colors cursor-pointer"
+                  className="flex h-6 items-center gap-1 rounded-[2px] border border-[#3E3E3E] bg-[#222222] px-2 text-[11px] font-medium text-white hover:bg-[#2E2E2E] transition-colors cursor-pointer"
                 >
                   <Download size={11} />
                   <span>Download output</span>
@@ -1327,7 +1327,7 @@ export default function UnifiedShell() {
         </div>
 
         {/* Panel Content Area */}
-        <div className="flex flex-1 overflow-hidden bg-[#1E1E1E]">
+        <div className="flex flex-1 overflow-hidden bg-[#121212]">
           {/* DOSBox Tab (Strictly Assembly only) */}
           {lang === "assembly" && activeTab === "dosbox" && (
             <DosboxWorkspace
@@ -1356,18 +1356,18 @@ export default function UnifiedShell() {
                     {asmStatus.stdout || "Z:\\>mount c C:\\OutputTracer\nDrive C is mounted as local directory C:\\OutputTracer\\\nZ:\\>c:\nC:\\>nasm -f bin main.asm -o main.com\nC:\\>main.com\nenter text (max 99 chars): hello\n"}
                   </pre>
                 ) : lang === "cpp" ? (
-                  <pre className="text-[#D4D4D4] whitespace-pre-wrap font-mono">
+                  <pre className="text-[#CCCCCC] whitespace-pre-wrap font-mono">
                     {cppOutput}
                   </pre>
                 ) : (
-                  <pre className="text-[#D4D4D4] whitespace-pre-wrap font-mono">
+                  <pre className="text-[#CCCCCC] whitespace-pre-wrap font-mono">
                     {pythonOutput}
                   </pre>
                 )}
               </div>
 
               {/* Input row at bottom */}
-              <div className="flex items-center gap-2 rounded border border-[#3E3E42] bg-[#252526] px-2.5 py-1 mt-2">
+              <div className="flex items-center gap-2 rounded border border-[#2E2E2E] bg-[#181818] px-2.5 py-1 mt-2">
                 <span className="text-[14px] font-bold text-[#238636]">›</span>
                 <input
                   type="text"
@@ -1388,8 +1388,8 @@ export default function UnifiedShell() {
 
           {/* Input Tab */}
           {activeTab === "input" && (
-            <div className="flex flex-1 flex-col p-3 font-mono text-[12px] bg-[#1E1E1E]">
-              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#3E3E42]">
+            <div className="flex flex-1 flex-col p-3 font-mono text-[12px] bg-[#121212]">
+              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#2E2E2E]">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-[#858585]">
                   Standard Input (stdin)
                 </span>
@@ -1399,7 +1399,7 @@ export default function UnifiedShell() {
                 value={typedInput}
                 onChange={(e) => setTypedInput(e.target.value)}
                 placeholder="Enter input here for cin / input() / DOS 0Ah buffer..."
-                className="flex-1 w-full rounded border border-[#3E3E42] bg-[#252526] p-2.5 text-white outline-none focus:border-[#007ACC] resize-none font-mono text-[12px]"
+                className="flex-1 w-full rounded border border-[#2E2E2E] bg-[#181818] p-2.5 text-white outline-none focus:border-[#555555] resize-none font-mono text-[12px]"
               />
               <p className="mt-1.5 text-[11px] text-[#858585]">
                 Supplied to the execution engine when stdin is requested.
@@ -1411,9 +1411,9 @@ export default function UnifiedShell() {
           {activeTab === "trace" && (
             lang === "assembly" ? (
               <div className="flex flex-1 flex-col overflow-hidden bg-black text-[#CCCCCC] font-mono text-[12px]">
-                <div className="flex items-center justify-between border-b border-[#3E3E42] bg-[#111111] px-3 py-1.5">
+                <div className="flex items-center justify-between border-b border-[#2E2E2E] bg-[#141414] px-3 py-1.5">
                   <span className="text-white font-semibold">NASM 8086 Execution Timeline</span>
-                  <span className="text-[#3794FF]">{asmTraceHistory.length} instruction steps recorded</span>
+                  <span className="text-[#888888]">{asmTraceHistory.length} instruction steps recorded</span>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2">
                   {asmTraceHistory.length === 0 ? (
@@ -1423,7 +1423,7 @@ export default function UnifiedShell() {
                   ) : (
                     <table className="w-full text-left font-mono text-xs">
                       <thead>
-                        <tr className="border-b border-[#3E3E42] text-[#858585]">
+                        <tr className="border-b border-[#2E2E2E] text-[#858585]">
                           <th className="py-1 px-2">Step</th>
                           <th className="py-1 px-2">Address</th>
                           <th className="py-1 px-2">Instruction</th>
@@ -1434,14 +1434,14 @@ export default function UnifiedShell() {
                       <tbody>
                         {asmTraceHistory.map((step, idx) => (
                           <tr key={idx} className="border-b border-[#222222] hover:bg-[#181818]">
-                            <td className="py-1 px-2 text-[#00C875]">{step.step}</td>
-                            <td className="py-1 px-2 text-[#3794FF]">
+                            <td className="py-1 px-2 text-[#CCCCCC]">{step.step}</td>
+                            <td className="py-1 px-2 text-[#CCCCCC]">
                               CS:0x{step.addressBefore.offset.toString(16).padStart(4, "0").toUpperCase()}
                             </td>
                             <td className="py-1 px-2 text-white">
                               {step.mnemonic} {step.operands}
                             </td>
-                            <td className="py-1 px-2 text-[#00C875]">
+                            <td className="py-1 px-2 text-[#CCCCCC]">
                               AX={step.registersAfter.ax.toString(16).padStart(4, "0")} DX={step.registersAfter.dx.toString(16).padStart(4, "0")}
                             </td>
                             <td className="py-1 px-2 text-[#CCCCCC]">{step.stdoutDelta || "—"}</td>
@@ -1454,16 +1454,16 @@ export default function UnifiedShell() {
               </div>
             ) : (
               <div className="flex flex-1 flex-col overflow-hidden">
-                <div className="flex items-center justify-between border-b border-[#3E3E42] bg-[#252526] px-3 py-1 text-[12px] text-[#CCCCCC]">
+                <div className="flex items-center justify-between border-b border-[#2E2E2E] bg-[#181818] px-3 py-1 text-[12px] text-[#CCCCCC]">
                   <span>
                     <strong className="text-white">{currentTraceSteps.length} steps in order.</strong> Click a row to jump to that line.
                   </span>
-                  <span>Input used: <strong className="text-[#3794FF]">{typedInput}</strong></span>
+                  <span>Input used: <strong className="text-white">{typedInput}</strong></span>
                 </div>
 
                 <div className="flex-1 overflow-y-auto">
                   <table className="w-full border-collapse font-mono text-[12px] text-left">
-                    <thead className="sticky top-0 z-10 border-b-2 border-[#3E3E42] bg-[#252526] text-[11px] uppercase tracking-wider text-[#858585]">
+                    <thead className="sticky top-0 z-10 border-b-2 border-[#2E2E2E] bg-[#181818] text-[11px] uppercase tracking-wider text-[#858585]">
                       <tr>
                         <th className="w-14 px-2 py-1.5">Step</th>
                         <th className="w-14 px-2 py-1.5">Line</th>
@@ -1482,10 +1482,10 @@ export default function UnifiedShell() {
                               setSelectedTraceStep(step.step);
                               updateLineHighlight(step.line);
                             }}
-                            className={`border-b border-[#282828] transition-colors cursor-pointer ${
+                            className={`border-b border-[#222222] transition-colors cursor-pointer ${
                               isSelected
-                                ? "bg-[#007ACC]/25 border-l-4 border-l-[#007ACC] text-white font-medium"
-                                : "hover:bg-[#2A2A2A] text-[#CCCCCC]"
+                                ? "bg-white/10 border-l-4 border-l-white text-white font-medium"
+                                : "hover:bg-[#1E1E1E] text-[#CCCCCC]"
                             }`}
                           >
                             <td className="px-2 py-1.5">{step.step}</td>
@@ -1498,7 +1498,7 @@ export default function UnifiedShell() {
                                 step.changes.split(";").map((c, i) => (
                                   <span
                                     key={i}
-                                    className="mr-1 inline-flex items-center rounded border border-[#2EA043]/45 bg-[#238636]/20 px-1 py-0.2 text-[11px] text-[#7EE787]"
+                                    className="mr-1 inline-flex items-center rounded border border-[#3E3E3E] bg-[#222222] px-1 py-0.2 text-[11px] text-[#E0E0E0]"
                                   >
                                     {c.trim()}
                                   </span>
@@ -1508,10 +1508,8 @@ export default function UnifiedShell() {
                             <td className="px-2 py-1.5">
                               {step.output === "—" ? (
                                 <span className="text-[#666666]">—</span>
-                              ) : step.output.startsWith("(input") ? (
-                                <span className="font-semibold text-[#3794FF]">{step.output}</span>
                               ) : (
-                                <span>{step.output}</span>
+                                <span className="text-white font-medium">{step.output}</span>
                               )}
                             </td>
                           </tr>
@@ -1526,14 +1524,14 @@ export default function UnifiedShell() {
 
           {/* Debug Tab (C++ & Python) */}
           {activeTab === "debug" && lang !== "assembly" && (
-            <div className="flex flex-1 flex-col p-3 font-mono text-[12px] bg-[#1E1E1E]">
-              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#3E3E42]">
+            <div className="flex flex-1 flex-col p-3 font-mono text-[12px] bg-[#121212]">
+              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#2E2E2E]">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-[#858585]">
                   Debugger Console
                 </span>
-                <span className="text-[11px] text-[#7EE787]">State: Ready / Idle</span>
+                <span className="text-[11px] text-[#3FB950]">State: Ready / Idle</span>
               </div>
-              <div className="flex-1 rounded border border-[#3E3E42] bg-[#252526] p-2.5 text-[#CCCCCC] overflow-y-auto">
+              <div className="flex-1 rounded border border-[#2E2E2E] bg-[#181818] p-2.5 text-[#CCCCCC] overflow-y-auto">
                 <div className="text-[#858585]">Debugger session initialized for {fileMeta.name}.</div>
                 <div className="text-[#858585]">Press F5 to Run &amp; Debug or select Trace tab for step tracing.</div>
                 <div className="pt-2 text-white font-sans">Target binary compiled with debug symbols (-g).</div>
@@ -1543,17 +1541,17 @@ export default function UnifiedShell() {
 
           {/* Variables Tab (C++ & Python) */}
           {activeTab === "variables" && lang !== "assembly" && (
-            <div className="flex flex-1 flex-col p-3 font-mono text-[12px] bg-[#1E1E1E] overflow-hidden">
-              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#3E3E42]">
+            <div className="flex flex-1 flex-col p-3 font-mono text-[12px] bg-[#121212] overflow-hidden">
+              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#2E2E2E]">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-[#858585]">
                   Local Scope Variables
                 </span>
-                <span className="text-[11px] text-[#3794FF]">Scope: main()</span>
+                <span className="text-[11px] text-[#888888]">Scope: main()</span>
               </div>
               <div className="flex-1 overflow-y-auto">
                 <table className="w-full text-left font-mono text-[12px] border-collapse">
                   <thead>
-                    <tr className="border-b border-[#3E3E42] text-[#858585]">
+                    <tr className="border-b border-[#2E2E2E] text-[#858585]">
                       <th className="py-1 px-2">Variable</th>
                       <th className="py-1 px-2">Type</th>
                       <th className="py-1 px-2">Value</th>
@@ -1562,28 +1560,28 @@ export default function UnifiedShell() {
                   <tbody>
                     {lang === "cpp" ? (
                       <>
-                        <tr className="border-b border-[#282828]">
-                          <td className="py-1 px-2 text-[#FFD166]">size</td>
-                          <td className="py-1 px-2 text-[#4EC9B0]">const int</td>
-                          <td className="py-1 px-2 text-[#B5CEA8]">100</td>
+                        <tr className="border-b border-[#222222]">
+                          <td className="py-1 px-2 text-white font-medium">size</td>
+                          <td className="py-1 px-2 text-[#888888]">const int</td>
+                          <td className="py-1 px-2 text-[#CCCCCC]">100</td>
                         </tr>
-                        <tr className="border-b border-[#282828]">
-                          <td className="py-1 px-2 text-[#FFD166]">text</td>
-                          <td className="py-1 px-2 text-[#4EC9B0]">char[100]</td>
-                          <td className="py-1 px-2 text-[#CE9178]">&quot;{typedInput}&quot;</td>
+                        <tr className="border-b border-[#222222]">
+                          <td className="py-1 px-2 text-white font-medium">text</td>
+                          <td className="py-1 px-2 text-[#888888]">char[100]</td>
+                          <td className="py-1 px-2 text-[#CCCCCC]">&quot;{typedInput}&quot;</td>
                         </tr>
                       </>
                     ) : (
                       <>
-                        <tr className="border-b border-[#282828]">
-                          <td className="py-1 px-2 text-[#FFD166]">text</td>
-                          <td className="py-1 px-2 text-[#4EC9B0]">str</td>
-                          <td className="py-1 px-2 text-[#CE9178]">&quot;{typedInput}&quot;</td>
+                        <tr className="border-b border-[#222222]">
+                          <td className="py-1 px-2 text-white font-medium">text</td>
+                          <td className="py-1 px-2 text-[#888888]">str</td>
+                          <td className="py-1 px-2 text-[#CCCCCC]">&quot;{typedInput}&quot;</td>
                         </tr>
-                        <tr className="border-b border-[#282828]">
-                          <td className="py-1 px-2 text-[#FFD166]">len(text)</td>
-                          <td className="py-1 px-2 text-[#4EC9B0]">int</td>
-                          <td className="py-1 px-2 text-[#B5CEA8]">{typedInput.length}</td>
+                        <tr className="border-b border-[#222222]">
+                          <td className="py-1 px-2 text-white font-medium">len(text)</td>
+                          <td className="py-1 px-2 text-[#888888]">int</td>
+                          <td className="py-1 px-2 text-[#CCCCCC]">{typedInput.length}</td>
                         </tr>
                       </>
                     )}
@@ -1595,9 +1593,9 @@ export default function UnifiedShell() {
 
           {/* Registers Tab (Assembly only) */}
           {activeTab === "registers" && lang === "assembly" && (
-            <div className="flex flex-1 flex-col p-3 font-mono text-[12px] bg-[#06101E] overflow-y-auto">
-              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#173451]">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#42BFEA]">
+            <div className="flex flex-1 flex-col p-3 font-mono text-[12px] bg-[#121212] overflow-y-auto">
+              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#2E2E2E]">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-white">
                   8086 CPU Registers &amp; Flags
                 </span>
                 <span className="text-[11px] text-[#858585]">16-bit Real Mode</span>
@@ -1619,13 +1617,13 @@ export default function UnifiedShell() {
                   { name: "IP", val: asmStatus.registers.ip },
                   { name: "FL", val: 0x7202 },
                 ].map((reg) => (
-                  <div key={reg.name} className="rounded border border-[#173451] bg-[#09172A] p-1.5">
+                  <div key={reg.name} className="rounded border border-[#2E2E2E] bg-[#181818] p-1.5">
                     <div className="flex justify-between text-[#858585] text-[10px]">
                       <span>{reg.name}</span>
-                      <span className="text-[#42BFEA]">0x{(reg.val & 0xffff).toString(16).toUpperCase().padStart(4, "0")}</span>
+                      <span className="text-white font-bold">0x{(reg.val & 0xffff).toString(16).toUpperCase().padStart(4, "0")}</span>
                     </div>
                     {reg.hi && (
-                      <div className="flex justify-between text-[9px] text-[#6E7681] mt-0.5">
+                      <div className="flex justify-between text-[9px] text-[#888888] mt-0.5">
                         <span>{reg.hi}: 0x{((reg.val >> 8) & 0xff).toString(16).toUpperCase().padStart(2, "0")}</span>
                         <span>{reg.lo}: 0x{(reg.val & 0xff).toString(16).toUpperCase().padStart(2, "0")}</span>
                       </div>
@@ -1633,7 +1631,7 @@ export default function UnifiedShell() {
                   </div>
                 ))}
               </div>
-              <div className="rounded border border-[#173451] bg-[#09172A] p-2">
+              <div className="rounded border border-[#2E2E2E] bg-[#181818] p-2">
                 <div className="text-[10px] font-semibold text-[#858585] uppercase mb-1">Flags</div>
                 <div className="flex gap-1.5">
                   {Object.entries(asmStatus.flags).map(([k, v]) => (
@@ -1641,8 +1639,8 @@ export default function UnifiedShell() {
                       key={k}
                       className={`px-1.5 py-0.2 rounded text-[10px] border font-mono ${
                         v
-                          ? "bg-[#19D99A]/20 border-[#19D99A] text-[#19D99A] font-bold"
-                          : "bg-[#08182B] border-[#173451] text-[#6E7681]"
+                          ? "bg-[#3FB950]/20 border-[#3FB950] text-[#3FB950] font-bold"
+                          : "bg-[#121212] border-[#2E2E2E] text-[#666666]"
                       }`}
                     >
                       {k.toUpperCase()}: {v ? "1" : "0"}
@@ -1655,14 +1653,14 @@ export default function UnifiedShell() {
 
           {/* Memory Tab (Assembly only) */}
           {activeTab === "memory" && lang === "assembly" && (
-            <div className="flex flex-1 flex-col p-3 font-mono text-[11px] bg-[#06101E] overflow-hidden">
-              <div className="flex items-center justify-between pb-1 mb-1 border-b border-[#173451]">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#42BFEA]">
+            <div className="flex flex-1 flex-col p-3 font-mono text-[11px] bg-[#121212] overflow-hidden">
+              <div className="flex items-center justify-between pb-1 mb-1 border-b border-[#2E2E2E]">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-white">
                   Memory View (Segment 1000h)
                 </span>
                 <span className="text-[10px] text-[#858585]">16 bytes per row</span>
               </div>
-              <div className="flex-1 overflow-y-auto text-[#AAAAAA] space-y-0.5">
+              <div className="flex-1 overflow-y-auto text-[#CCCCCC] space-y-0.5">
                 <div>1000:0100  BA 0C 01 B4 09 CD 21 BA  29 01 B4 0A CD 21 B8 00  |.......!)....!..|</div>
                 <div>1000:0110  4C CD 21 65 6E 74 65 72  20 74 65 78 74 20 28 6D  |L.!enter text (m|</div>
                 <div>1000:0120  61 78 20 39 39 20 63 68  61 72 73 29 3A 20 24 64  |ax 99 chars): $d|</div>
@@ -1673,28 +1671,28 @@ export default function UnifiedShell() {
 
           {/* Stack Tab (Assembly only) */}
           {activeTab === "stack" && lang === "assembly" && (
-            <div className="flex flex-1 flex-col p-3 font-mono text-[11px] bg-[#06101E] overflow-y-auto">
-              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#173451]">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#42BFEA]">
+            <div className="flex flex-1 flex-col p-3 font-mono text-[11px] bg-[#121212] overflow-y-auto">
+              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#2E2E2E]">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-white">
                   Stack Frame &amp; SP
                 </span>
                 <span className="text-[10px] text-[#858585]">SS: 1000h, SP: 0x{asmStatus.registers.sp.toString(16).toUpperCase()}</span>
               </div>
               <div className="grid grid-cols-4 gap-2">
-                <div className="rounded border border-[#173451] bg-[#09172A] p-2 text-center">
+                <div className="rounded border border-[#2E2E2E] bg-[#181818] p-2 text-center">
                   <div className="text-[#858585] text-[9px]">[SS:FFFE]</div>
-                  <div className="text-base font-bold text-[#19D99A]">0000h</div>
-                  <div className="text-[9px] text-[#3794FF] mt-0.5">▲ Current SP</div>
+                  <div className="text-base font-bold text-white">0000h</div>
+                  <div className="text-[9px] text-[#888888] mt-0.5">▲ Current SP</div>
                 </div>
-                <div className="rounded border border-[#173451] bg-[#08182B] p-2 text-center text-[#6E7681]">
+                <div className="rounded border border-[#2E2E2E] bg-[#141414] p-2 text-center text-[#666666]">
                   <div className="text-[9px]">[SS:FFFC]</div>
                   <div className="text-base font-bold">0000h</div>
                 </div>
-                <div className="rounded border border-[#173451] bg-[#08182B] p-2 text-center text-[#6E7681]">
+                <div className="rounded border border-[#2E2E2E] bg-[#141414] p-2 text-center text-[#666666]">
                   <div className="text-[9px]">[SS:FFFA]</div>
                   <div className="text-base font-bold">0000h</div>
                 </div>
-                <div className="rounded border border-[#173451] bg-[#08182B] p-2 text-center text-[#6E7681]">
+                <div className="rounded border border-[#2E2E2E] bg-[#141414] p-2 text-center text-[#666666]">
                   <div className="text-[9px]">[SS:FFF8]</div>
                   <div className="text-base font-bold">0000h</div>
                 </div>
@@ -1704,22 +1702,22 @@ export default function UnifiedShell() {
 
           {/* Instruction Help Tab (Assembly only) */}
           {activeTab === "instructionHelp" && lang === "assembly" && (
-            <div className="flex flex-1 flex-col p-3 font-mono text-[11px] bg-[#06101E] overflow-y-auto">
-              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#173451]">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#42BFEA]">
+            <div className="flex flex-1 flex-col p-3 font-mono text-[11px] bg-[#121212] overflow-y-auto">
+              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#2E2E2E]">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-white">
                   8086 Instruction Reference
                 </span>
                 <span className="text-[10px] text-[#858585]">NASM syntax</span>
               </div>
               <div className="space-y-2 font-sans">
-                <div className="rounded border border-[#173451] bg-[#09172A] p-2">
-                  <div className="font-mono text-[12px] font-bold text-[#3794FF]">MOV dest, src</div>
+                <div className="rounded border border-[#2E2E2E] bg-[#181818] p-2">
+                  <div className="font-mono text-[12px] font-bold text-white">MOV dest, src</div>
                   <p className="text-[11px] text-[#CCCCCC] mt-0.5">
                     Copies data from source to destination. Neither memory-to-memory nor segment-to-segment is allowed directly.
                   </p>
                 </div>
-                <div className="rounded border border-[#173451] bg-[#09172A] p-2">
-                  <div className="font-mono text-[12px] font-bold text-[#19D99A]">INT 21h (DOS API)</div>
+                <div className="rounded border border-[#2E2E2E] bg-[#181818] p-2">
+                  <div className="font-mono text-[12px] font-bold text-white">INT 21h (DOS API)</div>
                   <p className="text-[11px] text-[#CCCCCC] mt-0.5">
                     <strong>AH = 09h:</strong> Print &apos;$&apos;-terminated string pointed to by DS:DX.<br />
                     <strong>AH = 0Ah:</strong> Buffered keyboard input to struct pointed to by DS:DX.<br />
@@ -1732,8 +1730,8 @@ export default function UnifiedShell() {
         </div>
       </div>
 
-      {/* 7. Status Bar (Visual Studio Blue #007ACC, Height 24px) */}
-      <footer className="flex h-[24px] shrink-0 items-center justify-between bg-[#007ACC] px-3 font-medium text-white text-[12px] select-none">
+      {/* 7. Status Bar (Height 24px) */}
+      <footer className="flex h-[24px] shrink-0 items-center justify-between border-t border-[#2E2E2E] bg-[#181818] px-3 font-medium text-[#CCCCCC] text-[12px] select-none">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-[#3FB950] shadow-[0_0_5px_rgba(63,185,80,0.8)]" />
           <span>

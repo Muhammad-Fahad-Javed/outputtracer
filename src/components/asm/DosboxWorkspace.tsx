@@ -59,48 +59,48 @@ export default function DosboxWorkspace({
   const [terminalInput, setTerminalInput] = useState("");
   const [cleared, setCleared] = useState(false);
 
-  // Derive execution status text & color
+  // Derive execution status text & color (strict black-and-white with functional green/red)
   let statusBadge = {
     text: "Ready",
-    color: "#42BFEA",
-    bgColor: "rgba(66, 191, 234, 0.15)",
-    borderColor: "#173451",
+    color: "#CCCCCC",
+    bgColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "#2E2E2E",
   };
 
   if (isLoading) {
     statusBadge = {
       text: "Assembling & Running...",
-      color: "#42BFEA",
-      bgColor: "rgba(66, 191, 234, 0.2)",
-      borderColor: "#42BFEA",
+      color: "#FFFFFF",
+      bgColor: "rgba(255, 255, 255, 0.1)",
+      borderColor: "#555555",
     };
   } else if (errorMessage || diagnostics.some((d) => d.type === "error")) {
     statusBadge = {
       text: "Assembly Failed",
-      color: "#FF5B68",
-      bgColor: "rgba(255, 91, 104, 0.15)",
-      borderColor: "#FF5B68",
+      color: "#F85149",
+      bgColor: "rgba(248, 81, 73, 0.15)",
+      borderColor: "#F85149",
     };
   } else if (status.state === "terminated" || status.exitCode !== undefined) {
     statusBadge = {
       text: `Completed (Exit 0x${((status.exitCode ?? 0) & 0xff).toString(16).toUpperCase()})`,
-      color: "#19D99A",
-      bgColor: "rgba(25, 217, 154, 0.15)",
-      borderColor: "#19D99A",
+      color: "#3FB950",
+      bgColor: "rgba(63, 185, 80, 0.15)",
+      borderColor: "#3FB950",
     };
   } else if (status.state === "running") {
     statusBadge = {
       text: "Running in DOSBox",
-      color: "#19D99A",
-      bgColor: "rgba(25, 217, 154, 0.2)",
-      borderColor: "#19D99A",
+      color: "#3FB950",
+      bgColor: "rgba(63, 185, 80, 0.2)",
+      borderColor: "#3FB950",
     };
   } else if (status.currentStep > 0) {
     statusBadge = {
       text: `Paused at Step ${status.currentStep}`,
-      color: "#42BFEA",
-      bgColor: "rgba(66, 191, 234, 0.15)",
-      borderColor: "#42BFEA",
+      color: "#CCCCCC",
+      bgColor: "rgba(255, 255, 255, 0.05)",
+      borderColor: "#2E2E2E",
     };
   }
 
@@ -194,9 +194,9 @@ export default function DosboxWorkspace({
   ];
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#06101E] text-[#E6EDF7] font-sans overflow-hidden select-none">
+    <div className="flex h-full w-full flex-col bg-[#0A0A0A] text-[#CCCCCC] font-sans overflow-hidden select-none">
       {/* Top Workspace Navigation Tabs (Horizontal Compact Tabs) */}
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[#173451] bg-[#09172A] px-3">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[#2E2E2E] bg-[#181818] px-3">
         <div className="flex h-full items-center gap-1 overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -208,11 +208,11 @@ export default function DosboxWorkspace({
                 onClick={() => onTabChange(tab.id)}
                 className={`flex h-full items-center gap-1.5 px-3 text-[12px] font-semibold transition-all border-b-2 ${
                   isActive
-                    ? "border-[#1479E8] bg-[#08182B] text-[#42BFEA]"
-                    : "border-transparent text-[#8EA6C2] hover:text-[#E6EDF7] hover:bg-[#08182B]/50"
+                    ? "border-white bg-[#121212] text-white"
+                    : "border-transparent text-[#888888] hover:text-[#CCCCCC] hover:bg-[#1E1E1E]"
                 }`}
               >
-                <Icon size={14} className={isActive ? "text-[#42BFEA]" : "text-[#8EA6C2]"} />
+                <Icon size={14} className={isActive ? "text-white" : "text-[#888888]"} />
                 <span>{tab.label}</span>
               </button>
             );
@@ -224,7 +224,7 @@ export default function DosboxWorkspace({
             type="button"
             onClick={onRun}
             disabled={isLoading}
-            className="flex items-center gap-1 rounded bg-[#1479E8] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#1479E8]/80 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 rounded bg-[#238636] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#2EA043] transition-colors disabled:opacity-50 shadow-sm"
           >
             <Play size={12} fill="white" />
             <span>Assemble & Run</span>
@@ -233,7 +233,7 @@ export default function DosboxWorkspace({
             type="button"
             onClick={onStep}
             disabled={isLoading || (!status.canStepForward && status.state !== "ready")}
-            className="flex items-center gap-1 rounded border border-[#173451] bg-[#09172A] px-2.5 py-1 text-[11px] font-medium text-[#E6EDF7] hover:bg-[#08182B] transition-colors disabled:opacity-40"
+            className="flex items-center gap-1 rounded border border-[#2E2E2E] bg-[#121212] px-2.5 py-1 text-[11px] font-medium text-white hover:bg-[#252526] transition-colors disabled:opacity-40"
           >
             <span>Step</span>
           </button>
@@ -241,7 +241,7 @@ export default function DosboxWorkspace({
             type="button"
             onClick={onReset}
             disabled={isLoading}
-            className="flex items-center gap-1 rounded border border-[#173451] bg-[#09172A] px-2.5 py-1 text-[11px] font-medium text-[#8EA6C2] hover:text-white transition-colors"
+            className="flex items-center gap-1 rounded border border-[#2E2E2E] bg-[#121212] px-2.5 py-1 text-[11px] font-medium text-[#888888] hover:text-white transition-colors"
           >
             <RotateCcw size={12} />
             <span>Reset</span>
@@ -252,17 +252,17 @@ export default function DosboxWorkspace({
       {/* Main Two-Column Layout (Left ~73% Terminal, Right ~27% Status & Details) */}
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
         {/* Left Side: Large Black DOSBox Terminal */}
-        <div className="flex flex-1 flex-col border-b md:border-b-0 md:border-r border-[#173451] bg-black">
+        <div className="flex flex-1 flex-col border-b md:border-b-0 md:border-r border-[#2E2E2E] bg-black">
           {/* Compact Terminal Header */}
-          <div className="flex h-8 shrink-0 items-center justify-between border-b border-[#173451] bg-[#08182B] px-3 font-mono text-[11px] text-[#8EA6C2]">
+          <div className="flex h-8 shrink-0 items-center justify-between border-b border-[#2E2E2E] bg-[#141414] px-3 font-mono text-[11px] text-[#888888]">
             <div className="flex items-center gap-3">
               <span className="font-semibold text-white">DOSBox 0.74-3</span>
-              <span className="text-[#173451]">|</span>
+              <span className="text-[#333333]">|</span>
               <span>Cpu speed: 3000 cycles</span>
-              <span className="text-[#173451]">|</span>
+              <span className="text-[#333333]">|</span>
               <span>Frameskip 0</span>
-              <span className="text-[#173451]">|</span>
-              <span className="text-[#42BFEA]">Program: MAIN.COM</span>
+              <span className="text-[#333333]">|</span>
+              <span className="text-white">Program: MAIN.COM</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -282,7 +282,7 @@ export default function DosboxWorkspace({
               <button
                 type="button"
                 onClick={handleClearTerminal}
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[#8EA6C2] hover:bg-[#173451] hover:text-white transition-colors"
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[#888888] hover:bg-[#222222] hover:text-white transition-colors"
                 title="Clear terminal window"
               >
                 <Trash2 size={11} />
@@ -305,10 +305,10 @@ export default function DosboxWorkspace({
 
             {/* Real captured assembly output */}
             {status.stdout ? (
-              <div className="text-[#19D99A] font-bold whitespace-pre-wrap">{status.stdout}</div>
+              <div className="text-[#3FB950] font-bold whitespace-pre-wrap">{status.stdout}</div>
             ) : (
               !cleared && (
-                <div className="text-[#8EA6C2] italic">
+                <div className="text-[#888888] italic">
                   [Program executed. INT 21h write ready.]
                 </div>
               )
@@ -316,7 +316,7 @@ export default function DosboxWorkspace({
 
             {/* Error banner if assembly diagnostics failed */}
             {diagnostics.length > 0 && (
-              <div className="mt-2 rounded border border-[#FF5B68]/40 bg-[#FF5B68]/10 p-2 font-mono text-[12px] text-[#FF5B68]">
+              <div className="mt-2 rounded border border-[#F85149]/40 bg-[#F85149]/10 p-2 font-mono text-[12px] text-[#F85149]">
                 {diagnostics.map((d, i) => (
                   <div key={i}>
                     [Line {d.line ?? 0}] {d.message}
@@ -327,7 +327,7 @@ export default function DosboxWorkspace({
 
             {/* Active prompt with cursor */}
             <div className="flex items-center pt-2">
-              <span className="text-[#E6EDF7]">C:\&gt;</span>
+              <span className="text-white">C:\&gt;</span>
               <input
                 type="text"
                 value={terminalInput}
@@ -340,13 +340,13 @@ export default function DosboxWorkspace({
                 className="flex-1 bg-transparent font-mono text-[13px] text-white outline-none pl-1"
                 placeholder="type command..."
               />
-              <span className="inline-block h-3.5 w-1.5 bg-[#AAAAAA] animate-pulse" />
+              <span className="inline-block h-3.5 w-1.5 bg-[#888888] animate-pulse" />
             </div>
           </div>
         </div>
 
         {/* Right Side (~27% Desktop Width): Execution Status, Details & Download Report */}
-        <div className="flex w-full md:w-[320px] lg:w-[360px] shrink-0 flex-col gap-3 p-3 bg-[#08182B] overflow-y-auto border-t md:border-t-0 border-[#173451]">
+        <div className="flex w-full md:w-[320px] lg:w-[360px] shrink-0 flex-col gap-3 p-3 bg-[#121212] overflow-y-auto border-t md:border-t-0 border-[#2E2E2E]">
           {/* 1. Execution Status Card */}
           <div
             className="rounded-lg border p-3"
@@ -356,15 +356,15 @@ export default function DosboxWorkspace({
             }}
           >
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#8EA6C2]">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#888888]">
                 Execution Status
               </span>
-              {statusBadge.color === "#19D99A" ? (
-                <CheckCircle2 size={16} className="text-[#19D99A]" />
-              ) : statusBadge.color === "#FF5B68" ? (
-                <AlertTriangle size={16} className="text-[#FF5B68]" />
+              {statusBadge.color === "#3FB950" ? (
+                <CheckCircle2 size={16} className="text-[#3FB950]" />
+              ) : statusBadge.color === "#F85149" ? (
+                <AlertTriangle size={16} className="text-[#F85149]" />
               ) : (
-                <Clock size={16} className="text-[#42BFEA]" />
+                <Clock size={16} className="text-[#888888]" />
               )}
             </div>
             <div
@@ -373,7 +373,7 @@ export default function DosboxWorkspace({
             >
               {statusBadge.text}
             </div>
-            <div className="mt-0.5 text-[11px] text-[#8EA6C2]">
+            <div className="mt-0.5 text-[11px] text-[#888888]">
               {status.state === "ready"
                 ? "Code assembled. Ready for step or run."
                 : status.state === "running"
@@ -385,35 +385,35 @@ export default function DosboxWorkspace({
           </div>
 
           {/* 2. Execution Details Table */}
-          <div className="rounded-lg border border-[#173451] bg-[#09172A] p-3">
-            <span className="block text-[11px] font-bold uppercase tracking-wider text-[#8EA6C2] mb-2.5">
+          <div className="rounded-lg border border-[#2E2E2E] bg-[#181818] p-3">
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-[#888888] mb-2.5">
               Execution Details
             </span>
             <div className="space-y-1.5 font-mono text-[11px]">
-              <div className="flex items-center justify-between border-b border-[#173451]/60 pb-1">
-                <span className="text-[#8EA6C2]">Assembler</span>
+              <div className="flex items-center justify-between border-b border-[#2E2E2E]/60 pb-1">
+                <span className="text-[#888888]">Assembler</span>
                 <span className="font-semibold text-white">{engineUsed}</span>
               </div>
-              <div className="flex items-center justify-between border-b border-[#173451]/60 pb-1">
-                <span className="text-[#8EA6C2]">Version</span>
-                <span className="text-[#E6EDF7]">DOSBox 0.74-3 (Emulated)</span>
+              <div className="flex items-center justify-between border-b border-[#2E2E2E]/60 pb-1">
+                <span className="text-[#888888]">Version</span>
+                <span className="text-[#CCCCCC]">DOSBox 0.74-3 (Emulated)</span>
               </div>
-              <div className="flex items-center justify-between border-b border-[#173451]/60 pb-1">
-                <span className="text-[#8EA6C2]">Target</span>
-                <span className="text-[#42BFEA]">16-bit DOS .COM (org 100h)</span>
+              <div className="flex items-center justify-between border-b border-[#2E2E2E]/60 pb-1">
+                <span className="text-[#888888]">Target</span>
+                <span className="text-white">16-bit DOS .COM (org 100h)</span>
               </div>
-              <div className="flex items-center justify-between border-b border-[#173451]/60 pb-1">
-                <span className="text-[#8EA6C2]">Environment</span>
-                <span className="text-[#E6EDF7]">DOSBox Real Mode</span>
+              <div className="flex items-center justify-between border-b border-[#2E2E2E]/60 pb-1">
+                <span className="text-[#888888]">Environment</span>
+                <span className="text-[#CCCCCC]">DOSBox Real Mode</span>
               </div>
-              <div className="flex items-center justify-between border-b border-[#173451]/60 pb-1">
-                <span className="text-[#8EA6C2]">Execution Time</span>
-                <span className="text-[#19D99A]">
+              <div className="flex items-center justify-between border-b border-[#2E2E2E]/60 pb-1">
+                <span className="text-[#888888]">Execution Time</span>
+                <span className="text-[#3FB950]">
                   {executionTimeMs !== null ? `${executionTimeMs} ms` : "Instant"}
                 </span>
               </div>
               <div className="flex items-center justify-between pt-0.5">
-                <span className="text-[#8EA6C2]">Exit Status</span>
+                <span className="text-[#888888]">Exit Status</span>
                 <span className="font-bold text-white">
                   Exit Code {status.exitCode ?? 0}
                 </span>
@@ -422,15 +422,15 @@ export default function DosboxWorkspace({
           </div>
 
           {/* 3. Download Report Control */}
-          <div className="relative rounded-lg border border-[#173451] bg-[#09172A] p-3">
-            <span className="block text-[11px] font-bold uppercase tracking-wider text-[#8EA6C2] mb-2">
+          <div className="relative rounded-lg border border-[#2E2E2E] bg-[#181818] p-3">
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-[#888888] mb-2">
               Export Session
             </span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => handleDownloadReport(downloadFormat)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded bg-[#1479E8] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#1479E8]/80 transition-colors"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded border border-[#3E3E3E] bg-[#222222] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#2A2A2A] transition-colors"
               >
                 <Download size={13} />
                 <span>Download Report ({downloadFormat.toUpperCase()})</span>
@@ -440,32 +440,32 @@ export default function DosboxWorkspace({
                 <button
                   type="button"
                   onClick={() => setReportDropdownOpen(!reportDropdownOpen)}
-                  className="flex h-8 w-8 items-center justify-center rounded border border-[#173451] bg-[#08182B] text-[#8EA6C2] hover:text-white"
+                  className="flex h-8 w-8 items-center justify-center rounded border border-[#2E2E2E] bg-[#141414] text-[#888888] hover:text-white"
                   aria-label="Select export format"
                 >
                   <ChevronDown size={14} />
                 </button>
 
                 {reportDropdownOpen && (
-                  <div className="absolute right-0 top-9 z-20 w-44 rounded-md border border-[#173451] bg-[#09172A] p-1 shadow-xl">
+                  <div className="absolute right-0 top-9 z-20 w-44 rounded-md border border-[#2E2E2E] bg-[#181818] p-1 shadow-xl">
                     <button
                       type="button"
                       onClick={() => handleDownloadReport("txt")}
-                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[12px] text-[#E6EDF7] hover:bg-[#173451]"
+                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[12px] text-[#CCCCCC] hover:bg-[#252526] hover:text-white"
                     >
                       <span>TXT Execution Report</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDownloadReport("json")}
-                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[12px] text-[#E6EDF7] hover:bg-[#173451]"
+                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[12px] text-[#CCCCCC] hover:bg-[#252526] hover:text-white"
                     >
                       <span>JSON Execution Report</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDownloadReport("asm")}
-                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[12px] text-[#E6EDF7] hover:bg-[#173451]"
+                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[12px] text-[#CCCCCC] hover:bg-[#252526] hover:text-white"
                     >
                       <span>ASM Source File</span>
                     </button>
@@ -476,9 +476,9 @@ export default function DosboxWorkspace({
           </div>
 
           {/* 4. Informational Notice */}
-          <div className="mt-auto rounded-lg border border-[#173451]/60 bg-[#09172A]/80 p-3 text-[11px] text-[#8EA6C2] leading-relaxed">
+          <div className="mt-auto rounded-lg border border-[#2E2E2E] bg-[#141414] p-3 text-[11px] text-[#888888] leading-relaxed">
             <div className="flex items-center gap-1.5 text-white font-semibold mb-1">
-              <Info size={13} className="text-[#42BFEA]" />
+              <Info size={13} className="text-white" />
               <span>DOSBox Emulation Sandbox</span>
             </div>
             <span>
