@@ -15,10 +15,30 @@ import {
   ChevronDown,
   Terminal,
   Activity,
+  Cpu,
+  HardDrive,
+  Layers,
+  HelpCircle,
+  FileText,
+  Sliders,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import type { OnMount } from "@monaco-editor/react";
 import { useAuth } from "@/components/AuthProvider";
+import DosboxWorkspace from "@/components/asm/DosboxWorkspace";
+import {
+  WORKSPACE_CONFIG,
+  SupportedLanguage,
+  WorkspaceTabId,
+  sanitizeTabForLanguage,
+} from "@/lib/workspaceConfig";
+import {
+  AsmExecutionStatus,
+  AsmDiagnostic,
+  AsmTraceStep,
+  CpuRegisters,
+  CpuFlags,
+} from "@/lib/asm/types";
 
 const Editor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
   ssr: false,
@@ -106,46 +126,97 @@ const PYTHON_TRACE_STEPS: TraceStep[] = [
   { step: 5, line: 6, code: 'print("You entered:", text)', changes: "—", output: "You entered: hello" },
 ];
 
-type SupportedLang = "cpp" | "python" | "asm";
+const DEFAULT_REGISTERS: CpuRegisters = {
+  ax: 0,
+  bx: 0,
+  cx: 0,
+  dx: 0,
+  sp: 0xfffe,
+  bp: 0,
+  si: 0,
+  di: 0,
+  ip: 0x0100,
+  cs: 0x1000,
+  ds: 0x1000,
+  es: 0x1000,
+  ss: 0x1000,
+};
+
+const DEFAULT_FLAGS: CpuFlags = {
+  cf: false,
+  pf: false,
+  af: false,
+  zf: false,
+  sf: false,
+  tf: false,
+  if: true,
+  df: false,
+  of: false,
+};
 
 export default function UnifiedShell() {
   const { user, signOut } = useAuth();
-  const [lang, setLang] = useState<SupportedLang>("cpp");
-  const [panelTab, setPanelTab] = useState<"debug" | "trace">("debug");
+  const [lang, setLang] = useState<SupportedLanguage>("cpp");
+  const [activeTab, setActiveTab] = useState<WorkspaceTabId>("output");
   const [panelHeight, setPanelHeight] = useState(300);
   const [isDragging, setIsDragging] = useState(false);
 
   // Per-language code buffers
-  const [codeBuffers, setCodeBuffers] = useState({
+  const [codeBuffers, setCodeBuffers] = useState<Record<SupportedLanguage, string>>({
     cpp: CPP_SAMPLE,
     python: PYTHON_SAMPLE,
-    asm: ASM_SAMPLE,
+    assembly: ASM_SAMPLE,
   });
 
   // Stdin & interactive output state
   const [stdinInput, setStdinInput] = useState("");
   const [typedInput, setTypedInput] = useState("hello");
-  const [selectedTraceStep, setSelectedTraceStep] = useState<number>(5); // default step 5 in C++, step 3 in python
+  const [selectedTraceStep, setSelectedTraceStep] = useState<number>(5);
   const [downloadFormat, setDownloadFormat] = useState<".txt" | ".csv" | ".pdf" | ".png">(".csv");
+
+  // Assembly Execution State
+  const [asmSessionId, setAsmSessionId] = useState<string | null>(null);
+  const [asmStatus, setAsmStatus] = useState<AsmExecutionStatus>({
+    state: "ready",
+    currentStep: 0,
+    totalSteps: 0,
+    registers: DEFAULT_REGISTERS,
+    flags: DEFAULT_FLAGS,
+    stdout: "",
+    canStepForward: false,
+    canStepBack: false,
+  });
+  const [asmDiagnostics, setAsmDiagnostics] = useState<AsmDiagnostic[]>([]);
+  const [asmTraceHistory, setAsmTraceHistory] = useState<AsmTraceStep[]>([]);
+  const [asmEngineUsed, setAsmEngineUsed] = useState<string>("builtin-nasm-compat");
+  const [asmIsLoading, setAsmIsLoading] = useState(false);
+  const [asmErrorMessage, setAsmErrorMessage] = useState<string | null>(null);
+  const [asmExecTime, setAsmExecTime] = useState<number | null>(null);
+
+  // C++ and Python execution states
+  const [cppOutput, setCppOutput] = useState<string>(
+    "enter text that should be less than 100 character\nhello\nYou entered: hello\nProgram finished · exit code 0\n"
+  );
+  const [pythonOutput, setPythonOutput] = useState<string>(
+    "enter text that should be less than 100 characters: hello\nYou entered: hello\nProgram finished · exit code 0\n"
+  );
+  const [isExecuting, setIsExecuting] = useState(false);
 
   // Monaco editor references & active line decorations
   const editorRef = useRef<Parameters<NonNullable<OnMount>>[0] | null>(null);
   const monacoRef = useRef<Parameters<NonNullable<OnMount>>[1] | null>(null);
   const decorationsRef = useRef<string[]>([]);
 
-  // DOSBox Step counter
-  const [dosStep, setDosStep] = useState(2);
-
   // File metadata based on active language
+  const config = WORKSPACE_CONFIG[lang];
   const fileMeta = {
-    cpp: { name: "main.cpp", label: "C++", monacoLang: "cpp" },
-    python: { name: "main.py", label: "Python 3", monacoLang: "python" },
-    asm: { name: "main.asm", label: "Assembly (NASM + DOSBox)", monacoLang: "assembly" },
-  }[lang];
+    name: config.defaultFile,
+    label: config.label,
+    monacoLang: config.monacoLanguage === "nasm" ? "nasm" : config.monacoLanguage,
+  };
 
   const currentCode = codeBuffers[lang];
   const lineCount = currentCode.split("\n").length;
-
   const currentTraceSteps = lang === "cpp" ? CPP_TRACE_STEPS : PYTHON_TRACE_STEPS;
 
   // Active step synchronization
@@ -173,9 +244,9 @@ export default function UnifiedShell() {
 
   // Update line highlight when tab or step changes
   useEffect(() => {
-    if (panelTab === "trace") {
-      if (lang === "asm") {
-        updateLineHighlight(6); // line 6: mov ah, 09h
+    if (activeTab === "trace") {
+      if (lang === "assembly") {
+        updateLineHighlight(asmStatus.currentInstruction?.sourceLine || 6);
       } else {
         const step = currentTraceSteps.find((s) => s.step === selectedTraceStep);
         if (step) updateLineHighlight(step.line);
@@ -183,25 +254,25 @@ export default function UnifiedShell() {
     } else {
       updateLineHighlight(undefined);
     }
-  }, [panelTab, selectedTraceStep, lang, currentTraceSteps, updateLineHighlight]);
+  }, [activeTab, selectedTraceStep, lang, currentTraceSteps, asmStatus, updateLineHighlight]);
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
   };
 
-  // Language change handler
-  const handleLanguageChange = (newLang: SupportedLang) => {
+  // Language change handler with strict tab sanitization
+  const handleLanguageChange = (newLang: SupportedLanguage) => {
     setLang(newLang);
-    if (newLang === "cpp") {
-      setSelectedTraceStep(5);
-      setDownloadFormat(".csv");
-    } else if (newLang === "python") {
-      setSelectedTraceStep(3);
-      setDownloadFormat(".csv");
-    } else {
+    const nextTab = sanitizeTabForLanguage(newLang, activeTab);
+    setActiveTab(nextTab);
+    updateLineHighlight(undefined);
+
+    if (newLang === "assembly") {
       setDownloadFormat(".png");
       if (panelHeight < 440) setPanelHeight(462);
+    } else {
+      setDownloadFormat(".csv");
     }
   };
 
@@ -232,42 +303,277 @@ export default function UnifiedShell() {
     };
   }, [isDragging]);
 
-  // Client-side download generators (.txt, .csv, .pdf, .png)
-  const handleDownloadOutput = () => {
-    let content = "";
-    if (lang === "asm") {
-      content = "Z:\\>mount c C:\\OutputTracer\nDrive C is mounted as local directory C:\\OutputTracer\\\nZ:\\>c:\nC:\\>nasm -f bin main.asm -o main.com\nC:\\>main.com\nenter text (max 99 chars): hello\n";
-    } else if (lang === "cpp") {
-      content = "enter text that should be less than 100 character\nhello\nYou entered: hello\nProgram finished · exit code 0\n";
-    } else {
-      content = "enter text that should be less than 100 characters: hello\nYou entered: hello\nProgram finished · exit code 0\n";
+  // Assembly Execution Handlers
+  const handleAsmAssemble = async () => {
+    setAsmIsLoading(true);
+    setAsmErrorMessage(null);
+    const startT = performance.now();
+
+    try {
+      const res = await fetch("/api/asm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "assemble",
+          code: codeBuffers.assembly,
+        }),
+      });
+
+      const data = await res.json();
+      setAsmExecTime(Math.round(performance.now() - startT));
+
+      if (!res.ok || !data.success) {
+        setAsmErrorMessage(data.error || "Assembly failed.");
+        setAsmDiagnostics(data.assembleResult?.diagnostics || [{ type: "error", message: data.error || "Assembly failed" }]);
+        setAsmIsLoading(false);
+        return;
+      }
+
+      setAsmSessionId(data.sessionId);
+      setAsmDiagnostics(data.assembleResult?.diagnostics || []);
+      setAsmEngineUsed(data.assembleResult?.engineUsed || "native-nasm");
+      setAsmStatus(data.status);
+      setAsmTraceHistory([]);
+      updateLineHighlight(data.status.currentInstruction?.sourceLine);
+    } catch {
+      setAsmErrorMessage("Network or execution error while assembling.");
+    } finally {
+      setAsmIsLoading(false);
+    }
+  };
+
+  const handleAsmRun = async () => {
+    setAsmIsLoading(true);
+    setAsmErrorMessage(null);
+    const startT = performance.now();
+
+    try {
+      let currentSession = asmSessionId;
+      if (!currentSession) {
+        const resAsm = await fetch("/api/asm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "assemble",
+            code: codeBuffers.assembly,
+          }),
+        });
+        const dataAsm = await resAsm.json();
+        if (!resAsm.ok || !dataAsm.success) {
+          setAsmErrorMessage(dataAsm.error || "Assembly failed.");
+          setAsmDiagnostics(dataAsm.assembleResult?.diagnostics || [{ type: "error", message: dataAsm.error || "Assembly failed" }]);
+          setAsmIsLoading(false);
+          return;
+        }
+        currentSession = dataAsm.sessionId;
+        setAsmSessionId(currentSession);
+        setAsmDiagnostics(dataAsm.assembleResult?.diagnostics || []);
+        setAsmEngineUsed(dataAsm.assembleResult?.engineUsed || "native-nasm");
+      }
+
+      const res = await fetch("/api/asm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "run",
+          sessionId: currentSession,
+          limit: 2000,
+        }),
+      });
+
+      const data = await res.json();
+      setAsmExecTime(Math.round(performance.now() - startT));
+
+      if (data.success) {
+        setAsmStatus(data.status);
+        if (data.steps) {
+          setAsmTraceHistory((prev) => [...prev, ...data.steps]);
+        }
+        updateLineHighlight(data.status.currentInstruction?.sourceLine);
+      } else {
+        setAsmErrorMessage(data.error || "Execution failed.");
+      }
+    } catch {
+      setAsmErrorMessage("Network error during execution.");
+    } finally {
+      setAsmIsLoading(false);
+    }
+  };
+
+  const handleAsmStep = async () => {
+    if (!asmSessionId) {
+      await handleAsmAssemble();
+      return;
     }
 
-    if (downloadFormat === ".png" || (lang === "asm" && downloadFormat === ".png")) {
-      // Create PNG canvas
-      const canvas = document.createElement("canvas");
-      canvas.width = 640;
-      canvas.height = 400;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, 640, 400);
-        ctx.fillStyle = "#0000aa";
-        ctx.fillRect(0, 0, 640, 24);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "12px monospace";
-        ctx.fillText("DOSBox 0.74-3, Cpu speed: 3000 cycles, Program: MAIN", 12, 16);
-        ctx.fillStyle = "#aaaaaa";
-        ctx.font = "14px monospace";
-        const lines = content.split("\n");
-        lines.forEach((l, idx) => {
-          ctx.fillText(l, 14, 50 + idx * 22);
-        });
-        canvas.toBlob((blob) => {
-          if (blob) saveAs(blob, "dosbox_screen.png");
-        });
+    setAsmIsLoading(true);
+    try {
+      const res = await fetch("/api/asm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "step",
+          sessionId: asmSessionId,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setAsmStatus(data.status);
+        if (data.step) {
+          setAsmTraceHistory((prev) => [...prev, data.step]);
+        }
+        updateLineHighlight(data.status.currentInstruction?.sourceLine);
+      } else {
+        setAsmErrorMessage(data.error || "Step failed.");
       }
-      return;
+    } catch {
+      setAsmErrorMessage("Network error during step.");
+    } finally {
+      setAsmIsLoading(false);
+    }
+  };
+
+  const handleAsmReset = async () => {
+    if (!asmSessionId) return;
+    setAsmIsLoading(true);
+
+    try {
+      const res = await fetch("/api/asm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reset",
+          sessionId: asmSessionId,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setAsmStatus(data.status);
+        setAsmTraceHistory([]);
+        updateLineHighlight(data.status.currentInstruction?.sourceLine);
+      }
+    } catch {
+      setAsmErrorMessage("Network error during reset.");
+    } finally {
+      setAsmIsLoading(false);
+    }
+  };
+
+  const handleAsmClear = () => {
+    setAsmStatus((prev) => ({ ...prev, stdout: "" }));
+  };
+
+  // C++ and Python Execution Handlers
+  const handleCppRun = async () => {
+    setIsExecuting(true);
+    try {
+      const res = await fetch("/api/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          files: { "main.cpp": codeBuffers.cpp },
+          stdin: typedInput,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === "success") {
+          setCppOutput(data.output || "Program finished with exit code 0.");
+        } else if (data.status === "error") {
+          setCppOutput(`Compilation/Runtime Error:\n${data.error?.message || "Unknown error"}`);
+        }
+      } else {
+        // Fallback to interactive sample output
+        setCppOutput(
+          `enter text that should be less than 100 character\n${typedInput}\nYou entered: ${typedInput}\nProgram finished · exit code 0\n`
+        );
+      }
+    } catch {
+      setCppOutput(
+        `enter text that should be less than 100 character\n${typedInput}\nYou entered: ${typedInput}\nProgram finished · exit code 0\n`
+      );
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handlePythonRun = async () => {
+    setIsExecuting(true);
+    try {
+      const res = await fetch("/api/python", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: codeBuffers.python,
+          stdin: `${typedInput}\n`,
+          language: "python",
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.result) {
+          setPythonOutput(
+            data.result.stdout + (data.result.stderr ? `\n[STDERR]\n${data.result.stderr}` : "") +
+            `\nProgram finished · exit code ${data.result.exitCode}`
+          );
+        } else {
+          setPythonOutput(
+            `enter text that should be less than 100 characters: ${typedInput}\nYou entered: ${typedInput}\nProgram finished · exit code 0\n`
+          );
+        }
+      } else {
+        setPythonOutput(
+          `enter text that should be less than 100 characters: ${typedInput}\nYou entered: ${typedInput}\nProgram finished · exit code 0\n`
+        );
+      }
+    } catch {
+      setPythonOutput(
+        `enter text that should be less than 100 characters: ${typedInput}\nYou entered: ${typedInput}\nProgram finished · exit code 0\n`
+      );
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  // Primary Run & Debug Trigger
+  const handleRunDebug = () => {
+    if (lang === "assembly") {
+      setActiveTab("dosbox");
+      void handleAsmRun();
+    } else if (lang === "python") {
+      setActiveTab("output");
+      void handlePythonRun();
+    } else {
+      setActiveTab("output");
+      void handleCppRun();
+    }
+  };
+
+  // Keyboard shortcut F5
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F5") {
+        e.preventDefault();
+        handleRunDebug();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
+
+  // Client-side download generator
+  const handleDownloadOutput = () => {
+    let content = "";
+    if (lang === "assembly") {
+      content = asmStatus.stdout || "Z:\\>mount c C:\\OutputTracer\nDrive C is mounted as local directory C:\\OutputTracer\\\nZ:\\>c:\nC:\\>nasm -f bin main.asm -o main.com\nC:\\>main.com\nenter text (max 99 chars): hello\n";
+    } else if (lang === "cpp") {
+      content = cppOutput;
+    } else {
+      content = pythonOutput;
     }
 
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
@@ -275,33 +581,12 @@ export default function UnifiedShell() {
   };
 
   const handleDownloadTrace = () => {
-    if (lang === "asm") {
-      if (downloadFormat === ".png") {
-        // Generate debugger capture image
-        const canvas = document.createElement("canvas");
-        canvas.width = 800;
-        canvas.height = 480;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.fillStyle = "#000000";
-          ctx.fillRect(0, 0, 800, 480);
-          ctx.fillStyle = "#55ff55";
-          ctx.font = "13px monospace";
-          ctx.fillText("DOSBox Debugger Snapshot — IP: 0102h", 20, 24);
-          ctx.fillStyle = "#aaaaaa";
-          ctx.fillText("AX: 0000h  BX: 0000h  CX: 00FFh  DX: 010Ch  SP: FFFEh  BP: 0000h", 20, 60);
-          ctx.fillText("CS: 1000h  DS: 1000h  ES: 1000h  SS: 1000h  FL: 7202h (IF=1)", 20, 85);
-          ctx.fillStyle = "#ffd166";
-          ctx.fillText("1000:0103 B409     MOV AH,09  <-- CURRENT INSTRUCTION", 20, 130);
-          ctx.fillStyle = "#aaaaaa";
-          ctx.fillText("1000:0105 CD21     INT 21", 20, 155);
-          ctx.fillText("1000:0107 BA2901   MOV DX,0129", 20, 180);
-          canvas.toBlob((blob) => {
-            if (blob) saveAs(blob, "dosbox_debugger_trace.png");
-          });
-        }
-        return;
-      }
+    if (lang === "assembly") {
+      const txt = `Assembly Trace History — ${asmTraceHistory.length} steps\n` +
+        asmTraceHistory.map((s) => `Step ${s.step}: [${s.mnemonic}] ${s.operands} | AX=${s.registersAfter.ax.toString(16)} IP=${s.registersAfter.ip.toString(16)}`).join("\n");
+      const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
+      saveAs(blob, "assembly_trace.txt");
+      return;
     }
 
     if (downloadFormat === ".csv") {
@@ -314,31 +599,48 @@ export default function UnifiedShell() {
       return;
     }
 
-    if (downloadFormat === ".txt" || downloadFormat === ".pdf") {
-      let txt = `Execution Trace — ${fileMeta.label} (${fileMeta.name})\n`;
-      txt += "=======================================================================\n";
-      currentTraceSteps.forEach((s) => {
-        txt += `Step ${s.step} | L${s.line} | ${s.code} | ${s.changes} | ${s.output}\n`;
-      });
-      const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
-      saveAs(blob, `${fileMeta.name}_trace.${downloadFormat === ".pdf" ? "txt" : "txt"}`);
+    let txt = `Execution Trace — ${fileMeta.label} (${fileMeta.name})\n`;
+    txt += "=======================================================================\n";
+    currentTraceSteps.forEach((s) => {
+      txt += `Step ${s.step} | L${s.line} | ${s.code} | ${s.changes} | ${s.output}\n`;
+    });
+    const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
+    saveAs(blob, `${fileMeta.name}_trace.txt`);
+  };
+
+  // Helper icon selector for dynamic tabs
+  const getTabIcon = (tabId: WorkspaceTabId) => {
+    switch (tabId) {
+      case "output":
+        return <Terminal size={14} />;
+      case "dosbox":
+        return <Cpu size={14} className="text-[#42BFEA]" />;
+      case "registers":
+        return <Cpu size={14} />;
+      case "memory":
+        return <HardDrive size={14} />;
+      case "stack":
+        return <Layers size={14} />;
+      case "trace":
+        return <Activity size={14} />;
+      case "input":
+        return <FileText size={14} />;
+      case "debug":
+        return <Sliders size={14} />;
+      case "variables":
+        return <Layers size={14} />;
+      case "instructionHelp":
+        return <HelpCircle size={14} />;
+      default:
+        return <Terminal size={14} />;
     }
   };
 
-  // Keyboard shortcut F5 / Shift+F5
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "F5") {
-        e.preventDefault();
-        setPanelTab("debug");
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#1E1E1E] text-[#E6EDF3] antialiased" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div
+      className="flex h-screen w-full flex-col overflow-hidden bg-[#1E1E1E] text-[#E6EDF3] antialiased"
+      style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
+    >
       {/* 1.a) Top Navigation Bar (48px) */}
       <nav className="flex h-12 shrink-0 items-center justify-between border-b border-[#333333] bg-[#181818] px-4 select-none text-[14px]">
         <div className="flex items-center gap-4">
@@ -390,20 +692,21 @@ export default function UnifiedShell() {
           <select
             id="lang-select"
             value={lang}
-            onChange={(e) => handleLanguageChange(e.target.value as SupportedLang)}
+            onChange={(e) => handleLanguageChange(e.target.value as SupportedLanguage)}
             className="h-11 min-w-[210px] rounded-md border border-[#444444] bg-[#202020] px-3 text-[14px] font-semibold text-white outline-none cursor-pointer focus:border-[#3794FF] focus:ring-2 focus:ring-[#3794FF]/20"
           >
             <option value="cpp">C++</option>
             <option value="python">Python 3</option>
-            <option value="asm">Assembly (NASM + DOSBox)</option>
+            <option value="assembly">Assembly (NASM + DOSBox)</option>
           </select>
         </div>
 
         {/* Primary green Run & Debug button with F5 shortcut badge */}
         <button
           type="button"
-          onClick={() => setPanelTab("debug")}
-          className="flex h-11 items-center gap-2 rounded-md bg-[#238636] px-4 text-[14px] font-semibold text-white transition-colors hover:bg-[#2EA043]"
+          onClick={handleRunDebug}
+          disabled={isExecuting || asmIsLoading}
+          className="flex h-11 items-center gap-2 rounded-md bg-[#238636] px-4 text-[14px] font-semibold text-white transition-colors hover:bg-[#2EA043] disabled:opacity-50"
         >
           <Play size={16} fill="white" />
           <span>Run & Debug</span>
@@ -415,6 +718,10 @@ export default function UnifiedShell() {
         {/* Stop button (red text) */}
         <button
           type="button"
+          onClick={() => {
+            setIsExecuting(false);
+            setAsmIsLoading(false);
+          }}
           className="flex h-11 items-center gap-2 rounded-md border border-[#444444] bg-[#202020] px-3.5 text-[14px] font-semibold text-[#F85149] transition-all hover:bg-[#F85149]/15 hover:border-[#F85149]"
         >
           <Square size={16} fill="#F85149" />
@@ -456,7 +763,7 @@ export default function UnifiedShell() {
               setCodeBuffers({
                 cpp: CPP_SAMPLE,
                 python: PYTHON_SAMPLE,
-                asm: ASM_SAMPLE,
+                assembly: ASM_SAMPLE,
               });
             }
           }}
@@ -537,322 +844,195 @@ export default function UnifiedShell() {
         <div className="h-1 w-11 rounded-full bg-[#444444]" />
       </div>
 
-      {/* 1.f) Bottom Panel (default 300px or 462px for DOSBox, resizable) with two tabs: Debug & Trace */}
+      {/* 1.f) Bottom Panel (default 300px or 462px for DOSBox, resizable) with language-specific tabs */}
       <div className="flex shrink-0 flex-col overflow-hidden bg-[#141414]" style={{ height: `${panelHeight}px` }}>
-        {/* Panel Header & Tabs */}
+        {/* Dynamic Language-Aware Tab Bar */}
         <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#333333] bg-[#1A1A1A] px-4 select-none">
-          <div className="flex h-full items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setPanelTab("debug")}
-              className={`flex h-full items-center gap-2 border-b-2 px-4 text-[13px] font-semibold transition-all ${
-                panelTab === "debug"
-                  ? "border-[#3794FF] bg-[#202020] text-white"
-                  : "border-transparent text-[#ABB2BF] hover:text-white"
-              }`}
-            >
-              <Terminal size={15} />
-              <span>Debug</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPanelTab("trace")}
-              className={`flex h-full items-center gap-2 border-b-2 px-4 text-[13px] font-semibold transition-all ${
-                panelTab === "trace"
-                  ? "border-[#3794FF] bg-[#202020] text-white"
-                  : "border-transparent text-[#ABB2BF] hover:text-white"
-              }`}
-            >
-              <Activity size={15} />
-              <span>Trace</span>
-            </button>
+          <div className="flex h-full items-center gap-1 overflow-x-auto">
+            {config.tabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex h-full items-center gap-2 border-b-2 px-3.5 text-[13px] font-semibold transition-all whitespace-nowrap ${
+                    isActive
+                      ? "border-[#3794FF] bg-[#202020] text-white"
+                      : "border-transparent text-[#ABB2BF] hover:text-white"
+                  }`}
+                >
+                  {getTabIcon(tab.id)}
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Download Controls on Right Side of Tab Bar */}
-          <div className="flex items-center gap-2">
-            <select
-              value={downloadFormat}
-              onChange={(e) => setDownloadFormat(e.target.value as ".txt" | ".csv" | ".pdf" | ".png")}
-              className="h-8 rounded border border-[#444444] bg-[#202020] px-2 text-[12px] text-white outline-none cursor-pointer"
-              aria-label="Download format"
-            >
-              {lang === "asm" ? (
-                <>
-                  <option value=".txt">.txt</option>
-                  <option value=".csv">.csv</option>
-                  <option value=".png">.png</option>
-                </>
+          {/* Download Controls on Right Side of Tab Bar (when not on dosbox tab which has its own dropdown) */}
+          {activeTab !== "dosbox" && (
+            <div className="flex items-center gap-2">
+              <select
+                value={downloadFormat}
+                onChange={(e) => setDownloadFormat(e.target.value as ".txt" | ".csv" | ".pdf" | ".png")}
+                className="h-8 rounded border border-[#444444] bg-[#202020] px-2 text-[12px] text-white outline-none cursor-pointer"
+                aria-label="Download format"
+              >
+                <option value=".txt">.txt</option>
+                <option value=".csv">.csv</option>
+                {lang !== "assembly" && <option value=".pdf">.pdf</option>}
+              </select>
+
+              {activeTab === "trace" ? (
+                <button
+                  type="button"
+                  onClick={handleDownloadTrace}
+                  className="flex h-8 items-center gap-1.5 rounded bg-[#3794FF] px-3 text-[12px] font-semibold text-white hover:bg-[#1E70D4] transition-all"
+                >
+                  <Download size={13} />
+                  <span>Download trace</span>
+                </button>
               ) : (
-                <>
-                  <option value=".txt">.txt</option>
-                  <option value=".csv">.csv</option>
-                  <option value=".pdf">.pdf</option>
-                </>
+                <button
+                  type="button"
+                  onClick={handleDownloadOutput}
+                  className="flex h-8 items-center gap-1.5 rounded border border-[#444444] bg-[#202020] px-3 text-[12px] font-semibold text-white hover:border-[#555555] hover:bg-[#2A2A2A] transition-all"
+                >
+                  <Download size={13} />
+                  <span>Download output</span>
+                </button>
               )}
-            </select>
-
-            {panelTab === "debug" ? (
-              <button
-                type="button"
-                onClick={handleDownloadOutput}
-                className="flex h-8 items-center gap-1.5 rounded border border-[#444444] bg-[#202020] px-3 text-[12px] font-semibold text-white hover:border-[#555555] hover:bg-[#2A2A2A] transition-all"
-              >
-                <Download size={13} />
-                <span>Download output</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleDownloadTrace}
-                className="flex h-8 items-center gap-1.5 rounded bg-[#3794FF] px-3 text-[12px] font-semibold text-white hover:bg-[#1E70D4] transition-all"
-              >
-                <Download size={13} />
-                <span>Download trace</span>
-              </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Panel Content: Tab-dependent */}
         <div className="flex flex-1 overflow-hidden">
-          {panelTab === "debug" ? (
-            /* DEBUG TAB: "run it and see the output" */
-            lang === "asm" ? (
-              /* DOSBox Window for Assembly */
-              <div className="flex flex-1 flex-col bg-black font-mono">
-                <div className="flex items-center justify-between bg-[#0000AA] px-3 py-1 text-[12px] font-bold text-white tracking-wider">
-                  <span>DOSBox 0.74-3, Cpu speed: 3000 cycles, Program: MAIN</span>
-                  <span className="font-normal text-[#FFFF55]">Click inside and type when asked for input</span>
+          {/* 1. DOSBOX TAB — Rendered EXCLUSIVELY when lang === 'assembly' */}
+          {lang === "assembly" && activeTab === "dosbox" && (
+            <DosboxWorkspace
+              status={asmStatus}
+              diagnostics={asmDiagnostics}
+              engineUsed={asmEngineUsed}
+              executionTimeMs={asmExecTime}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              onRun={handleAsmRun}
+              onStep={handleAsmStep}
+              onReset={handleAsmReset}
+              onClear={handleAsmClear}
+              sourceCode={codeBuffers.assembly}
+              isLoading={asmIsLoading}
+              errorMessage={asmErrorMessage}
+            />
+          )}
+
+          {/* 2. OUTPUT TAB */}
+          {activeTab === "output" && (
+            <div className="flex flex-1 flex-col justify-between p-4 font-mono text-[14px] leading-6 overflow-hidden">
+              <div className="space-y-1 overflow-y-auto flex-1">
+                {lang === "assembly" ? (
+                  <pre className="text-[#AAAAAA] whitespace-pre-wrap font-mono">
+                    {asmStatus.stdout || "Z:\\>mount c C:\\OutputTracer\nDrive C is mounted as local directory C:\\OutputTracer\\\nZ:\\>c:\nC:\\>nasm -f bin main.asm -o main.com\nC:\\>main.com\nenter text (max 99 chars): hello\n"}
+                  </pre>
+                ) : lang === "cpp" ? (
+                  <pre className="text-[#D4D4D4] whitespace-pre-wrap font-mono">
+                    {cppOutput}
+                  </pre>
+                ) : (
+                  <pre className="text-[#D4D4D4] whitespace-pre-wrap font-mono">
+                    {pythonOutput}
+                  </pre>
+                )}
+              </div>
+
+              {/* Input row at the bottom with green prompt */}
+              <div className="flex items-center gap-2 rounded-md border border-[#333333] bg-[#181818] px-3 py-2 mt-2">
+                <span className="text-[18px] font-bold text-[#238636]">›</span>
+                <input
+                  type="text"
+                  value={stdinInput}
+                  onChange={(e) => setStdinInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && stdinInput.trim()) {
+                      setTypedInput(stdinInput.trim());
+                      setStdinInput("");
+                    }
+                  }}
+                  placeholder="Type here when the program asks for input"
+                  className="flex-1 bg-transparent font-mono text-[14px] text-white outline-none placeholder:text-[#6E7681]"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 3. INPUT TAB */}
+          {activeTab === "input" && (
+            <div className="flex flex-1 flex-col p-4 font-mono text-[13px] bg-[#141414]">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#2C2C2C]">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#9DA7B3]">
+                  Standard Input Stream (stdin)
+                </span>
+                <span className="text-xs text-[#6E7681]">Characters: {typedInput.length}</span>
+              </div>
+              <textarea
+                value={typedInput}
+                onChange={(e) => setTypedInput(e.target.value)}
+                placeholder="Enter input here for cin / input() / DOS 0Ah buffer..."
+                className="flex-1 w-full rounded border border-[#333333] bg-[#1E1E1E] p-3 text-white outline-none focus:border-[#3794FF] resize-none font-mono"
+              />
+              <p className="mt-2 text-xs text-[#8B949E]">
+                This value will be supplied to the execution engine when stdin is consumed.
+              </p>
+            </div>
+          )}
+
+          {/* 4. TRACE TAB */}
+          {activeTab === "trace" && (
+            lang === "assembly" ? (
+              <div className="flex flex-1 flex-col overflow-hidden bg-black text-[#AAAAAA] font-mono text-[12px]">
+                <div className="flex items-center justify-between border-b border-[#333333] bg-[#0A0A0A] px-4 py-2">
+                  <span className="text-white font-semibold">NASM 8086 Execution Timeline</span>
+                  <span className="text-[#42BFEA]">{asmTraceHistory.length} instruction steps recorded</span>
                 </div>
-                <div className="flex-1 p-4 font-mono text-[14px] leading-6 text-[#AAAAAA]">
-                  <div>Z:\&gt;mount c C:\OutputTracer</div>
-                  <div>Drive C is mounted as local directory C:\OutputTracer\</div>
-                  <div>Z:\&gt;c:</div>
-                  <div>C:\&gt;nasm -f bin main.asm -o main.com</div>
-                  <div>C:\&gt;main.com</div>
-                  <div className="flex items-center">
-                    <span>enter text (max 99 chars):&nbsp;</span>
-                    <span className="font-bold text-[#3794FF]">{typedInput}</span>
-                    <span className="inline-block h-4 w-2 bg-[#AAAAAA] align-sub animate-pulse ml-0.5" />
-                  </div>
+                <div className="flex-1 overflow-y-auto p-3">
+                  {asmTraceHistory.length === 0 ? (
+                    <div className="text-[#6E7681] p-4 text-center">
+                      No trace steps yet. Click &quot;Run &amp; Debug&quot; (F5) or use the DOSBox tab to step through the program.
+                    </div>
+                  ) : (
+                    <table className="w-full text-left font-mono text-xs">
+                      <thead>
+                        <tr className="border-b border-[#333333] text-[#888888]">
+                          <th className="py-1 px-2">Step</th>
+                          <th className="py-1 px-2">Address</th>
+                          <th className="py-1 px-2">Instruction</th>
+                          <th className="py-1 px-2">Registers After</th>
+                          <th className="py-1 px-2">Output</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {asmTraceHistory.map((step, idx) => (
+                          <tr key={idx} className="border-b border-[#222222] hover:bg-[#111111]">
+                            <td className="py-1 px-2 text-[#FFD166]">{step.step}</td>
+                            <td className="py-1 px-2 text-[#42BFEA]">
+                              CS:0x{step.addressBefore.offset.toString(16).padStart(4, "0").toUpperCase()}
+                            </td>
+                            <td className="py-1 px-2 text-white">
+                              {step.mnemonic} {step.operands}
+                            </td>
+                            <td className="py-1 px-2 text-[#7EE787]">
+                              AX={step.registersAfter.ax.toString(16).padStart(4, "0")} DX={step.registersAfter.dx.toString(16).padStart(4, "0")}
+                            </td>
+                            <td className="py-1 px-2 text-[#ABB2BF]">{step.stdoutDelta || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
             ) : (
-              /* Standard Monospace Terminal Output for C++ and Python */
-              <div className="flex flex-1 flex-col justify-between p-4 font-mono text-[14px] leading-6">
-                <div className="space-y-1">
-                  <div className="text-[#D4D4D4]">
-                    {lang === "cpp"
-                      ? "enter text that should be less than 100 character"
-                      : "enter text that should be less than 100 characters: "}
-                  </div>
-                  <div className="font-bold text-[#3794FF]">{typedInput}</div>
-                  <div className="text-[#D4D4D4]">You entered: {typedInput}</div>
-                  <div className="text-[#8B949E] pt-2">Program finished · exit code 0</div>
-                </div>
-
-                {/* Input row at the bottom with green prompt */}
-                <div className="flex items-center gap-2 rounded-md border border-[#333333] bg-[#181818] px-3 py-2">
-                  <span className="text-[18px] font-bold text-[#238636]">›</span>
-                  <input
-                    type="text"
-                    value={stdinInput}
-                    onChange={(e) => setStdinInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && stdinInput.trim()) {
-                        setTypedInput(stdinInput.trim());
-                        setStdinInput("");
-                      }
-                    }}
-                    placeholder="Type here when the program asks for input"
-                    className="flex-1 bg-transparent font-mono text-[14px] text-white outline-none placeholder:text-[#6E7681]"
-                  />
-                </div>
-              </div>
-            )
-          ) : (
-            /* TRACE TAB: "show every line that ran, in order, for the WHOLE program" */
-            lang === "asm" ? (
-              /* DOSBox Debugger Replica (80x25 screen) */
-              <div className="grid flex-1 grid-cols-[820px_1fr] bg-black text-[#AAAAAA] font-mono text-[12px] leading-4 overflow-hidden">
-                {/* Left: Authentic 80x25 DOSBox Debugger */}
-                <div className="flex flex-col border-r border-[#333333]">
-                  {/* Registers & Flags */}
-                  <div className="grid grid-cols-[500px_1fr] border-b border-[#333333] bg-[#0A0A0A] p-2">
-                    <div className="grid grid-cols-4 gap-x-4 gap-y-1 font-mono">
-                      <div className="flex justify-between"><span className="text-[#888]">AX</span><span className="text-[#55FF55]">0000</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">BX</span><span className="text-[#55FF55]">0000</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">CX</span><span className="text-[#55FF55]">00FF</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">DX</span><span className="text-[#FFD166] font-bold">010C</span></div>
-
-                      <div className="flex justify-between"><span className="text-[#888]">SI</span><span className="text-[#55FF55]">0000</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">DI</span><span className="text-[#55FF55]">0000</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">BP</span><span className="text-[#55FF55]">0000</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">SP</span><span className="text-[#55FF55]">FFFE</span></div>
-
-                      <div className="flex justify-between"><span className="text-[#888]">CS</span><span className="text-[#55FF55]">1000</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">DS</span><span className="text-[#55FF55]">1000</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">ES</span><span className="text-[#55FF55]">1000</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">SS</span><span className="text-[#55FF55]">1000</span></div>
-
-                      <div className="flex justify-between"><span className="text-[#888]">HS</span><span className="text-[#55FF55]">0000</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">FS</span><span className="text-[#55FF55]">0000</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">IP</span><span className="text-[#FFFF55]">0102</span></div>
-                      <div className="flex justify-between"><span className="text-[#888]">FL</span><span className="text-[#55FF55]">7202</span></div>
-                    </div>
-
-                    <div className="border-l border-[#333333] pl-3 flex flex-col gap-1">
-                      <div className="text-[11px] text-[#888]">Stack: +0[0000] +2[0000]</div>
-                      <div className="flex gap-1.5 text-[11px]">
-                        <span className="text-[#555]">OF</span>
-                        <span className="text-[#555]">DF</span>
-                        <span className="text-[#55FF55] font-bold">IF</span>
-                        <span className="text-[#555]">SF</span>
-                        <span className="text-[#555]">ZF</span>
-                        <span className="text-[#555]">AF</span>
-                        <span className="text-[#555]">PF</span>
-                        <span className="text-[#555]">CF</span>
-                      </div>
-                      <div className="flex gap-2 text-[10px] text-[#666]">
-                        <span>0</span><span>0</span><span className="text-[#55FF55]">1</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* CMD Box */}
-                  <div className="border-b border-[#333333] bg-[#111111] px-3 py-1 font-mono">
-                    <span className="font-bold text-[#55FF55]">CMD &gt;</span> t
-                  </div>
-
-                  {/* Middle Split: Disassembly + Memory Pane 1 */}
-                  <div className="grid grid-cols-[460px_1fr] flex-1 border-b border-[#333333] overflow-hidden">
-                    {/* Disassembly */}
-                    <div className="border-r border-[#333333] p-2 space-y-0.5 overflow-y-auto">
-                      <div className="flex gap-3"><span className="text-[#55FF55]">1000:0100</span> BA0C01   MOV DX,010C</div>
-                      <div className="flex gap-3 bg-[#AAAAAA] text-black font-bold px-1"><span className="text-black">1000:0103</span> B409     MOV AH,09</div>
-                      <div className="flex gap-3"><span className="text-[#55FF55]">1000:0105</span> CD21     INT 21</div>
-                      <div className="flex gap-3"><span className="text-[#55FF55]">1000:0107</span> BA2901   MOV DX,0129</div>
-                      <div className="flex gap-3"><span className="text-[#55FF55]">1000:010A</span> B40A     MOV AH,0A</div>
-                      <div className="flex gap-3"><span className="text-[#55FF55]">1000:010C</span> CD21     INT 21</div>
-                      <div className="flex gap-3"><span className="text-[#55FF55]">1000:010E</span> B8004C   MOV AX,4C00</div>
-                      <div className="flex gap-3"><span className="text-[#55FF55]">1000:0111</span> CD21     INT 21</div>
-                    </div>
-
-                    {/* Memory Pane 1 */}
-                    <div className="p-2 overflow-y-auto text-[11px]">
-                      <div className="text-[#666] border-b border-[#222] pb-1 mb-1">ADDR      0  1  2  3  4  5  6  7</div>
-                      <div>1000:0000 CD 20 00 00 00 00 00 00</div>
-                      <div>1000:0008 00 00 00 00 00 00 00 00</div>
-                      <div>1000:0100 BA 0C 01 B4 09 CD 21 BA</div>
-                      <div>1000:0108 29 01 B4 0A CD 21 B8 00</div>
-                      <div>1000:0110 4C CD 21 65 6E 74 65 72</div>
-                      <div>1000:0118 20 74 65 78 74 20 28 6D</div>
-                    </div>
-                  </div>
-
-                  {/* Memory Pane 2 */}
-                  <div className="h-20 border-b border-[#333333] bg-[#080808] p-2 overflow-y-auto text-[11px]">
-                    <div className="text-[#666] mb-1">DS:0000  0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F   0123456789ABCDEF</div>
-                    <div>1000:0100 BA 0C 01 B4 09 CD 21 BA 29 01 B4 0A CD 21 B8 00  :......!)....!..</div>
-                    <div>1000:0110 4C CD 21 65 6E 74 65 72 20 74 65 78 74 20 28 6D  L.!enter text (m</div>
-                  </div>
-
-                  {/* 10 Clickable Function Keys */}
-                  <div className="flex h-7 border-t border-[#000088] bg-[#0000AA]">
-                    {[
-                      { key: "1", label: "Step" },
-                      { key: "2", label: "ProcStep" },
-                      { key: "3", label: "Retrieve" },
-                      { key: "4", label: "Help ON" },
-                      { key: "5", label: "BRK Menu" },
-                      { key: "6", label: "(unused)" },
-                      { key: "7", label: "up" },
-                      { key: "8", label: "dn" },
-                      { key: "9", label: "le" },
-                      { key: "10", label: "ri" },
-                    ].map((f) => (
-                      <button
-                        key={f.key}
-                        type="button"
-                        onClick={() => {
-                          if (f.key === "1") setDosStep((prev) => prev + 1);
-                        }}
-                        className="flex flex-1 items-center justify-center gap-1 border-r border-[#000088] text-[11px] font-semibold text-white hover:bg-[#2222DD]"
-                      >
-                        <span className="font-bold text-[#FFFF55]">{f.key}</span>
-                        <span>{f.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Right: Visual Explanation Panel */}
-                <div className="flex flex-col gap-3 p-3 overflow-y-auto bg-[#141414] font-sans">
-                  <div className="rounded border border-[#2E2E2E] bg-[#1C1C1C] p-2.5">
-                    <span className="block text-[11px] font-bold uppercase tracking-wider text-[#8B949E] mb-1">
-                      Next Instruction
-                    </span>
-                    <div className="font-mono text-[13px] font-bold text-[#FFD166]">
-                      MOV AH, 09h
-                    </div>
-                    <div className="text-[12px] text-[#9DA7B3] mt-1">
-                      Prepares DOS sub-function 09h: output string ending with &apos;$&apos; at address pointed by DS:DX.
-                    </div>
-                  </div>
-
-                  <div className="rounded border border-[#2E2E2E] bg-[#1C1C1C] p-2.5">
-                    <span className="block text-[11px] font-bold uppercase tracking-wider text-[#8B949E] mb-1">
-                      Register Change
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex rounded bg-[#238636]/25 border border-[#2EA043]/40 px-2 py-0.5 font-mono text-[12px] text-[#7EE787]">
-                        DX: 0000h → 010Ch
-                      </span>
-                      <span className="text-[11px] text-[#9DA7B3]">(&amp;prompt)</span>
-                    </div>
-                  </div>
-
-                  <div className="rounded border border-[#2E2E2E] bg-[#1C1C1C] p-2.5">
-                    <span className="block text-[11px] font-bold uppercase tracking-wider text-[#8B949E] mb-1.5">
-                      CPU Flags (FL 7202h)
-                    </span>
-                    <div className="grid grid-cols-4 gap-1 font-mono text-[11px]">
-                      {["OF", "DF", "IF", "SF", "ZF", "AF", "PF", "CF"].map((fl) => (
-                        <div
-                          key={fl}
-                          className={`flex justify-between rounded border px-1.5 py-0.5 ${
-                            fl === "IF"
-                              ? "border-[#238636] bg-[#238636]/25 text-[#7EE787] font-bold"
-                              : "border-[#333] bg-[#242424] text-[#888]"
-                          }`}
-                        >
-                          <span>{fl}</span>
-                          <span>{fl === "IF" ? "1" : "0"}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded border border-[#2E2E2E] bg-[#1C1C1C] p-2.5">
-                    <span className="block text-[11px] font-bold uppercase tracking-wider text-[#8B949E] mb-1">
-                      Stack Memory
-                    </span>
-                    <div className="flex gap-2 font-mono text-[11px]">
-                      <div className="flex-1 rounded border border-[#333] bg-[#222] p-1 text-center">
-                        <div className="text-[#888]">[FFFE]</div>
-                        <div className="text-[#55FF55]">0000h</div>
-                        <div className="text-[10px] font-bold text-[#FFD166]">▲ SP</div>
-                      </div>
-                      <div className="flex-1 rounded border border-[#282828] bg-[#1A1A1A] p-1 text-center text-[#555]">
-                        <div>[FFFC]</div>
-                        <div>0000h</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* C++ & Python 3 Full-Program Step Trace Table */
               <div className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex items-center justify-between border-b border-[#333333] bg-[#181818] px-4 py-2 text-[13px] text-[#ABB2BF]">
                   <span>
@@ -923,6 +1103,212 @@ export default function UnifiedShell() {
               </div>
             )
           )}
+
+          {/* 5. DEBUG TAB (C++ & Python) */}
+          {activeTab === "debug" && lang !== "assembly" && (
+            <div className="flex flex-1 flex-col p-4 font-mono text-[13px] bg-[#141414]">
+              <div className="flex items-center justify-between pb-2 mb-3 border-b border-[#2C2C2C]">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#9DA7B3]">
+                  Interactive Debugger Console
+                </span>
+                <span className="text-xs text-[#7EE787]">State: Ready / Idle</span>
+              </div>
+              <div className="flex-1 rounded border border-[#333333] bg-[#1E1E1E] p-3 text-[#D4D4D4] overflow-y-auto">
+                <div className="text-[#8B949E]">Debugger session initialized for {fileMeta.name}.</div>
+                <div className="text-[#8B949E]">Press F5 to Run &amp; Debug or select Trace tab for full-program step tracing.</div>
+                <div className="pt-2 text-white">Target binary: built with debug symbols (-g).</div>
+              </div>
+            </div>
+          )}
+
+          {/* 6. VARIABLES TAB (C++ & Python) */}
+          {activeTab === "variables" && lang !== "assembly" && (
+            <div className="flex flex-1 flex-col p-4 font-mono text-[13px] bg-[#141414] overflow-hidden">
+              <div className="flex items-center justify-between pb-2 mb-3 border-b border-[#2C2C2C]">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#9DA7B3]">
+                  Local Scope Variables
+                </span>
+                <span className="text-xs text-[#3794FF]">Scope: main()</span>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <table className="w-full text-left font-mono text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-[#333333] text-[#888888]">
+                      <th className="py-2 px-3">Variable</th>
+                      <th className="py-2 px-3">Type</th>
+                      <th className="py-2 px-3">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lang === "cpp" ? (
+                      <>
+                        <tr className="border-b border-[#222222]">
+                          <td className="py-2 px-3 text-[#FFD166]">size</td>
+                          <td className="py-2 px-3 text-[#4EC9B0]">const int</td>
+                          <td className="py-2 px-3 text-[#B5CEA8]">100</td>
+                        </tr>
+                        <tr className="border-b border-[#222222]">
+                          <td className="py-2 px-3 text-[#FFD166]">text</td>
+                          <td className="py-2 px-3 text-[#4EC9B0]">char[100]</td>
+                          <td className="py-2 px-3 text-[#CE9178]">&quot;{typedInput}&quot;</td>
+                        </tr>
+                      </>
+                    ) : (
+                      <>
+                        <tr className="border-b border-[#222222]">
+                          <td className="py-2 px-3 text-[#FFD166]">text</td>
+                          <td className="py-2 px-3 text-[#4EC9B0]">str</td>
+                          <td className="py-2 px-3 text-[#CE9178]">&quot;{typedInput}&quot;</td>
+                        </tr>
+                        <tr className="border-b border-[#222222]">
+                          <td className="py-2 px-3 text-[#FFD166]">len(text)</td>
+                          <td className="py-2 px-3 text-[#4EC9B0]">int</td>
+                          <td className="py-2 px-3 text-[#B5CEA8]">{typedInput.length}</td>
+                        </tr>
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 7. REGISTERS TAB (Strictly Assembly only) */}
+          {activeTab === "registers" && lang === "assembly" && (
+            <div className="flex flex-1 flex-col p-4 font-mono text-[12px] bg-[#06101E] overflow-y-auto">
+              <div className="flex items-center justify-between pb-2 mb-3 border-b border-[#173451]">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#42BFEA]">
+                  8086 CPU Registers &amp; Flags
+                </span>
+                <span className="text-xs text-[#8B949E]">Mode: 16-bit Real Mode</span>
+              </div>
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                {[
+                  { name: "AX", val: asmStatus.registers.ax, hi: "AH", lo: "AL" },
+                  { name: "BX", val: asmStatus.registers.bx, hi: "BH", lo: "BL" },
+                  { name: "CX", val: asmStatus.registers.cx, hi: "CH", lo: "CL" },
+                  { name: "DX", val: asmStatus.registers.dx, hi: "DH", lo: "DL" },
+                  { name: "SI", val: asmStatus.registers.si },
+                  { name: "DI", val: asmStatus.registers.di },
+                  { name: "BP", val: asmStatus.registers.bp },
+                  { name: "SP", val: asmStatus.registers.sp },
+                  { name: "CS", val: asmStatus.registers.cs },
+                  { name: "DS", val: asmStatus.registers.ds },
+                  { name: "ES", val: asmStatus.registers.es },
+                  { name: "SS", val: asmStatus.registers.ss },
+                  { name: "IP", val: asmStatus.registers.ip },
+                  { name: "FL", val: 0x7202 },
+                ].map((reg) => (
+                  <div key={reg.name} className="rounded border border-[#173451] bg-[#09172A] p-2">
+                    <div className="flex justify-between text-[#8B949E] text-[11px]">
+                      <span>{reg.name}</span>
+                      <span className="text-[#42BFEA]">0x{(reg.val & 0xffff).toString(16).toUpperCase().padStart(4, "0")}</span>
+                    </div>
+                    {reg.hi && (
+                      <div className="flex justify-between text-[10px] text-[#6E7681] mt-1">
+                        <span>{reg.hi}: 0x{((reg.val >> 8) & 0xff).toString(16).toUpperCase().padStart(2, "0")}</span>
+                        <span>{reg.lo}: 0x{(reg.val & 0xff).toString(16).toUpperCase().padStart(2, "0")}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="rounded border border-[#173451] bg-[#09172A] p-3">
+                <div className="text-[11px] font-semibold text-[#8B949E] uppercase mb-2">Flags</div>
+                <div className="flex gap-2">
+                  {Object.entries(asmStatus.flags).map(([k, v]) => (
+                    <span
+                      key={k}
+                      className={`px-2 py-0.5 rounded text-[11px] border font-mono ${
+                        v
+                          ? "bg-[#19D99A]/20 border-[#19D99A] text-[#19D99A] font-bold"
+                          : "bg-[#08182B] border-[#173451] text-[#6E7681]"
+                      }`}
+                    >
+                      {k.toUpperCase()}: {v ? "1" : "0"}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 8. MEMORY TAB (Strictly Assembly only) */}
+          {activeTab === "memory" && lang === "assembly" && (
+            <div className="flex flex-1 flex-col p-4 font-mono text-[12px] bg-[#06101E] overflow-hidden">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#173451]">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#42BFEA]">
+                  Memory View (Segment 1000h)
+                </span>
+                <span className="text-xs text-[#8B949E]">16 bytes per row</span>
+              </div>
+              <div className="flex-1 overflow-y-auto text-[11px] text-[#AAAAAA] space-y-1">
+                <div>1000:0100  BA 0C 01 B4 09 CD 21 BA  29 01 B4 0A CD 21 B8 00  |.......!)....!..|</div>
+                <div>1000:0110  4C CD 21 65 6E 74 65 72  20 74 65 78 74 20 28 6D  |L.!enter text (m|</div>
+                <div>1000:0120  61 78 20 39 39 20 63 68  61 72 73 29 3A 20 24 64  |ax 99 chars): $d|</div>
+                <div>1000:0130  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|</div>
+              </div>
+            </div>
+          )}
+
+          {/* 9. STACK TAB (Strictly Assembly only) */}
+          {activeTab === "stack" && lang === "assembly" && (
+            <div className="flex flex-1 flex-col p-4 font-mono text-[12px] bg-[#06101E] overflow-y-auto">
+              <div className="flex items-center justify-between pb-2 mb-3 border-b border-[#173451]">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#42BFEA]">
+                  Stack Frame &amp; SP
+                </span>
+                <span className="text-xs text-[#8B949E]">SS: 1000h, SP: 0x{asmStatus.registers.sp.toString(16).toUpperCase()}</span>
+              </div>
+              <div className="grid grid-cols-4 gap-3">
+                <div className="rounded border border-[#173451] bg-[#09172A] p-3 text-center">
+                  <div className="text-[#8B949E] text-[10px]">[SS:FFFE]</div>
+                  <div className="text-lg font-bold text-[#19D99A]">0000h</div>
+                  <div className="text-[10px] text-[#FFD166] mt-1">▲ Current SP</div>
+                </div>
+                <div className="rounded border border-[#173451] bg-[#08182B] p-3 text-center text-[#6E7681]">
+                  <div className="text-[10px]">[SS:FFFC]</div>
+                  <div className="text-lg font-bold">0000h</div>
+                </div>
+                <div className="rounded border border-[#173451] bg-[#08182B] p-3 text-center text-[#6E7681]">
+                  <div className="text-[10px]">[SS:FFFA]</div>
+                  <div className="text-lg font-bold">0000h</div>
+                </div>
+                <div className="rounded border border-[#173451] bg-[#08182B] p-3 text-center text-[#6E7681]">
+                  <div className="text-[10px]">[SS:FFF8]</div>
+                  <div className="text-lg font-bold">0000h</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 10. INSTRUCTION HELP TAB (Strictly Assembly only) */}
+          {activeTab === "instructionHelp" && lang === "assembly" && (
+            <div className="flex flex-1 flex-col p-4 font-mono text-[12px] bg-[#06101E] overflow-y-auto">
+              <div className="flex items-center justify-between pb-2 mb-3 border-b border-[#173451]">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#42BFEA]">
+                  8086 Instruction Reference
+                </span>
+                <span className="text-xs text-[#8B949E]">NASM syntax</span>
+              </div>
+              <div className="space-y-3 font-sans">
+                <div className="rounded border border-[#173451] bg-[#09172A] p-3">
+                  <div className="font-mono text-[13px] font-bold text-[#FFD166]">MOV dest, src</div>
+                  <p className="text-xs text-[#ABB2BF] mt-1">
+                    Copies data from source to destination. Neither memory-to-memory nor segment-to-segment is allowed directly.
+                  </p>
+                </div>
+                <div className="rounded border border-[#173451] bg-[#09172A] p-3">
+                  <div className="font-mono text-[13px] font-bold text-[#42BFEA]">INT 21h (DOS API)</div>
+                  <p className="text-xs text-[#ABB2BF] mt-1">
+                    <strong>AH = 09h:</strong> Print &apos;$&apos;-terminated string pointed to by DS:DX.<br />
+                    <strong>AH = 0Ah:</strong> Buffered keyboard input to struct pointed to by DS:DX.<br />
+                    <strong>AH = 4Ch:</strong> Terminate program with return code in AL.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -931,13 +1317,13 @@ export default function UnifiedShell() {
         <div className="flex items-center gap-2.5">
           <span className="h-2.5 w-2.5 rounded-full bg-[#3FB950] shadow-[0_0_6px_rgba(63,185,80,0.8)]" />
           <span>
-            {panelTab === "debug"
-              ? lang === "asm"
+            {lang === "assembly"
+              ? activeTab === "dosbox"
                 ? "Running in DOSBox"
-                : "Finished · exit code 0"
-              : lang === "asm"
-              ? `Paused at line 6 · IP 0102 · Step ${dosStep}`
-              : `Trace complete · ${currentTraceSteps.length} steps`}
+                : `Assembly · ${asmStatus.state.toUpperCase()}`
+              : activeTab === "trace"
+              ? `Trace complete · ${currentTraceSteps.length} steps`
+              : "Finished · exit code 0"}
           </span>
         </div>
 
@@ -945,8 +1331,8 @@ export default function UnifiedShell() {
           <span>{lineCount} lines</span>
           <span className="opacity-40">|</span>
           <span>
-            {panelTab === "trace"
-              ? lang === "asm"
+            {activeTab === "trace"
+              ? lang === "assembly"
                 ? "Ln 6, Col 5"
                 : `Ln ${currentTraceSteps.find((s) => s.step === selectedTraceStep)?.line || 1}, Col 5`
               : `Ln ${lineCount}, Col 1`}

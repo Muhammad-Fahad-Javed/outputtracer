@@ -17,9 +17,11 @@ export const defaultPythonApiDeps: PythonApiDeps = {
     try {
       const { createClient } = await import("@/lib/supabase/server");
       const supabase = await createClient();
-      const { data } = await supabase.auth.getUser();
-      if (data?.user?.id) {
-        return { userId: data.user.id };
+      if (supabase) {
+        const { data } = await supabase.auth.getUser();
+        if (data?.user?.id) {
+          return { userId: data.user.id };
+        }
       }
     } catch {
       // In guest or non-session context
