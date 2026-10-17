@@ -510,7 +510,9 @@ export default function UnifiedShell() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "assemble",
+          source: codeBuffers.assembly,
           code: codeBuffers.assembly,
+          stdin: typedInput ? `${typedInput}\n` : "",
         }),
       });
 
@@ -530,8 +532,8 @@ export default function UnifiedShell() {
       setAsmStatus(data.status);
       setAsmTraceHistory([]);
       updateLineHighlight(data.status.currentInstruction?.sourceLine);
-    } catch {
-      setAsmErrorMessage("Network or execution error while assembling.");
+    } catch (err: unknown) {
+      setAsmErrorMessage(`Network or execution error while assembling: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setAsmIsLoading(false);
     }
@@ -550,7 +552,9 @@ export default function UnifiedShell() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "assemble",
+            source: codeBuffers.assembly,
             code: codeBuffers.assembly,
+            stdin: typedInput ? `${typedInput}\n` : "",
           }),
         });
         const dataAsm = await resAsm.json();
@@ -572,6 +576,7 @@ export default function UnifiedShell() {
         body: JSON.stringify({
           action: "run",
           sessionId: currentSession,
+          stdin: typedInput ? `${typedInput}\n` : "",
           limit: 2000,
         }),
       });
@@ -588,8 +593,8 @@ export default function UnifiedShell() {
       } else {
         setAsmErrorMessage(data.error || "Execution failed.");
       }
-    } catch {
-      setAsmErrorMessage("Network error during execution.");
+    } catch (err: unknown) {
+      setAsmErrorMessage(`Network error during execution: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setAsmIsLoading(false);
     }
@@ -622,8 +627,8 @@ export default function UnifiedShell() {
       } else {
         setAsmErrorMessage(data.error || "Step failed.");
       }
-    } catch {
-      setAsmErrorMessage("Network error during step.");
+    } catch (err: unknown) {
+      setAsmErrorMessage(`Network error during step: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setAsmIsLoading(false);
     }
@@ -649,8 +654,8 @@ export default function UnifiedShell() {
         setAsmTraceHistory([]);
         updateLineHighlight(data.status.currentInstruction?.sourceLine);
       }
-    } catch {
-      setAsmErrorMessage("Network error during reset.");
+    } catch (err: unknown) {
+      setAsmErrorMessage(`Network error during reset: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setAsmIsLoading(false);
     }
@@ -678,17 +683,22 @@ export default function UnifiedShell() {
         if (data.status === "success") {
           setCppOutput(data.output || "Program finished with exit code 0.");
         } else if (data.status === "error") {
-          setCppOutput(`Compilation/Runtime Error:\n${data.error?.message || "Unknown error"}`);
+          setCppOutput(`Compilation/Runtime Error:\n${data.error?.message || data.error || "Unknown error"}`);
+        } else {
+          setCppOutput(data.output || JSON.stringify(data, null, 2));
         }
       } else {
-        setCppOutput(
-          `enter text that should be less than 100 character\n${typedInput}\nYou entered: ${typedInput}\nProgram finished · exit code 0\n`
-        );
+        let errText = "Execution failed.";
+        try {
+          const errData = await res.json();
+          errText = errData.error?.message || errData.error || errData.message || JSON.stringify(errData);
+        } catch {
+          errText = await res.text();
+        }
+        setCppOutput(`Execution Failed (${res.status}):\n${errText}`);
       }
-    } catch {
-      setCppOutput(
-        `enter text that should be less than 100 character\n${typedInput}\nYou entered: ${typedInput}\nProgram finished · exit code 0\n`
-      );
+    } catch (err: unknown) {
+      setCppOutput(`Network/Client Error:\n${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsExecuting(false);
     }
@@ -702,7 +712,7 @@ export default function UnifiedShell() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: codeBuffers.python,
-          stdin: `${typedInput}\n`,
+          stdin: typedInput ? `${typedInput}\n` : "",
           language: "python",
         }),
       });
@@ -710,24 +720,25 @@ export default function UnifiedShell() {
       if (res.ok) {
         const data = await res.json();
         if (data.ok && data.result) {
-          setPythonOutput(
-            data.result.stdout + (data.result.stderr ? `\n[STDERR]\n${data.result.stderr}` : "") +
-            `\nProgram finished · exit code ${data.result.exitCode}`
-          );
+          const out = data.result.stdout || "";
+          const err = data.result.stderr ? `\n[STDERR]\n${data.result.stderr}` : "";
+          const exitMsg = data.result.exitCode !== null ? `\nProgram finished · exit code ${data.result.exitCode}` : `\nStatus: ${data.result.status}`;
+          setPythonOutput(out + err + exitMsg);
         } else {
-          setPythonOutput(
-            `enter text that should be less than 100 characters: ${typedInput}\nYou entered: ${typedInput}\nProgram finished · exit code 0\n`
-          );
+          setPythonOutput(`Execution Error:\n${data.error || JSON.stringify(data)}`);
         }
       } else {
-        setPythonOutput(
-          `enter text that should be less than 100 characters: ${typedInput}\nYou entered: ${typedInput}\nProgram finished · exit code 0\n`
-        );
+        let errText = "Execution failed.";
+        try {
+          const errData = await res.json();
+          errText = errData.error || errData.message || JSON.stringify(errData);
+        } catch {
+          errText = await res.text();
+        }
+        setPythonOutput(`Execution Failed (${res.status}):\n${errText}`);
       }
-    } catch {
-      setPythonOutput(
-        `enter text that should be less than 100 characters: ${typedInput}\nYou entered: ${typedInput}\nProgram finished · exit code 0\n`
-      );
+    } catch (err: unknown) {
+      setPythonOutput(`Network/Client Error:\n${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsExecuting(false);
     }

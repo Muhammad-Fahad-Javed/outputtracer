@@ -15,6 +15,24 @@ const SEG_REG_MAP: Record<string, number> = {
   es: 0, cs: 1, ss: 2, ds: 3,
 };
 
+const KNOWN_KEYWORDS = new Set<string>([
+  "org", "equ", "db", "dw", "dd", "resb", "resw", "resd", "times",
+  "bits", "section", "segment", "global", "extern", "cpu", "default",
+  "jmp", "call", "ret", "retf", "retn", "int", "int3", "into", "iret",
+  "loop", "loope", "loopz", "loopne", "loopnz", "jcxz",
+  "jo", "jno", "jb", "jc", "jnae", "jae", "jnb", "jnc", "jz", "je",
+  "jnz", "jne", "jbe", "jna", "ja", "jnbe", "js", "jns", "jp", "jpe",
+  "jnp", "jpo", "jl", "jnge", "jge", "jnl", "jle", "jng", "jg", "jnle",
+  "mov", "push", "pop", "pushf", "popf", "xchg", "lea", "lds", "les",
+  "lahf", "sahf", "in", "out", "xlat", "xlatb",
+  "add", "adc", "sub", "sbb", "cmp", "neg", "inc", "dec",
+  "mul", "imul", "div", "idiv", "cbw", "cwd",
+  "not", "and", "or", "xor", "test",
+  "shl", "shr", "sar", "rol", "ror", "rcl", "rcr", "sal",
+  "clc", "stc", "cmc", "cld", "std", "cli", "sti",
+  "nop", "hlt", "wait", "lock",
+]);
+
 interface MemoryOperand {
   baseReg?: string; // 'bx' or 'bp'
   indexReg?: string; // 'si' or 'di'
@@ -44,7 +62,25 @@ interface ParsedLine {
 }
 
 export function parseNumber(raw: string, symbols: Map<string, number> = new Map(), currentOffset = 0): number | null {
-  const s = raw.trim();
+  let s = raw.trim();
+  while (s.startsWith("(") && s.endsWith(")")) {
+    let depth = 0;
+    let matchAll = true;
+    for (let i = 0; i < s.length - 1; i++) {
+      if (s[i] === "(") depth++;
+      else if (s[i] === ")") depth--;
+      if (depth === 0) {
+        matchAll = false;
+        break;
+      }
+    }
+    if (matchAll) {
+      s = s.slice(1, -1).trim();
+    } else {
+      break;
+    }
+  }
+
   if (s === "$") return currentOffset;
   if (s === "$$") return 0x0100; // default start for COM
 
@@ -77,13 +113,22 @@ export function parseNumber(raw: string, symbols: Map<string, number> = new Map(
     return symbols.get(s.toLowerCase())!;
   }
 
-  // Simple expressions: symbol + offset, symbol - offset
-  const addMatch = s.match(/^([a-zA-Z0-9_$.]+)\s*([+-])\s*(.+)$/);
-  if (addMatch) {
-    const left = parseNumber(addMatch[1], symbols, currentOffset);
-    const right = parseNumber(addMatch[3], symbols, currentOffset);
-    if (left !== null && right !== null) {
-      return addMatch[2] === "+" ? left + right : left - right;
+  // Top-level + or -
+  let depth = 0;
+  for (let i = s.length - 1; i > 0; i--) {
+    const c = s[i];
+    if (c === ")") depth++;
+    else if (c === "(") depth--;
+    else if (depth === 0 && (c === "+" || c === "-")) {
+      const leftStr = s.slice(0, i).trim();
+      const rightStr = s.slice(i + 1).trim();
+      if (leftStr && rightStr) {
+        const left = parseNumber(leftStr, symbols, currentOffset);
+        const right = parseNumber(rightStr, symbols, currentOffset);
+        if (left !== null && right !== null) {
+          return c === "+" ? left + right : left - right;
+        }
+      }
     }
   }
 
@@ -322,12 +367,19 @@ export function assemble8086(source: string): AssembleResult {
       continue;
     }
 
-    // Check labels: label: or label (if followed by instruction)
+    // Check labels: label: or label (if followed by instruction/directive)
     let label: string | undefined;
     const labelMatch = line.match(/^([a-zA-Z0-9_$.]+):(.*)$/);
     if (labelMatch) {
       label = labelMatch[1].trim();
       line = labelMatch[2].trim();
+    } else {
+      const spaceIdx = line.search(/\s/);
+      const firstWord = (spaceIdx === -1 ? line : line.slice(0, spaceIdx)).toLowerCase();
+      if (!KNOWN_KEYWORDS.has(firstWord) && /^[a-zA-Z0-9_$.]+$/.test(firstWord)) {
+        label = firstWord;
+        line = spaceIdx === -1 ? "" : line.slice(spaceIdx).trim();
+      }
     }
 
     // Split mnemonic and operands
@@ -403,8 +455,52 @@ export function assemble8086(source: string): AssembleResult {
       return new Array(count * 2).fill(0);
     }
 
+    if (m === "times") {
+      const text = (p.operandsText || "").trim();
+      const spaceIdx = text.search(/\s/);
+      if (spaceIdx === -1) {
+        diagnostics.push({
+          type: "error",
+          message: `Invalid times syntax: '${text}'`,
+          line: p.lineNumber,
+        });
+        return [];
+      }
+      const countExpr = text.slice(0, spaceIdx).trim();
+      const restInstruction = text.slice(spaceIdx).trim();
+      const count = parseNumber(countExpr, symbols, offset) ?? 0;
+      if (count <= 0) return [];
+
+      let subMnemonic: string;
+      let subOperandsText: string | undefined;
+      const subSpaceIdx = restInstruction.search(/\s/);
+      if (subSpaceIdx === -1) {
+        subMnemonic = restInstruction.toLowerCase();
+      } else {
+        subMnemonic = restInstruction.slice(0, subSpaceIdx).toLowerCase();
+        subOperandsText = restInstruction.slice(subSpaceIdx).trim();
+      }
+
+      const subLine: ParsedLine = {
+        lineNumber: p.lineNumber,
+        originalText: p.originalText,
+        mnemonic: subMnemonic,
+        operandsText: subOperandsText,
+        operands: [],
+      };
+
+      const bytes: number[] = [];
+      let curSubOff = offset;
+      for (let c = 0; c < count; c++) {
+        const b = assembleInstruction(subLine, pass, curSubOff);
+        bytes.push(...b);
+        curSubOff += b.length;
+      }
+      return bytes;
+    }
+
     // Directives to ignore safely
-    if (["bits", "section", "global", "extern", "cpu"].includes(m)) {
+    if (["bits", "section", "segment", "global", "extern", "cpu"].includes(m)) {
       return [];
     }
 

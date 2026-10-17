@@ -240,7 +240,16 @@ async function runAcquired(
     const compilePlan = await planSandboxedCommand({
       tempDir,
       command: execConfig.compiler,
-      args: [...cppFiles, `-std=${standard}`, "-g", "-O0", "-Wall", "-o", exeName],
+      args: [
+        ...cppFiles,
+        `-std=${standard}`,
+        "-g",
+        "-O0",
+        "-Wall",
+        ...(os.platform() === "win32" ? ["-static"] : []),
+        "-o",
+        exeName,
+      ],
       limits: compileLimits(),
       remapTempDirPaths: false,
     });

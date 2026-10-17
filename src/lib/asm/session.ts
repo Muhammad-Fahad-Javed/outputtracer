@@ -28,12 +28,15 @@ export class AsmSession {
   public traceHistory: AsmTraceStep[] = [];
   public maxSteps: number;
 
+  public stdin: string;
+
   constructor(id: string, source: string, maxSteps = 10000, stdin = "") {
     this.id = id;
     this.createdAt = Date.now();
     this.lastActiveAt = Date.now();
     this.source = source;
     this.maxSteps = maxSteps;
+    this.stdin = stdin;
     this.cpu = new Cpu8086();
     this.cpu.stdinBuffer = stdin;
   }
@@ -64,6 +67,7 @@ export class AsmSession {
       this.assembleResult.loadAddress.segment,
       this.assembleResult.loadAddress.offset
     );
+    this.cpu.stdinBuffer = this.stdin;
     this.traceHistory = [];
   }
 

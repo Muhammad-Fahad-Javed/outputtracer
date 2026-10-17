@@ -60,6 +60,9 @@ export function sanitizedChildEnv(homeDir: string): NodeJS.ProcessEnv {
     LANG: "C.UTF-8",
     LC_ALL: "C.UTF-8",
     NODE_ENV: "production",
+    ...(process.env.NODE_ENV !== "test" && process.env.SystemRoot
+      ? { SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR }
+      : {}),
   };
 }
 
