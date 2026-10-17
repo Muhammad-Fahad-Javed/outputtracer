@@ -192,6 +192,13 @@ export default function ClassroomHubPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5">
+              <Link
+                href="/classroom/student"
+                className="inline-flex items-center gap-1.5 rounded-[4px] border border-blue-600 bg-blue-600/10 px-3.5 py-2 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-600/20"
+              >
+                <GraduationCap size={13} /> Student Dashboard
+              </Link>
+
               <button
                 onClick={() => setJoinModalOpen(true)}
                 className="inline-flex items-center gap-1.5 rounded-[4px] border border-[#DCDCDC] bg-white px-3.5 py-2 text-xs font-semibold text-black transition-colors hover:bg-[#F2F2F2]"

@@ -14,6 +14,7 @@ export default function NotificationBell() {
     let active = true;
 
     const fetchNotifications = async () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       try {
         const res = await fetch("/api/classroom/notifications");
         if (!res.ok) return;
@@ -28,7 +29,7 @@ export default function NotificationBell() {
     };
 
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
+    const interval = setInterval(fetchNotifications, 60000);
 
     return () => {
       active = false;

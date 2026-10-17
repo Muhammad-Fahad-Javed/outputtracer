@@ -102,3 +102,44 @@ export interface CreateAbuseReportInput {
   reason: AbuseReportReason;
   details?: string;
 }
+
+
+// ==============================================================================
+// Phase 5: Private Messaging & Invitation Tokens
+// ==============================================================================
+
+export interface ClassroomMessage {
+  id: string;
+  classroomId: string;
+  senderId: string;
+  senderName?: string;
+  recipientId?: string;
+  recipientName?: string;
+  content: string;
+  isGroupMessage: boolean;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface SendMessageInput {
+  recipientId?: string; // null/undefined = group message
+  content: string;
+}
+
+export interface ClassroomInvitation {
+  id: string;
+  classroomId: string;
+  invitedBy: string;
+  invitedByName?: string;
+  inviteeEmail: string;
+  token: string;
+  status: "pending" | "accepted" | "expired" | "revoked";
+  acceptedBy?: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateInvitationInput {
+  inviteeEmail: string;
+}

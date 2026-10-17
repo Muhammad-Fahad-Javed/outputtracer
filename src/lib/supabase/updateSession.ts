@@ -31,12 +31,20 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
+  const path = request.nextUrl.pathname;
+  const isApi = path.startsWith("/api/");
+  const needsAuth = PROTECTED.some((pattern) => pattern.test(path));
+
+  // If public route or API with no auth cookies, pass through immediately without remote network round-trip
+  const hasAuthCookie = request.cookies.getAll().some((c) => c.name.startsWith("sb-"));
+  if (!needsAuth && (!hasAuthCookie || isApi)) {
+    return supabaseResponse;
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const path = request.nextUrl.pathname;
-  const needsAuth = PROTECTED.some((pattern) => pattern.test(path));
   if (needsAuth && !user) {
     const redirectUrl = new URL("/login", requestOrigin(request));
     redirectUrl.searchParams.set("next", path);

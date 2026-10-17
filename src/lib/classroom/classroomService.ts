@@ -484,6 +484,61 @@ export async function removeClassroomMember(
 }
 
 /**
+ * 6b. Add Member to Classroom (Invitation acceptance or admin)
+ */
+export async function addClassroomMember(
+  classroomId: string,
+  userId: string,
+  role: ClassroomRole = "student"
+): Promise<{ success: boolean; error?: string }> {
+  const admin = createAdminClient();
+  if (admin) {
+    try {
+      const { data: existing } = await admin
+        .from("classroom_members")
+        .select("role")
+        .eq("classroom_id", classroomId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (existing) {
+        return { success: false, error: "User is already enrolled in this classroom." };
+      }
+
+      const { error: insErr } = await admin.from("classroom_members").insert({
+        classroom_id: classroomId,
+        user_id: userId,
+        role,
+        joined_at: new Date().toISOString(),
+      });
+
+      if (insErr) {
+        return { success: false, error: insErr.message };
+      }
+
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to enroll member";
+      return { success: false, error: msg };
+    }
+  }
+
+  const members = memoryMembers.get(classroomId) || [];
+  if (members.some((m) => m.userId === userId)) {
+    return { success: false, error: "User is already enrolled in this classroom." };
+  }
+
+  members.push({
+    classroomId,
+    userId,
+    role,
+    joinedAt: new Date().toISOString(),
+  });
+  memoryMembers.set(classroomId, members);
+  return { success: true };
+}
+
+/**
  * 7. Group Management (Create Group & Assign Members)
  */
 export async function createClassroomGroup(

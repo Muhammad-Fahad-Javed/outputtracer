@@ -14,6 +14,7 @@ import {
   FileCode,
   ShieldCheck,
   Megaphone,
+  MessageSquare,
 } from "lucide-react";
 import {
   Classroom,
@@ -181,6 +182,12 @@ export default function ClassroomDetailPage({
                 >
                   <Users size={13} /> Class Roster ({members.length})
                 </button>
+                <Link
+                  href={`/classroom/${classId}/messages`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md text-[#666666] hover:bg-[#F0F0F0] hover:text-black transition-colors"
+                >
+                  <MessageSquare size={13} /> Messages & Chat
+                </Link>
               </div>
 
               {/* Tab Content */}
