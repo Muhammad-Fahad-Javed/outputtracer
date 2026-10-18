@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 
 /** Returns the canonical site origin to use for auth redirect URLs.
  *
@@ -73,11 +74,32 @@ export default function AuthForm({
   const [pending, setPending] = useState(false);
   const [googlePending, setGooglePending] = useState(false);
 
+  // Cloudflare Turnstile state
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance | null>(null);
+
   const anyPending = pending || googlePending;
+
+  const resetTurnstile = () => {
+    setCaptchaToken(null);
+    turnstileRef.current?.reset();
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (anyPending) return;
+
+    if (!turnstileSiteKey) {
+      setError("Security verification is not configured on this server. Please contact support.");
+      return;
+    }
+
+    if (!captchaToken) {
+      setError("Please complete the security check before continuing.");
+      return;
+    }
+
     setPending(true);
     setError(null);
     setMessage(null);
@@ -85,9 +107,14 @@ export default function AuthForm({
     if (!supabase) {
       setError("Accounts are not configured on this server yet.");
       setPending(false);
+      resetTurnstile();
       return;
     }
     const origin = siteOrigin();
+    const tokenToUse = captchaToken;
+    // Consume token immediately to prevent reuse
+    resetTurnstile();
+
     if (mode === "signup") {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
@@ -95,21 +122,31 @@ export default function AuthForm({
         options: {
           data: { display_name: displayName.trim() },
           emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+          captchaToken: tokenToUse,
         },
       });
-      if (signUpError) setError(signUpError.message);
-      else if (data.session) router.push(nextPath);
-      else
+      if (signUpError) {
+        setError(signUpError.message);
+      } else if (data.session) {
+        router.push(nextPath);
+      } else {
         setMessage(
           "Check your email and click the confirmation link, then sign in here."
         );
+      }
     } else {
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
+        options: {
+          captchaToken: tokenToUse,
+        },
       });
-      if (signInError) setError(signInError.message);
-      else router.push(nextPath);
+      if (signInError) {
+        setError(signInError.message);
+      } else {
+        router.push(nextPath);
+      }
     }
     setPending(false);
   };
@@ -146,12 +183,30 @@ export default function AuthForm({
       setError("Enter your email first.");
       return;
     }
+
+    if (!turnstileSiteKey) {
+      setError("Security verification is not configured on this server. Please contact support.");
+      return;
+    }
+
+    if (!captchaToken) {
+      setError("Please complete the security check before requesting a password reset.");
+      return;
+    }
+
+    const tokenToUse = captchaToken;
+    resetTurnstile();
+
     const supabase = await getSupabaseBrowser();
-    if (!supabase) return;
+    if (!supabase) {
+      setError("Accounts are not configured on this server yet.");
+      return;
+    }
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(
       email.trim(),
       {
         redirectTo: `${siteOrigin()}/auth/callback?next=/projects`,
+        captchaToken: tokenToUse,
       }
     );
     if (resetError) setError(resetError.message);
@@ -257,10 +312,40 @@ export default function AuthForm({
           disabled={anyPending}
           className="w-full rounded border border-[#DCDCDC] px-3 py-2 text-sm outline-none disabled:opacity-60"
         />
+
+        {/* ── Turnstile CAPTCHA Widget ── */}
+        {turnstileSiteKey ? (
+          <div className="flex min-h-[65px] w-full items-center justify-center overflow-hidden py-1">
+            <Turnstile
+              ref={turnstileRef}
+              siteKey={turnstileSiteKey}
+              onSuccess={(token) => {
+                setCaptchaToken(token);
+                setError(null);
+              }}
+              onExpire={() => {
+                setCaptchaToken(null);
+              }}
+              onError={(err) => {
+                setCaptchaToken(null);
+                setError("Security verification failed. Please try again.");
+              }}
+              options={{
+                theme: "light",
+                size: "normal",
+              }}
+            />
+          </div>
+        ) : (
+          <div className="rounded border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+            Security verification site key is not configured.
+          </div>
+        )}
+
         <button
           type="submit"
-          disabled={anyPending}
-          className="w-full rounded bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          disabled={anyPending || !captchaToken}
+          className="w-full rounded bg-black px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pending
             ? "Please wait…"
