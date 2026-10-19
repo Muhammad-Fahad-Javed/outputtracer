@@ -1,9 +1,21 @@
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 import AuthForm from "@/components/auth/AuthForm";
 import SetupRequired from "@/components/cloud/SetupRequired";
 import { safeNextPath } from "@/lib/cloud/roles";
 import { isAuthConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
+
+// Sign-up is a utility page, not content: keep it out of the index.
+export const metadata: Metadata = {
+  title: "Create an Account | OutputTracer",
+  description:
+    "Create an OutputTracer account to save projects, practise output-prediction questions, and follow visual C++ and 8086 assembly courses.",
+  robots: {
+    index: false,
+    follow: true,
+  },
+};
 
 export default async function SignupPage({
   searchParams,

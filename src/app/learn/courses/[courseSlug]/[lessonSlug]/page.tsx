@@ -40,6 +40,24 @@ export async function generateMetadata({ params }: LessonPageProps): Promise<Met
   return {
     title: `${lesson.title} — ${course.title} | OutputTracer Learn`,
     description: (lesson.content || lesson.notes || "").slice(0, 160),
+    alternates: {
+      canonical: `/learn/courses/${resolvedParams.courseSlug}/${resolvedParams.lessonSlug}`,
+    },
+    openGraph: {
+      title: `${lesson.title} — ${course.title} | OutputTracer Learn`,
+      description: (lesson.content || lesson.notes || "").slice(0, 160),
+      siteName: "OutputTracer",
+      type: "website",
+      url: `https://outputtracer.com/learn/courses/${resolvedParams.courseSlug}/${resolvedParams.lessonSlug}`,
+      images: [
+        {
+          url: "/brand/logo-tile.svg",
+          width: 512,
+          height: 512,
+          alt: "OutputTracer Learn lesson",
+        },
+      ],
+    },
   };
 }
 

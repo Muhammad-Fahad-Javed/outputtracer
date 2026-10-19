@@ -11,7 +11,17 @@ export const metadata: Metadata = {
   openGraph: {
     title: "About OutputTracer – The C++ Code Tracer & Online Compiler",
     description: "Learn about OutputTracer, built for computer science students and developers.",
+    siteName: "OutputTracer",
+    type: "website",
     url: "https://outputtracer.com/about",
+    images: [
+      {
+        url: "/brand/logo-tile.svg",
+        width: 512,
+        height: 512,
+        alt: "OutputTracer logo",
+      },
+    ],
   },
 };
 
@@ -39,9 +49,11 @@ export default function AboutPage() {
               code and see what happens.
             </p>
             <p>
-              This is the first version of OutputTracer. Predictions and dry runs
-              currently use representative example logic rather than a full C++
-              execution engine, which is planned for a future release.
+              OutputTracer now goes further than prediction. Code is compiled and
+              executed with a real C++ toolchain, execution can be traced step by
+              step to show how variables change, and dedicated Python 3 and 8086
+              assembly labs sit alongside the original output-prediction practice
+              questions.
             </p>
           </div>
         </section>

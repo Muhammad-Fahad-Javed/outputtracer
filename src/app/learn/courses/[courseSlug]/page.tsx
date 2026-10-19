@@ -32,6 +32,24 @@ export async function generateMetadata({ params }: CoursePageProps): Promise<Met
   return {
     title: `${course.title} | OutputTracer Learn`,
     description: course.description,
+    alternates: {
+      canonical: `/learn/courses/${resolvedParams.courseSlug}`,
+    },
+    openGraph: {
+      title: `${course.title} | OutputTracer Learn`,
+      description: course.description,
+      siteName: "OutputTracer",
+      type: "website",
+      url: `https://outputtracer.com/learn/courses/${resolvedParams.courseSlug}`,
+      images: [
+        {
+          url: "/brand/logo-tile.svg",
+          width: 512,
+          height: 512,
+          alt: "OutputTracer Learn course",
+        },
+      ],
+    },
   };
 }
 

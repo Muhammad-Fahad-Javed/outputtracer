@@ -11,7 +11,17 @@ export const metadata: Metadata = {
     title: "C++ Programming Examples & Code Snippets | OutputTracer",
     description:
       "Explore runnable C++ code examples. Test, execute, and trace each example online.",
+    siteName: "OutputTracer",
+    type: "website",
     url: "https://outputtracer.com/examples",
+    images: [
+      {
+        url: "/brand/logo-tile.svg",
+        width: 512,
+        height: 512,
+        alt: "OutputTracer C++ example programs",
+      },
+    ],
   },
 };
 

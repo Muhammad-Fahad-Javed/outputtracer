@@ -23,7 +23,17 @@ export const metadata: Metadata = {
     title: "OutputTracer Learn — Visual Computer Science & Execution Tracing",
     description:
       "Understand how software executes at the hardware and memory level. Interactive courses for C++ and 8086 Assembly with live tracing.",
+    siteName: "OutputTracer",
+    type: "website",
     url: "https://outputtracer.com/learn",
+    images: [
+      {
+        url: "/brand/logo-tile.svg",
+        width: 512,
+        height: 512,
+        alt: "OutputTracer Learn courses",
+      },
+    ],
   },
 };
 
