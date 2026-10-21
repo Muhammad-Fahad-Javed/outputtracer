@@ -17,7 +17,8 @@ import {
   seedDoc,
 } from "@/lib/cloud/collabDoc";
 import { canEdit, isUuid, type ProjectRole } from "@/lib/cloud/roles";
-import { ALLOWED_STANDARDS, type AllowedStandard } from "@/lib/execConfig";
+import { ALLOWED_STANDARDS, type AllowedStandard, execConfig } from "@/lib/execConfig";
+import { inspectSourceFiles, isValidSourceFilename } from "@/lib/sourceFiles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DEFAULT_CODE } from "@/lib/examples";
 
@@ -25,6 +26,28 @@ const HUB_KEY = "__outputtracerCollabHub";
 const SAVE_DELAY_MS = 800;
 const IDLE_EVICT_MS = 10 * 60 * 1000;
 const MAX_UPDATE_BYTES = 512 * 1024;
+const MAX_ROOM_CLIENTS = 24;
+
+function updateKeepsFilesValid(doc: Y.Doc, bytes: Uint8Array): boolean {
+  const probe = new Y.Doc();
+  try {
+    Y.applyUpdate(probe, Y.encodeStateAsUpdate(doc));
+    Y.applyUpdate(probe, bytes);
+    const files = readFiles(probe);
+    if (Object.keys(files).length === 0) return true;
+    for (const name of Object.keys(files)) {
+      if (!isValidSourceFilename(name)) return false;
+    }
+    return inspectSourceFiles(files, {
+      maxFiles: execConfig.maxSourceFiles,
+      maxSourceBytes: execConfig.maxSourceBytes,
+    }).ok;
+  } catch {
+    return false;
+  } finally {
+    probe.destroy();
+  }
+}
 
 interface ClientState {
   userId: string;
@@ -191,6 +214,10 @@ class CollabHub {
       if (!canEdit(state.role) || typeof message.update !== "string") return;
       const bytes = base64ToBytes(message.update);
       if (bytes.byteLength > MAX_UPDATE_BYTES) return;
+      if (!updateKeepsFilesValid(room.doc, bytes)) {
+        send(ws, { type: "error", message: "That edit is not allowed." });
+        return;
+      }
       Y.applyUpdate(room.doc, bytes, ws);
       return;
     }
@@ -260,6 +287,12 @@ class CollabHub {
     if (room.evictTimer) {
       clearTimeout(room.evictTimer);
       room.evictTimer = null;
+    }
+
+    if (room.clients.size >= MAX_ROOM_CLIENTS) {
+      send(ws, { type: "error", message: "This project already has too many editors connected." });
+      ws.close();
+      return;
     }
 
     const state: ClientState = { userId: access.userId, role: access.role, clientId };

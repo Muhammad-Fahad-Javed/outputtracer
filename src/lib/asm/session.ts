@@ -15,10 +15,19 @@ export interface SessionConfig {
   source: string;
   maxSteps?: number;
   stdin?: string;
+  /** Rate-limit key (client IP). Caps how many live sessions one caller can hold. */
+  ownerKey?: string;
 }
+
+const MAX_SESSIONS = 200;
+const MAX_SESSIONS_PER_OWNER = 4;
+const SESSION_TTL_MS = 15 * 60 * 1000;
+const MAX_SESSION_STEPS = 5000;
 
 export class AsmSession {
   public readonly id: string;
+  public readonly token: string;
+  public readonly ownerKey: string;
   public readonly createdAt: number;
   public lastActiveAt: number;
 
@@ -30,8 +39,10 @@ export class AsmSession {
 
   public stdin: string;
 
-  constructor(id: string, source: string, maxSteps = 10000, stdin = "") {
+  constructor(id: string, token: string, source: string, maxSteps = 2000, stdin = "", ownerKey = "") {
     this.id = id;
+    this.token = token;
+    this.ownerKey = ownerKey;
     this.createdAt = Date.now();
     this.lastActiveAt = Date.now();
     this.source = source;
@@ -85,6 +96,9 @@ export class AsmSession {
       }
     }
 
+    if (this.traceHistory.length >= this.maxSteps) {
+      this.traceHistory.shift();
+    }
     this.traceHistory.push(step);
     return step;
   }
@@ -101,7 +115,7 @@ export class AsmSession {
 
   public run(limit?: number): AsmTraceStep[] {
     this.lastActiveAt = Date.now();
-    const effectiveLimit = Math.min(limit || 1000, this.maxSteps);
+    const effectiveLimit = Math.min(limit || 1000, this.maxSteps, MAX_SESSION_STEPS);
     const newSteps: AsmTraceStep[] = [];
 
     let count = 0;
@@ -167,18 +181,63 @@ class SessionManager {
   }
 
   public createSession(config: SessionConfig): AsmSession {
+    this.cleanup();
+    const ownerKey = config.ownerKey || "";
+    if (ownerKey) {
+      const owned = [...this.sessions.values()].filter((session) => session.ownerKey === ownerKey);
+      while (owned.length >= MAX_SESSIONS_PER_OWNER) {
+        const oldest = owned.sort((a, b) => a.lastActiveAt - b.lastActiveAt)[0];
+        this.sessions.delete(oldest.id);
+        owned.shift();
+      }
+    }
+    while (this.sessions.size >= MAX_SESSIONS) {
+      this.evictOldest();
+    }
+
     const id = crypto.randomUUID();
-    const session = new AsmSession(id, config.source, config.maxSteps || 10000, config.stdin || "");
+    const token = crypto.randomBytes(24).toString("base64url");
+    const maxSteps = Math.min(config.maxSteps || 2000, MAX_SESSION_STEPS);
+    const session = new AsmSession(id, token, config.source, maxSteps, config.stdin || "", ownerKey);
     this.sessions.set(id, session);
     return session;
   }
 
   public getSession(id: string): AsmSession | undefined {
     const session = this.sessions.get(id);
-    if (session) {
-      session.lastActiveAt = Date.now();
+    if (!session) return undefined;
+    if (Date.now() - session.lastActiveAt > SESSION_TTL_MS) {
+      this.sessions.delete(id);
+      return undefined;
     }
+    session.lastActiveAt = Date.now();
     return session;
+  }
+
+  /** Session ids are not sufficient. Callers must present the token from create. */
+  public authorize(id: string, token: string | undefined): AsmSession | undefined {
+    if (!id || !token) return undefined;
+    const session = this.sessions.get(id);
+    if (!session) return undefined;
+    if (Date.now() - session.lastActiveAt > SESSION_TTL_MS) {
+      this.sessions.delete(id);
+      return undefined;
+    }
+    const left = Buffer.from(session.token);
+    const right = Buffer.from(token);
+    if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) {
+      return undefined;
+    }
+    session.lastActiveAt = Date.now();
+    return session;
+  }
+
+  private evictOldest() {
+    let oldest: AsmSession | undefined;
+    for (const session of this.sessions.values()) {
+      if (!oldest || session.lastActiveAt < oldest.lastActiveAt) oldest = session;
+    }
+    if (oldest) this.sessions.delete(oldest.id);
   }
 
   public deleteSession(id: string): boolean {

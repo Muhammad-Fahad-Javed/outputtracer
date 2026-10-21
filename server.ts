@@ -111,6 +111,7 @@ app.prepare().then(() => {
         return;
       }
       wss.handleUpgrade(req, socket, head, (ws) => {
+        trackSocket(ws);
         getHub().attach(ws);
       });
       return;
@@ -138,6 +139,7 @@ app.prepare().then(() => {
       }
 
       wss.handleUpgrade(req, socket, head, (ws) => {
+        trackSocket(ws);
         wss.emit("connection", ws, req);
       });
       return;
@@ -146,7 +148,33 @@ app.prepare().then(() => {
     // Leave HMR and other Next.js upgrades alone in development.
   });
 
+  function trackSocket(ws: WebSocket) {
+    const socket = ws as WebSocket & { isAlive?: boolean };
+    socket.isAlive = true;
+    socket.on("pong", () => {
+      socket.isAlive = true;
+    });
+  }
+
+  const heartbeat = setInterval(() => {
+    for (const client of wss.clients) {
+      const socket = client as WebSocket & { isAlive?: boolean };
+      if (socket.isAlive === false) {
+        socket.terminate();
+        continue;
+      }
+      socket.isAlive = false;
+      try {
+        socket.ping();
+      } catch {
+        socket.terminate();
+      }
+    }
+  }, 30_000);
+  heartbeat.unref?.();
+
   wss.on("connection", (ws: WebSocket) => {
+    trackSocket(ws);
     // Wait for the first message which should be the init payload
     let initialized = false;
 

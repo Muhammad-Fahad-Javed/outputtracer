@@ -43,3 +43,14 @@ Use this after deploying `cursor/full-audit-fixes-a40c` and, separately, after a
 
 - [ ] `robots.txt` disallows `/projects` without requiring a trailing slash.
 - [ ] `/practice` and `/python` are not disallowed.
+
+## This pass, still to confirm after deploy
+
+- [ ] Homepage sends `Content-Security-Policy-Report-Only` and does not send `X-Powered-By`.
+- [ ] A C++ program that opens `/etc/passwd` does not print the file. If it does, bubblewrap is not the isolation mode.
+- [ ] `deploy.sh` exits immediately and does not change Nginx.
+- [ ] Practice "Check Answer" still marks a correct prediction without the answer appearing in the page source.
+- [ ] Marking a lesson complete before its questions are answered returns 409.
+- [ ] A student can submit from the assignment page and the stored files match the editor, not a concatenated string.
+- [ ] Creating an assignment without tests does not store a Hello World program.
+- [ ] Assembly step/run after assemble still works (the client now sends `sessionToken`).

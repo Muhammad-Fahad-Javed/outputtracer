@@ -29,6 +29,7 @@ import {
 } from "@/lib/classroom/versioningService";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AssignmentTestCase } from "@/lib/classroom/types";
+import { inspectSourceFiles } from "@/lib/sourceFiles";
 
 export async function POST(
   request: Request,
@@ -40,7 +41,7 @@ export async function POST(
   const ip = clientIpFromForwarded(
     request.headers.get("x-forwarded-for") ?? undefined,
     undefined,
-    process.env.TRUST_PROXY === "1"
+    process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true"
   );
   const limited = globalRateLimiter.check(`classroom-exec:${ip}`, 30, 60_000);
   if (!limited.ok) {
@@ -71,6 +72,10 @@ export async function POST(
   }
 
   const files = body.codeFiles as Record<string, string>;
+  const inspected = inspectSourceFiles(files, { maxFiles: 16, maxSourceBytes: 200 * 1024 });
+  if (!inspected.ok) {
+    return NextResponse.json({ success: false, error: inspected.message }, { status: 400 });
+  }
   const language = typeof body.language === "string" ? body.language : "cpp";
   const stdin = typeof body.stdin === "string" ? body.stdin : "";
   const groupId = typeof body.groupId === "string" ? body.groupId : undefined;

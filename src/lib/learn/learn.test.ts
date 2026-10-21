@@ -7,6 +7,7 @@ import {
   getCourseBySlug,
   getLessonBySlug,
   markLessonCompleted,
+  lessonActivitySatisfied,
   recordStudentAttempt,
   getStudentDashboardSummary,
   checkIsAdmin,
@@ -163,7 +164,30 @@ describe("OutputTracer Learn Platform — Test Suite", () => {
       expect(summary.recentAttempts.length).toBe(2);
     });
 
+    it("refuses to complete a lesson before its questions are answered", async () => {
+      const saved = await markLessonCompleted({
+        userId: "no-attempt-user",
+        courseId: "cpp-mastery",
+        lessonId: "cpp-scope-shadowing",
+      });
+      expect(saved).toBe(false);
+      const ready = await lessonActivitySatisfied({
+        userId: "no-attempt-user",
+        lessonId: "cpp-scope-shadowing",
+      });
+      expect(ready.ok).toBe(false);
+    });
+
     it("marks lesson completed and updates course completion percentage", async () => {
+      await recordStudentAttempt({
+        userId: testUserId,
+        courseId: "cpp-mastery",
+        questionId: "q-cpp-scope-01",
+        submittedAnswer: "10 30",
+        isCorrect: true,
+        points: 10,
+      });
+
       await markLessonCompleted({
         userId: testUserId,
         courseId: "cpp-mastery",

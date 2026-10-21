@@ -60,6 +60,20 @@ export default function ClassroomManagePage({
   const [asgPoints, setAsgPoints] = useState(100);
   const [asgGroupMode, setAsgGroupMode] = useState(false);
   const [asgPublish, setAsgPublish] = useState(true);
+  const [asgAllowLate, setAsgAllowLate] = useState(true);
+  const [asgStarter, setAsgStarter] = useState(
+    "#include <iostream>\n\nint main() {\n    // Write your solution here.\n    return 0;\n}\n"
+  );
+  const [asgExtraName, setAsgExtraName] = useState("");
+  const [asgExtraBody, setAsgExtraBody] = useState("");
+  const [asgPublicName, setAsgPublicName] = useState("Sample");
+  const [asgPublicStdin, setAsgPublicStdin] = useState("");
+  const [asgPublicExpected, setAsgPublicExpected] = useState("");
+  const [asgPublicPoints, setAsgPublicPoints] = useState(50);
+  const [asgHiddenName, setAsgHiddenName] = useState("Hidden");
+  const [asgHiddenStdin, setAsgHiddenStdin] = useState("");
+  const [asgHiddenExpected, setAsgHiddenExpected] = useState("");
+  const [asgHiddenPoints, setAsgHiddenPoints] = useState(50);
   const [asgSubmitting, setAsgSubmitting] = useState(false);
 
   // Progress modal & state
@@ -209,6 +223,29 @@ export default function ClassroomManagePage({
     e.preventDefault();
     setAsgSubmitting(true);
     try {
+      const starterCode: Record<string, string> = {};
+      if (asgStarter.trim()) starterCode["main.cpp"] = asgStarter;
+      const extraName = asgExtraName.trim();
+      if (extraName && asgExtraBody.trim()) starterCode[extraName] = asgExtraBody;
+      const publicTestCases = asgPublicExpected.trim()
+        ? [{
+            id: "public-1",
+            name: asgPublicName.trim() || "Public test",
+            stdin: asgPublicStdin,
+            expectedOutput: asgPublicExpected,
+            points: Number(asgPublicPoints) || 0,
+          }]
+        : [];
+      const hiddenTestCases = asgHiddenExpected.trim()
+        ? [{
+            id: "hidden-1",
+            name: asgHiddenName.trim() || "Hidden test",
+            stdin: asgHiddenStdin,
+            expectedOutput: asgHiddenExpected,
+            points: Number(asgHiddenPoints) || 0,
+            isHidden: true,
+          }]
+        : [];
       const res = await fetch(`/api/classroom/${classId}/assignments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -219,6 +256,10 @@ export default function ClassroomManagePage({
           maxPoints: Number(asgPoints) || 100,
           groupMode: asgGroupMode,
           isPublished: asgPublish,
+          allowLate: asgAllowLate,
+          starterCode: Object.keys(starterCode).length > 0 ? starterCode : undefined,
+          publicTestCases,
+          hiddenTestCases,
         }),
       });
       const data = await res.json();
@@ -623,7 +664,7 @@ export default function ClassroomManagePage({
       {/* Create Assignment Modal */}
       {assignmentModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl border border-[#EAEAEA] bg-white p-6 shadow-xl">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[#EAEAEA] bg-white p-6 shadow-xl">
             <h2 className="text-base font-bold text-black mb-1">Create Coding Assignment</h2>
             <form onSubmit={handleCreateAssignment} className="space-y-3 mt-3">
               <div>
@@ -671,6 +712,63 @@ export default function ClassroomManagePage({
                 </div>
               </div>
 
+              <div>
+                <label htmlFor="asg-starter" className="block text-xs font-semibold text-black mb-1">
+                  Starter code (main.cpp)
+                </label>
+                <textarea
+                  id="asg-starter"
+                  rows={6}
+                  value={asgStarter}
+                  onChange={(e) => setAsgStarter(e.target.value)}
+                  className="w-full rounded-md border border-[#DCDCDC] p-2.5 font-mono text-xs outline-none focus:border-black"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="asg-extra-name" className="block text-xs font-semibold text-black mb-1">
+                    Extra file name
+                  </label>
+                  <input
+                    id="asg-extra-name"
+                    type="text"
+                    placeholder="helper.h"
+                    value={asgExtraName}
+                    onChange={(e) => setAsgExtraName(e.target.value)}
+                    className="w-full rounded-md border border-[#DCDCDC] px-3 py-2 text-xs outline-none focus:border-black"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="asg-extra-body" className="block text-xs font-semibold text-black mb-1">
+                    Extra file contents
+                  </label>
+                  <textarea
+                    id="asg-extra-body"
+                    rows={2}
+                    value={asgExtraBody}
+                    onChange={(e) => setAsgExtraBody(e.target.value)}
+                    className="w-full rounded-md border border-[#DCDCDC] p-2 text-xs font-mono outline-none focus:border-black"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-[#666666]">Language: C++. Hidden tests are stored for grading and are not returned to students.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-black">Public test</p>
+                  <input aria-label="Public test name" value={asgPublicName} onChange={(e) => setAsgPublicName(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] px-2 py-1.5 text-xs" />
+                  <textarea aria-label="Public test input" rows={2} placeholder="stdin" value={asgPublicStdin} onChange={(e) => setAsgPublicStdin(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] p-2 font-mono text-xs" />
+                  <textarea aria-label="Public expected output" rows={2} placeholder="expected output" value={asgPublicExpected} onChange={(e) => setAsgPublicExpected(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] p-2 font-mono text-xs" />
+                  <input aria-label="Public test points" type="number" min="0" value={asgPublicPoints} onChange={(e) => setAsgPublicPoints(Number(e.target.value))} className="w-full rounded-md border border-[#DCDCDC] px-2 py-1.5 text-xs" />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-black">Hidden test</p>
+                  <input aria-label="Hidden test name" value={asgHiddenName} onChange={(e) => setAsgHiddenName(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] px-2 py-1.5 text-xs" />
+                  <textarea aria-label="Hidden test input" rows={2} placeholder="stdin" value={asgHiddenStdin} onChange={(e) => setAsgHiddenStdin(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] p-2 font-mono text-xs" />
+                  <textarea aria-label="Hidden expected output" rows={2} placeholder="expected output" value={asgHiddenExpected} onChange={(e) => setAsgHiddenExpected(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] p-2 font-mono text-xs" />
+                  <input aria-label="Hidden test points" type="number" min="0" value={asgHiddenPoints} onChange={(e) => setAsgHiddenPoints(Number(e.target.value))} className="w-full rounded-md border border-[#DCDCDC] px-2 py-1.5 text-xs" />
+                </div>
+              </div>
+
               <div className="flex items-center gap-6 pt-1 text-xs">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -680,6 +778,15 @@ export default function ClassroomManagePage({
                     className="rounded border-[#DCDCDC]"
                   />
                   <span>Group Project Mode</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={asgAllowLate}
+                    onChange={(e) => setAsgAllowLate(e.target.checked)}
+                    className="rounded border-[#DCDCDC]"
+                  />
+                  <span>Allow late submissions</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">

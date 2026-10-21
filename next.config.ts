@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { securityHeaders } from "./src/lib/securityHeaders";
 
 // Version-skew protection.
 //
@@ -37,6 +38,10 @@ if (
 const nextConfig: NextConfig = {
   deploymentId,
   distDir: rawDistDir,
+  poweredByHeader: false,
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders() }];
+  },
   turbopack: {
     resolveAlias: {
       "monaco-editor/esm/vs/editor/editor.api.js": "monaco-editor/editor/editor.api.js",

@@ -348,6 +348,7 @@ export default function UnifiedShell() {
 
   // Assembly Execution State
   const [asmSessionId, setAsmSessionId] = useState<string | null>(null);
+  const [asmSessionToken, setAsmSessionToken] = useState<string | null>(null);
   const [asmStatus, setAsmStatus] = useState<AsmExecutionStatus>({
     state: "ready",
     currentStep: 0,
@@ -531,6 +532,7 @@ export default function UnifiedShell() {
       }
 
       setAsmSessionId(data.sessionId);
+      if (data.sessionToken) setAsmSessionToken(data.sessionToken);
       setAsmDiagnostics(data.assembleResult?.diagnostics || []);
       setAsmEngineUsed(data.assembleResult?.engineUsed || "native-nasm");
       setAsmStatus(data.status);
@@ -550,6 +552,7 @@ export default function UnifiedShell() {
 
     try {
       let currentSession = asmSessionId;
+      let currentToken = asmSessionToken;
       if (!currentSession) {
         const resAsm = await fetch("/api/asm", {
           method: "POST",
@@ -569,7 +572,9 @@ export default function UnifiedShell() {
           return;
         }
         currentSession = dataAsm.sessionId;
+        currentToken = dataAsm.sessionToken || currentToken;
         setAsmSessionId(currentSession);
+        if (dataAsm.sessionToken) setAsmSessionToken(dataAsm.sessionToken);
         setAsmDiagnostics(dataAsm.assembleResult?.diagnostics || []);
         setAsmEngineUsed(dataAsm.assembleResult?.engineUsed || "native-nasm");
       }
@@ -580,6 +585,7 @@ export default function UnifiedShell() {
         body: JSON.stringify({
           action: "run",
           sessionId: currentSession,
+          sessionToken: currentToken,
           stdin: typedInput ? `${typedInput}\n` : "",
           limit: 2000,
         }),
@@ -618,6 +624,7 @@ export default function UnifiedShell() {
         body: JSON.stringify({
           action: "step",
           sessionId: asmSessionId,
+          sessionToken: asmSessionToken,
         }),
       });
 
@@ -649,6 +656,7 @@ export default function UnifiedShell() {
         body: JSON.stringify({
           action: "reset",
           sessionId: asmSessionId,
+          sessionToken: asmSessionToken,
         }),
       });
 

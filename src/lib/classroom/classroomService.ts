@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { inspectSourceFiles } from "@/lib/sourceFiles";
 import { checkIsAdmin } from "@/lib/learn/db";
 import {
   checkIsVerifiedTeacher,
@@ -691,6 +692,32 @@ export async function listClassroomGroups(
   return { success: true, groups };
 }
 
+function normalizeAssignmentTests(
+  raw: AssignmentTestCase[] | undefined,
+  hidden: boolean
+): { ok: true; tests: AssignmentTestCase[] } | { ok: false; error: string } {
+  if (!raw) return { ok: true, tests: [] };
+  if (!Array.isArray(raw) || raw.length > 50) {
+    return { ok: false, error: "An assignment can include at most 50 test cases." };
+  }
+  const tests: AssignmentTestCase[] = [];
+  for (const tc of raw) {
+    const name = typeof tc?.name === "string" ? tc.name.trim() : "";
+    if (!name || name.length > 80) {
+      return { ok: false, error: "Each test case needs a name of 1–80 characters." };
+    }
+    const stdin = typeof tc.stdin === "string" ? tc.stdin : "";
+    const expectedOutput = typeof tc.expectedOutput === "string" ? tc.expectedOutput : "";
+    if (Buffer.byteLength(stdin, "utf8") > 8192 || Buffer.byteLength(expectedOutput, "utf8") > 8192) {
+      return { ok: false, error: "A test case input or expected output is too large." };
+    }
+    const points = typeof tc.points === "number" && tc.points >= 0 && tc.points <= 10000 ? tc.points : 0;
+    const id = typeof tc.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(tc.id) ? tc.id : `tc-${tests.length + 1}`;
+    tests.push({ id, name, stdin, expectedOutput, points, isHidden: hidden || Boolean(tc.isHidden) });
+  }
+  return { ok: true, tests };
+}
+
 /**
  * 8. Assignment Management (Create, List, Get)
  */
@@ -714,15 +741,30 @@ export async function createAssignment(
     return { success: false, error: "Assignment title must be between 1 and 160 characters" };
   }
 
-  const maxPoints = typeof input.maxPoints === "number" && input.maxPoints >= 0 ? input.maxPoints : 100;
+  const maxPoints = typeof input.maxPoints === "number" && input.maxPoints >= 0 && input.maxPoints <= 10000
+    ? input.maxPoints
+    : 100;
   const now = new Date().toISOString();
 
-  const starterCode = input.starterCode || {
-    "main.cpp": '#include <iostream>\n\nint main() {\n    std::cout << "Hello, Classroom!" << std::endl;\n    return 0;\n}\n',
-  };
+  const starterCode =
+    input.starterCode && Object.keys(input.starterCode).length > 0
+      ? input.starterCode
+      : {
+          "main.cpp":
+            "#include <iostream>\n\nint main() {\n    // Write your solution here.\n    return 0;\n}\n",
+        };
 
-  const publicTestCases = input.publicTestCases || [];
-  const hiddenTestCases = input.hiddenTestCases || [];
+  const inspected = inspectSourceFiles(starterCode, { maxFiles: 16, maxSourceBytes: 200 * 1024 });
+  if (!inspected.ok) {
+    return { success: false, error: inspected.message };
+  }
+
+  const publicTests = normalizeAssignmentTests(input.publicTestCases, false);
+  if (!publicTests.ok) return { success: false, error: publicTests.error };
+  const hiddenTests = normalizeAssignmentTests(input.hiddenTestCases, true);
+  if (!hiddenTests.ok) return { success: false, error: hiddenTests.error };
+  const publicTestCases = publicTests.tests;
+  const hiddenTestCases = hiddenTests.tests;
 
   const admin = createAdminClient();
   if (admin) {

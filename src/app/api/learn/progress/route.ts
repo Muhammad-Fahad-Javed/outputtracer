@@ -4,6 +4,7 @@ import {
   gradeQuestionSubmission,
   recordStudentAttempt,
   markLessonCompleted,
+  lessonActivitySatisfied,
 } from "@/lib/learn/db";
 
 export async function POST(request: Request) {
@@ -94,6 +95,11 @@ export async function POST(request: Request) {
         { error: "Sign in to save your lesson progress." },
         { status: 401 },
       );
+    }
+
+    const ready = await lessonActivitySatisfied({ userId: user.id, lessonId });
+    if (!ready.ok) {
+      return NextResponse.json({ error: ready.error }, { status: 409 });
     }
 
     const saved = await markLessonCompleted({

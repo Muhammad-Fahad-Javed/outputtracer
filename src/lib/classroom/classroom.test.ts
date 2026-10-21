@@ -290,6 +290,21 @@ describe("OutputTracer Classroom — Phase 2: Classrooms, Membership, Groups, an
       expect(res.success).toBe(false);
       expect(res.error).toMatch(/access denied/i);
     });
+
+    it("does not invent a Hello World program when starter code is omitted", async () => {
+      const created = await createAssignment(teacherA, classId, { title: "Blank starter" });
+      expect(created.success).toBe(true);
+      expect(created.assignment?.starterCode["main.cpp"]).toContain("Write your solution here");
+      expect(JSON.stringify(created.assignment?.starterCode)).not.toContain("Hello, Classroom");
+    });
+
+    it("rejects starter files with unsafe names", async () => {
+      const created = await createAssignment(teacherA, classId, {
+        title: "Bad file",
+        starterCode: { "../secret.cpp": "int main(){return 0;}" },
+      });
+      expect(created.success).toBe(false);
+    });
   });
 
   describe("6. Group membership and assignment binding", () => {

@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { ClassroomAssignment } from "@/lib/classroom/types";
+import AssignmentWorkspace from "@/components/classroom/AssignmentWorkspace";
 
 export default function AssignmentDetailPage({
   params,
@@ -192,6 +193,15 @@ export default function AssignmentDetailPage({
                   </div>
                 )}
               </div>
+
+              {!isTeacher && (
+                <AssignmentWorkspace
+                  classId={classId}
+                  assignmentId={assignmentId}
+                  starterCode={assignment.starterCode || { "main.cpp": "" }}
+                  allowLate={assignment.allowLate}
+                />
+              )}
             </div>
           )}
         </div>

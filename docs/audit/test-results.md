@@ -1,52 +1,50 @@
 # Test results
 
-Host: Linux, Node v22.23.3, `g++` present, `gdb` / `nasm` / `bubblewrap` absent. No Supabase credentials. No production deploy.
+Host for this pass: Linux, Node v22, `g++` 13.3, bubblewrap 0.9.0, gdb 15.1. `nasm` is absent. No Supabase credentials. No production deploy.
+
+Bubblewrap and gdb were installed on this VM so the sandbox and tracer could be exercised. That install is local to the VM. It is not a change to the production host.
 
 ## Commands
 
 ```text
-npm ci
-npx tsc --noEmit
-npx eslint (changed files, max warnings 0)
-npm test
-npm run build
+npx tsc --noEmit          # exit 0
+npx eslint <changed paths> # exit 0
+npm test                  # vitest run
+NEXT_DIST_DIR=.next-verify npx next build   # exit 0, route table printed
 ```
 
-## `npm test` (`vitest run` 3.2.7)
+## `npm test`
 
 ```text
-Test Files  31 passed (31)
-Tests       303 passed, 2 skipped (305)
-Duration    about 6 seconds
+Test Files  35 passed (35)
+Tests       321 passed, 1 skipped (322)
+Duration    about 7 seconds
 ```
 
-Skipped: the two bubblewrap-only cases in `src/lib/sandbox.integration.test.ts` (`tools.bwrap` is false). They were skipped, not passed.
+The skipped test is the fail-closed case that only runs when the host has no isolation at all. This host has bubblewrap, so that case is skipped rather than passed.
 
-Compiler cases that ran: hello world, infinite-loop timeout, stdout limit, `trace: false` does not call GDB, sandbox plan keeps `main.cpp` on the command line, environment is not visible to the child under `unshare-net`.
+Compiler and sandbox cases that ran under `isolation: "bwrap"`:
 
-New or extended tests:
+- Hello world stdout
+- Compile error is not a timeout
+- stdin `41` and separate stderr `e`
+- `main.cpp` plus `helper.cpp` prints `5`
+- Two concurrent programs do not mix stdout
+- Infinite loop returns `timeout`
+- Stdout spam returns `output_limit`
+- Child environment does not include server secrets
+- Compiler cannot include a file outside the submission directory
+- Outbound network is blocked
+- Process-group kill reaps a forked Python sleeper
 
-- `src/lib/sandbox.test.ts` compiler arguments survive `prlimit`
-- `src/lib/cppRunner.traceFlag.test.ts`
-- `src/lib/classroom/executionClient.test.ts` file map, `trace: false`, HTTP 503 and 429
-- `src/lib/classroom/classroomRouteAuth.test.ts` 12 handlers
-- `src/lib/classroom/classroom.test.ts` group membership and assignment binding
-- `src/lib/classroom/phase3.test.ts` sandbox outage does not write a grade
-- `src/lib/python/python.test.ts` no host fallback in production or when a configured worker fails
-- `src/lib/learn/learn.test.ts` masked questions have an empty explanation
-- `src/app/robots.test.ts`
+## Local server
 
-## `npm run build`
+Dev server restarted on `http://127.0.0.1:3000`.
 
-Next.js 16.3.1 Turbopack. Compiled successfully. TypeScript finished. 276 static pages. Exit code 0. About 20 seconds. The build lists `ƒ Proxy (Middleware)` for `src/proxy.ts`.
+- Homepage headers include the report-only CSP and do not include `X-Powered-By`.
+- `POST /api/predict` hello world: `{"status":"success","output":"hi","meta":{"exitCode":0}}`.
+- A program that reads `/etc/passwd` printed `closed`.
 
 ## Not run
 
-- Playwright or a browser session
-- `npm audit` as a gate
-- Migration apply
-- `scripts/deploy-production.sh` (it targets `/home/ec2-user/outputtracer`)
-- Authenticated end-to-end journeys A–D from the audit request
-- Production predict after the fix (the live site does not have this commit)
-
-GDB produced 0 steps because `gdb` is not installed. That is a skip of tracing, not a successful trace.
+Playwright, a signed-in classroom journey, Postgres policy tests with user JWTs, `scripts/deploy-production.sh`, and rollback on a spare host.

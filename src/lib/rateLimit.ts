@@ -71,15 +71,30 @@ export function createRateLimiter() {
 
 export const globalRateLimiter = createRateLimiter();
 
+function trustedProxyHops(): number {
+  const raw = process.env.TRUSTED_PROXY_HOPS;
+  const n = raw ? Number.parseInt(raw, 10) : 1;
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, 8);
+}
+
+// When a trusted proxy is in front of the app, the client-supplied
+// X-Forwarded-For prefix is not the client. Nginx should set the header
+// from the connection it accepted. If it appends instead, the rightmost
+// TRUSTED_PROXY_HOPS entries were added by our proxies and the address
+// immediately to their left is the client. The leftmost hop is ignored.
 export function clientIpFromForwarded(
   forwardedFor: string | string[] | undefined,
   remoteAddress: string | undefined,
   trustProxy: boolean
 ): string {
-  if (trustProxy && forwardedFor) {
-    const raw = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
-    const first = raw.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return remoteAddress || "unknown";
+  if (!trustProxy || !forwardedFor) return remoteAddress || "unknown";
+  const raw = Array.isArray(forwardedFor) ? forwardedFor.join(",") : forwardedFor;
+  const parts = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return remoteAddress || "unknown";
+  const index = Math.max(0, parts.length - trustedProxyHops());
+  return parts[index] || remoteAddress || "unknown";
 }

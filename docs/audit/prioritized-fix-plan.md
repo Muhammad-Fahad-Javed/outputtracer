@@ -1,5 +1,7 @@
 # Prioritized fix plan
 
+The later status is in `fixes-completed.md`, `remaining-issues.md`, `security-verification.md`, and `deployment-and-rollback.md`. The tables below are the original pass.
+
 Complexity is the size of the change, not a calendar estimate.
 
 ## Fixed in this branch

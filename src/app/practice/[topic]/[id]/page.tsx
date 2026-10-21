@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { getTopicById, getQuestion, getQuestionsByTopic, getTopics } from "@/lib/practice";
+import { getTopicById, getQuestion, getQuestionsByTopic, getTopics, toPublicPracticeQuestion } from "@/lib/practice";
 import { ArrowLeft } from "lucide-react";
 import QuestionClient from "./QuestionClient";
 
@@ -149,7 +149,7 @@ export default async function QuestionPage({
           </div>
 
           <QuestionClient
-            question={question}
+            question={toPublicPracticeQuestion(question)}
             nextQuestionId={nextQuestionId}
           />
         </section>

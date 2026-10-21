@@ -501,11 +501,72 @@ export async function recordStudentAttempt(params: {
   return false;
 }
 
+/**
+ * A lesson that has published questions is complete only after this student
+ * has a correct attempt for every one of them. Lessons with no questions are
+ * reading lessons; marking them complete is the activity.
+ */
+export async function lessonActivitySatisfied(params: {
+  userId: string;
+  lessonId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  let questions: Array<{ id: string }> = [];
+  try {
+    questions = await getQuestionsForLesson(params.lessonId, false, false);
+  } catch {
+    questions = fallbackQuestions.filter((q) => (q.lesson_id || q.lessonId) === params.lessonId);
+  }
+  if (questions.length === 0) return { ok: true };
+
+  const needed = new Set(questions.map((q) => q.id));
+  const correct = new Set<string>();
+  const adminSupabase = createAdminClient();
+
+  if (adminSupabase) {
+    try {
+      const { data, error } = await adminSupabase
+        .from("learn_question_attempts")
+        .select("question_id, is_correct")
+        .eq("user_id", params.userId)
+        .eq("is_correct", true);
+      if (error) throw error;
+      for (const row of data || []) {
+        const id = row.question_id as string;
+        if (needed.has(id)) correct.add(id);
+      }
+    } catch {
+      return {
+        ok: false,
+        error: "Lesson questions must be answered correctly before this lesson can be completed.",
+      };
+    }
+  } else if (!isAuthConfigured()) {
+    for (const attempt of fallbackAttempts) {
+      if (attempt.userId === params.userId && attempt.isCorrect && needed.has(attempt.questionId)) {
+        correct.add(attempt.questionId);
+      }
+    }
+  } else {
+    return { ok: false, error: "Lesson progress cannot be verified right now." };
+  }
+
+  if (correct.size < needed.size) {
+    return {
+      ok: false,
+      error: "Answer every question in this lesson correctly before marking it complete.",
+    };
+  }
+  return { ok: true };
+}
+
 export async function markLessonCompleted(params: {
   userId: string;
   courseId: string;
   lessonId: string;
 }): Promise<boolean> {
+  const ready = await lessonActivitySatisfied({ userId: params.userId, lessonId: params.lessonId });
+  if (!ready.ok) return false;
+
   const adminSupabase = createAdminClient();
   if (adminSupabase) {
     try {

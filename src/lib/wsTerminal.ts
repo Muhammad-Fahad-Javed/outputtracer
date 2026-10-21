@@ -6,8 +6,7 @@
 //   3. Spawns the binary and pipes stdin/stdout/stderr over WebSocket
 //   4. Applies the same resource limits as cppRunner.ts
 
-import { spawn, execFile } from "child_process";
-import { promisify } from "util";
+import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -21,10 +20,9 @@ import {
 } from "./execConfig";
 import { describeSignal } from "./signals";
 import { inspectSourceFiles } from "./sourceFiles";
-import { planUntrustedRun, planSandboxedCommand, selectIsolation, unsandboxedExecutionAllowed } from "./sandbox";
+import { planUntrustedRun, planSandboxedCommand, selectIsolation, isolationPermitsUntrustedExecution } from "./sandbox";
+import { runProcessGroup } from "./processGroup";
 import { tryAcquireRun, releaseRun } from "./runGate";
-
-const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
 // Message types sent to the client
@@ -84,10 +82,14 @@ export async function handleTerminalSession(
   // Fail closed: never execute untrusted code when no isolation mechanism is
   // available. Production can never opt into this; non-production requires an
   // explicit opt-in flag (see sandbox.unsandboxedExecutionAllowed).
-  if ((await selectIsolation()) === "none" && !unsandboxedExecutionAllowed()) {
+  const terminalIsolation = await selectIsolation();
+  if (!isolationPermitsUntrustedExecution(terminalIsolation)) {
     send(ws, {
       type: "error",
-      data: "Code execution is unavailable because this server has no sandbox available.",
+      data:
+        terminalIsolation === "none"
+          ? "Code execution is unavailable because this server has no sandbox available."
+          : "Code execution is unavailable until this server can isolate programs from the host filesystem (bubblewrap).",
     });
     ws.close();
     return;
@@ -155,21 +157,38 @@ export async function handleTerminalSession(
           maxMemoryMb: execConfig.compileMaxMemoryMb,
           maxCpuSeconds: execConfig.compileMaxCpuSeconds,
           maxProcesses: execConfig.compileMaxProcesses,
+          maxFileBytes: execConfig.compileMaxFileBytes,
         },
         remapTempDirPaths: false,
       });
 
-      const compileResult = await execFileAsync(
-        compilePlan.command,
-        compilePlan.args,
-        {
-          cwd: tempDir,
-          env: compilePlan.env,
-          timeout: execConfig.compileTimeoutMs,
-          killSignal: "SIGKILL",
-          maxBuffer: execConfig.maxDiagnosticBytes * 4,
-        }
-      );
+      const compileResult = await runProcessGroup({
+        command: compilePlan.command,
+        args: compilePlan.args,
+        cwd: tempDir,
+        env: compilePlan.env,
+        timeoutMs: execConfig.compileTimeoutMs,
+        maxBuffer: execConfig.maxDiagnosticBytes * 4,
+      });
+
+      if (compileResult.timedOut || compileResult.signal === "SIGXCPU") {
+        send(ws, {
+          type: "error",
+          data: `Compilation did not finish within ${execConfig.compileTimeoutMs}ms.`,
+        });
+        ws.close();
+        cleanup();
+        return;
+      }
+      if (compileResult.code !== 0 || compileResult.signal) {
+        send(ws, {
+          type: "compile_error",
+          data: compileResult.stderr || compileResult.stdout || "Compilation failed.",
+        });
+        ws.close();
+        cleanup();
+        return;
+      }
 
       // Forward any compiler warnings
       if (compileResult.stderr) {

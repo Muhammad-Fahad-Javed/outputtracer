@@ -8,6 +8,7 @@ import {
   selectIsolation,
   unsandboxedExecutionAllowed,
   unsandboxedTraceAllowed,
+  isolationPermitsUntrustedExecution,
   type IsolationLevel,
 } from "./sandbox";
 
@@ -83,6 +84,7 @@ describe("planSandboxedCommand", () => {
     expect(rendered).toContain("main.out");
     if (plan.isolation === "prlimit" || plan.isolation === "unshare-net" || plan.isolation === "bwrap") {
       expect(rendered).toContain("g++");
+      expect(rendered).toContain("--fsize=");
     }
   });
 });
@@ -93,6 +95,7 @@ describe("unsandboxed execution policy", () => {
   const savedNodeEnv = process.env.NODE_ENV;
   const savedExec = process.env.ALLOW_UNSANDBOXED_EXECUTION;
   const savedTrace = process.env.TRACE_ALLOW_UNSANDBOXED;
+  const savedFs = process.env.ALLOW_FILESYSTEM_VISIBLE_SANDBOX;
 
   // process.env.NODE_ENV is typed readonly; write through a mutable view.
   const setEnv = (name: string, value: string | undefined) => {
@@ -105,6 +108,7 @@ describe("unsandboxed execution policy", () => {
     setEnv("NODE_ENV", savedNodeEnv);
     setEnv("ALLOW_UNSANDBOXED_EXECUTION", savedExec);
     setEnv("TRACE_ALLOW_UNSANDBOXED", savedTrace);
+    setEnv("ALLOW_FILESYSTEM_VISIBLE_SANDBOX", savedFs);
   };
 
   it("is off by default outside production", () => {
@@ -125,6 +129,19 @@ describe("unsandboxed execution policy", () => {
     try {
       expect(unsandboxedExecutionAllowed()).toBe(true);
       expect(unsandboxedTraceAllowed()).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("refuses filesystem-visible isolation in production unless an operator opts in", () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("ALLOW_FILESYSTEM_VISIBLE_SANDBOX", undefined);
+    try {
+      expect(isolationPermitsUntrustedExecution("bwrap")).toBe(true);
+      expect(isolationPermitsUntrustedExecution("unshare-net")).toBe(false);
+      expect(isolationPermitsUntrustedExecution("prlimit")).toBe(false);
+      expect(isolationPermitsUntrustedExecution("none")).toBe(false);
     } finally {
       restore();
     }

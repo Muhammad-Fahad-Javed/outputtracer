@@ -44,6 +44,77 @@ int main() { std::cout << "ok"; return 0; }`,
   );
 
   it.skipIf(skipUnless(tools.compiler))(
+    "returns a compile error that is not a timeout",
+    async () => {
+      const result = await compileAndRun({
+        source: "int main() { return missing; }",
+      });
+      expect(result.status).toBe("compile_error");
+      expect(result.message || "").toMatch(/missing|error/i);
+    }
+  );
+
+  it.skipIf(skipUnless(tools.compiler))(
+    "forwards stdin and keeps stdout separate from stderr",
+    async () => {
+      const result = await compileAndRun({
+        source: `#include <iostream>
+int main() {
+  int n = 0;
+  std::cin >> n;
+  std::cout << n + 1;
+  std::cerr << "e";
+  return 0;
+}`,
+        stdin: "41\n",
+        trace: false,
+      });
+      expect(result.status).toBe("success");
+      expect(result.stdout).toBe("42");
+      expect(result.stderr).toBe("e");
+      expect(result.exitCode).toBe(0);
+    }
+  );
+
+  it.skipIf(skipUnless(tools.compiler))(
+    "compiles more than one source file",
+    async () => {
+      const result = await compileAndRun({
+        files: {
+          "helper.h": "int add(int a, int b);",
+          "helper.cpp": "int add(int a, int b) { return a + b; }",
+          "main.cpp": `#include <iostream>
+#include "helper.h"
+int main() { std::cout << add(2, 3); }`,
+        },
+        trace: false,
+      });
+      expect(result.status).toBe("success");
+      expect(result.stdout).toBe("5");
+    }
+  );
+
+  it.skipIf(skipUnless(tools.compiler))(
+    "runs two programs without mixing their output",
+    async () => {
+      const [left, right] = await Promise.all([
+        compileAndRun({
+          source: `#include <iostream>\nint main(){std::cout<<"left";}`,
+          trace: false,
+        }),
+        compileAndRun({
+          source: `#include <iostream>\nint main(){std::cout<<"right";}`,
+          trace: false,
+        }),
+      ]);
+      expect(left.status).toBe("success");
+      expect(right.status).toBe("success");
+      expect(left.stdout).toBe("left");
+      expect(right.stdout).toBe("right");
+    }
+  );
+
+  it.skipIf(skipUnless(tools.compiler))(
     "kills programs that spam stdout",
     async () => {
       const result = await compileAndRun({

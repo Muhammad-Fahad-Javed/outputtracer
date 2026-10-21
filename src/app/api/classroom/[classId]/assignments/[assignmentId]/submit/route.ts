@@ -24,6 +24,7 @@ import {
 import { createSubmissionSnapshot } from "@/lib/classroom/gradingService";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAuthConfigured } from "@/lib/supabase/env";
+import { inspectSourceFiles } from "@/lib/sourceFiles";
 
 export async function POST(
   request: Request,
@@ -52,6 +53,10 @@ export async function POST(
   }
 
   const files = body.codeFiles as Record<string, string>;
+  const inspected = inspectSourceFiles(files, { maxFiles: 16, maxSourceBytes: 200 * 1024 });
+  if (!inspected.ok) {
+    return NextResponse.json({ success: false, error: inspected.message }, { status: 400 });
+  }
   const language = typeof body.language === "string" ? body.language : "cpp";
   const groupId = typeof body.groupId === "string" ? body.groupId : undefined;
   if (groupId && !(await callerCanUseGroup(user.id, classId, groupId))) {
