@@ -105,9 +105,13 @@ export async function runInSandbox(req: SandboxRequest): Promise<SandboxResult> 
     }
 
     // ── Internal fallback: call /api/predict (child process with limits) ──
-    // Determine base URL from env or default to localhost:3000
-    const baseUrl = process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL?.replace("supabase.co", "vercel.app") ?? "http://localhost:3000";
-    const predictUrl = `${baseUrl}/api/predict`;
+    // Always call this app over loopback. Do NOT derive the base URL from
+    // NEXTAUTH_URL or NEXT_PUBLIC_SUPABASE_URL: those describe different
+    // services, and the previous derivation could send student source to an
+    // unrelated `<project>.vercel.app` host.
+    const internalBaseUrl =
+      process.env.INTERNAL_BASE_URL || `http://127.0.0.1:${process.env.PORT || "3000"}`;
+    const predictUrl = `${internalBaseUrl.replace(/\/+$/, "")}/api/predict`;
 
     const source = buildSource(req.files);
     const response = await fetch(predictUrl, {

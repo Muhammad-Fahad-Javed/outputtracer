@@ -12,6 +12,7 @@ import {
   notifyPlatformOwnerNewTeacherApplication,
   notifyTeacherApplicationDecision,
 } from "./emailProvider";
+import { siteUrl as resolveSiteUrl } from "@/lib/siteUrl";
 
 // In-memory fallback stores for test environments
 const memoryApplications: TeacherApplication[] = [];
@@ -151,7 +152,7 @@ export async function submitTeacherApplication(
 
           const applicantName = profile?.full_name || profile?.display_name || "Applicant";
           const applicantEmail = input.institutionEmail || profile?.email || "Unknown Email";
-          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+          const siteUrl = resolveSiteUrl();
 
           void notifyPlatformOwnerNewTeacherApplication({
             applicantName,
@@ -417,7 +418,7 @@ export async function decideTeacherApplicationAdmin(
           const recipientEmail = (targetApp.institution_email as string) || applicantProfile?.email;
           if (recipientEmail) {
             const recipientName = applicantProfile?.full_name || applicantProfile?.display_name || "Educator";
-            const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+            const siteUrl = resolveSiteUrl();
             const actionUrl = newStatus === "approved" ? `${siteUrl}/classroom` : `${siteUrl}/classroom/teach/apply`;
 
             void notifyTeacherApplicationDecision({
