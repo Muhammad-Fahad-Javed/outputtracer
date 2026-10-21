@@ -48,11 +48,20 @@ const allowedDevOrigins = [
     .filter(Boolean),
 ];
 
+// Next.js 16 shuts the Turbopack compiler down only after static generation,
+// and the in-build `tsc` runs in that window. On the production host
+// (913 MB RAM, 1.4 GB swap) compile finished and the log then stopped in
+// "Running TypeScript" with no diagnostic and no surviving process.
+// The deploy script typechecks in its own process, then sets this so the
+// production compile does not start a second tsc on top of the compiler.
+const deferTypecheck = process.env.OUTPUTTRACER_DEFER_TYPECHECK === "1";
+
 const nextConfig: NextConfig = {
   deploymentId,
   distDir: rawDistDir,
   allowedDevOrigins,
   poweredByHeader: false,
+  ...(deferTypecheck ? { typescript: { ignoreBuildErrors: true } } : {}),
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders() }];
   },

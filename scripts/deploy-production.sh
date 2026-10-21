@@ -119,17 +119,22 @@ if [ "$DISK_FREE_MB" -lt 1200 ]; then
   fail "only ${DISK_FREE_MB} MB free on /; need at least 1200 MB to build"
 fi
 
-# The build needs about 1.9 GB of resident memory (measured: ~1.4 GB held by
-# the Turbopack compiler in the parent process plus ~0.5 GB in the TypeScript
-# type-check worker). Report what is available so the operator can see
-# whether the instance is big enough before starting a long build.
+# Turbopack compile for this app holds about 1.4 GB and, on the production
+# host, completed (outputtracer-build.9K7gao.log: "Compiled successfully in
+# 3.4min"). The in-build typecheck runs before that compiler is released, and
+# that is where the same log stops, with no tsc diagnostic and no process
+# left. Gating on total RAM + total swap called 913 MB + 1.4 GB "enough"
+# while only ~1.45 GB was free. Require free memory instead.
 MEM_TOTAL_MB="$(free -m | awk 'NR==2 {print $2}')"
 MEM_AVAIL_MB="$(free -m | awk 'NR==2 {print $7}')"
 SWAP_TOTAL_MB="$(free -m | awk 'NR==3 {print $2}')"
+SWAP_FREE_MB="$(free -m | awk 'NR==3 {print $4}')"
+HEADROOM_MB=$(( MEM_AVAIL_MB + SWAP_FREE_MB ))
 info "memory          : ${MEM_TOTAL_MB} MB total, ${MEM_AVAIL_MB} MB available"
-info "swap            : ${SWAP_TOTAL_MB} MB total"
-if [ $(( MEM_TOTAL_MB + SWAP_TOTAL_MB )) -lt 2200 ]; then
-  fail "this build needs ~1900 MB of memory but the instance offers $(( MEM_TOTAL_MB + SWAP_TOTAL_MB )) MB (RAM+swap). Resize the instance or add swap before deploying."
+info "swap            : ${SWAP_TOTAL_MB} MB total, ${SWAP_FREE_MB} MB free"
+info "build headroom  : ${HEADROOM_MB} MB (available RAM + free swap)"
+if [ "$HEADROOM_MB" -lt 1400 ]; then
+  fail "this build needs about 1400 MB free (available RAM + free swap) but only ${HEADROOM_MB} MB is free. Free memory or resize the instance before deploying."
 fi
 
 if [ -n "$(git status --porcelain)" ]; then
@@ -158,7 +163,17 @@ if [ "$TARGET_COMMIT" = "$CURRENT_COMMIT" ]; then
 fi
 
 # ================================================== 3. BUILD THE CANDIDATE
-log "3. Build the candidate release (live .next is not touched)"
+log "3. Typecheck, then build the candidate (live .next is not touched)"
+
+# tsc by itself fits on this host. Inside `next build` it is started while
+# Turbopack is still resident, which is the step that died in
+# outputtracer-build.9K7gao.log. Typecheck first, then tell Next to skip its
+# own tsc (see OUTPUTTRACER_DEFER_TYPECHECK in next.config.ts).
+info "typecheck       : tsc --noEmit, before the compiler starts"
+if ! ./node_modules/.bin/tsc --noEmit --pretty false --incremental false; then
+  fail "typecheck failed; the live release is untouched and still serving"
+fi
+export OUTPUTTRACER_DEFER_TYPECHECK=1
 
 rm -rf "$CANDIDATE_DIR"
 export NEXT_DIST_DIR="$CANDIDATE_DIR"
@@ -177,6 +192,7 @@ if ! npm run build >"$BUILD_LOG" 2>&1; then
   fail "build failed; the live release is untouched and still serving"
 fi
 info "build finished"
+unset OUTPUTTRACER_DEFER_TYPECHECK
 restore_tsconfig
 
 # ================================================= 4. VERIFY THE CANDIDATE
