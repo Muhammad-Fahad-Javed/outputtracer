@@ -1,10 +1,16 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isAuthConfigured } from "@/lib/supabase/env";
 import { inspectSourceFiles } from "@/lib/sourceFiles";
 import { checkIsAdmin } from "@/lib/learn/db";
 import {
   checkIsVerifiedTeacher,
   checkCanManageClassroom,
 } from "./roles";
+import {
+  CLASSROOM_TIME_LIMIT_DEFAULT_MS,
+  clampTimeLimitMs,
+  policyFromRow,
+} from "./assignmentPolicy";
 import {
   Classroom,
   ClassroomRole,
@@ -51,6 +57,147 @@ function generateJoinCode(): string {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return `OT-${code}`;
+}
+
+function toAssignment(data: object, isTeacher: boolean): ClassroomAssignment {
+  const row = data as Record<string, unknown>;
+  const policy = policyFromRow(row);
+  const hidden = (row.hidden_test_cases ?? row.hiddenTestCases ?? []) as AssignmentTestCase[];
+  const submissionCount = row.submission_count ?? row.submissionCount;
+  return {
+    id: String(row.id),
+    classroomId: String(row.classroom_id ?? row.classroomId),
+    title: String(row.title),
+    description: String(row.description ?? ""),
+    starterCode: (row.starter_code ?? row.starterCode ?? {}) as Record<string, string>,
+    publicTestCases: (row.public_test_cases ?? row.publicTestCases ?? []) as AssignmentTestCase[],
+    hiddenTestCases: isTeacher ? hidden : undefined,
+    dueDate: policy.dueDate,
+    allowLate: policy.allowLate,
+    locked: policy.locked,
+    allowRun: policy.allowRun,
+    allowTrace: policy.allowTrace,
+    timeLimitMs: policy.timeLimitMs,
+    maxPoints: Number(row.max_points ?? row.maxPoints ?? 100),
+    groupMode: Boolean(row.group_mode ?? row.groupMode),
+    isPublished: Boolean(row.is_published ?? row.isPublished),
+    submissionCount: typeof submissionCount === "number" ? submissionCount : undefined,
+    createdAt: String(row.created_at ?? row.createdAt),
+    updatedAt: String(row.updated_at ?? row.updatedAt),
+  };
+}
+
+function memoryGroupViews(classroomId: string, includeEmail: boolean): ClassroomGroup[] {
+  const roster = memoryMembers.get(classroomId) || [];
+  return (memoryGroups.get(classroomId) || []).map((group) => {
+    const ids = memoryGroupMembers.get(group.id) || new Set<string>();
+    const members: ClassroomMember[] = roster
+      .filter((member) => ids.has(member.userId))
+      .map((member) => ({
+        ...member,
+        email: includeEmail ? member.email : undefined,
+      }));
+    for (const userId of ids) {
+      if (!members.some((member) => member.userId === userId)) {
+        members.push({
+          classroomId,
+          userId,
+          role: "student",
+          joinedAt: group.createdAt,
+        });
+      }
+    }
+    return { ...group, memberCount: members.length, members };
+  });
+}
+
+function forgetGroupMemberships(classroomId: string, userId: string): void {
+  for (const group of memoryGroups.get(classroomId) || []) {
+    memoryGroupMembers.get(group.id)?.delete(userId);
+  }
+}
+
+async function mutateGroupMemberAdmin(
+  // Supabase query builders are thenable and generic; the calls below are the contract.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  admin: any,
+  mode: "assign" | "remove",
+  classroomId: string,
+  groupId: string,
+  studentUserId: string
+): Promise<{ handled: boolean; success: boolean; error?: string }> {
+  const { data: group, error: groupError } = await admin
+    .from("classroom_groups")
+    .select("id, classroom_id")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (groupError) return { handled: false, success: false, error: groupError.message };
+  if (!group || String(group.classroom_id) !== classroomId) {
+    return { handled: true, success: false, error: "Group not found" };
+  }
+
+  if (mode === "remove") {
+    const { error } = (await admin
+      .from("classroom_group_members")
+      .delete()
+      .eq("group_id", groupId)
+      .eq("user_id", studentUserId)) as { error: { message: string } | null };
+    if (error) return { handled: false, success: false, error: error.message };
+    return { handled: true, success: true };
+  }
+
+  const listed = (await admin
+    .from("classroom_groups")
+    .select("id")
+    .eq("classroom_id", classroomId)) as {
+    data: { id: string }[] | null;
+    error: { message: string } | null;
+  };
+  if (listed.error || !listed.data) {
+    return { handled: false, success: false, error: listed.error?.message || "Could not list groups" };
+  }
+  const otherIds = listed.data.map((row) => String(row.id)).filter((id) => id !== groupId);
+  if (otherIds.length > 0) {
+    const removed = (await admin
+      .from("classroom_group_members")
+      .delete()
+      .eq("user_id", studentUserId)
+      .in("group_id", otherIds)) as { error: { message: string } | null };
+    if (removed.error) return { handled: false, success: false, error: removed.error.message };
+  }
+  const saved = (await admin
+    .from("classroom_group_members")
+    .upsert(
+      { group_id: groupId, user_id: studentUserId },
+      { onConflict: "group_id,user_id" }
+    )) as { error: { message: string } | null };
+  if (saved.error) return { handled: false, success: false, error: saved.error.message };
+  return { handled: true, success: true };
+}
+
+async function deleteClassGroupMembershipsAdmin(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  admin: any,
+  classroomId: string,
+  userId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const listed = (await admin
+    .from("classroom_groups")
+    .select("id")
+    .eq("classroom_id", classroomId)) as {
+    data: { id: string }[] | null;
+    error: { message: string } | null;
+  };
+  if (listed.error) return { ok: false, error: listed.error.message };
+  const ids = (listed.data || []).map((row) => String(row.id));
+  if (ids.length === 0) return { ok: true };
+  const removed = (await admin
+    .from("classroom_group_members")
+    .delete()
+    .eq("user_id", userId)
+    .in("group_id", ids)) as { error: { message: string } | null };
+  if (removed.error) return { ok: false, error: removed.error.message };
+  return { ok: true };
 }
 
 function normalizeClassroom(row: Record<string, unknown>): Classroom {
@@ -299,7 +446,11 @@ export async function listUserClassrooms(
   for (const c of memoryClassrooms.values()) {
     if (c.isArchived) continue;
     if (c.teacherId === userId) {
-      teaching.push(c);
+      teaching.push({
+        ...c,
+        memberCount: (memoryMembers.get(c.id) || []).length,
+        assignmentCount: (memoryAssignments.get(c.id) || []).length,
+      });
       continue;
     }
     const members = memoryMembers.get(c.id) || [];
@@ -478,18 +629,31 @@ export async function removeClassroomMember(
   const admin = createAdminClient();
   if (admin) {
     try {
-      await admin
-        .from("classroom_members")
-        .delete()
-        .eq("classroom_id", classroomId)
-        .eq("user_id", targetUserId);
-      return { success: true };
+      const cleared = await deleteClassGroupMembershipsAdmin(admin, classroomId, targetUserId);
+      if (!cleared.ok) {
+        if (isAuthConfigured()) {
+          return { success: false, error: cleared.error || "Could not remove group memberships" };
+        }
+      } else {
+        const { error } = await admin
+          .from("classroom_members")
+          .delete()
+          .eq("classroom_id", classroomId)
+          .eq("user_id", targetUserId);
+        if (!error) return { success: true };
+        if (isAuthConfigured()) {
+          return { success: false, error: error.message };
+        }
+      }
     } catch {
-      // Memory fallback below
+      if (isAuthConfigured()) {
+        return { success: false, error: "Could not remove the class member" };
+      }
     }
   }
 
   const members = memoryMembers.get(classroomId) || [];
+  forgetGroupMemberships(classroomId, targetUserId);
   memoryMembers.set(
     classroomId,
     members.filter((m) => m.userId !== targetUserId)
@@ -549,6 +713,8 @@ export async function addClassroomMember(
     joinedAt: new Date().toISOString(),
   });
   memoryMembers.set(classroomId, members);
+  const classroom = memoryClassrooms.get(classroomId);
+  if (classroom) classroom.memberCount = members.length;
   return { success: true };
 }
 
@@ -598,6 +764,7 @@ export async function createClassroomGroup(
             classroomId: data.classroom_id,
             name: data.name,
             memberCount: 0,
+            members: [],
             createdAt: data.created_at,
           },
         };
@@ -613,6 +780,7 @@ export async function createClassroomGroup(
     classroomId,
     name,
     memberCount: 0,
+    members: [],
     createdAt: now,
   };
   groups.push(newGroup);
@@ -648,22 +816,62 @@ export async function assignStudentToGroup(
   const admin = createAdminClient();
   if (admin) {
     try {
-      await admin.from("classroom_group_members").upsert({
-        group_id: groupId,
-        user_id: studentUserId,
-      });
-      return { success: true };
+      const result = await mutateGroupMemberAdmin(admin, "assign", classroomId, groupId, studentUserId);
+      if (result.handled) return { success: result.success, error: result.error };
     } catch {
-      // Memory fallback below
+      if (isAuthConfigured()) {
+        return { success: false, error: "Could not assign the student to that group" };
+      }
     }
   }
 
-  const groupSet = memoryGroupMembers.get(groupId);
-  if (!groupSet) {
+  const groups = memoryGroups.get(classroomId) || [];
+  if (!groups.some((group) => group.id === groupId)) {
     return { success: false, error: "Group not found" };
   }
+  for (const group of groups) {
+    if (group.id !== groupId) memoryGroupMembers.get(group.id)?.delete(studentUserId);
+  }
+  const groupSet = memoryGroupMembers.get(groupId) ?? new Set<string>();
   groupSet.add(studentUserId);
+  memoryGroupMembers.set(groupId, groupSet);
 
+  return { success: true };
+}
+
+export async function removeStudentFromGroup(
+  actorUserId: string,
+  classroomId: string,
+  groupId: string,
+  studentUserId: string
+): Promise<{ success: boolean; error?: string }> {
+  const access = await getClassroom(actorUserId, classroomId);
+  if (!access.success || !access.classroom) {
+    return { success: false, error: access.error };
+  }
+
+  const canManage = await checkCanManageClassroom(actorUserId, access.classroom.teacherId);
+  if (!canManage) {
+    return { success: false, error: "Unauthorized. Teacher privileges required." };
+  }
+
+  const admin = createAdminClient();
+  if (admin) {
+    try {
+      const result = await mutateGroupMemberAdmin(admin, "remove", classroomId, groupId, studentUserId);
+      if (result.handled) return { success: result.success, error: result.error };
+    } catch {
+      if (isAuthConfigured()) {
+        return { success: false, error: "Could not remove the student from that group" };
+      }
+    }
+  }
+
+  const groups = memoryGroups.get(classroomId) || [];
+  if (!groups.some((group) => group.id === groupId)) {
+    return { success: false, error: "Group not found" };
+  }
+  memoryGroupMembers.get(groupId)?.delete(studentUserId);
   return { success: true };
 }
 
@@ -676,6 +884,7 @@ export async function listClassroomGroups(
     return { success: false, error: access.error };
   }
 
+  const includeEmail = Boolean(access.isTeacher);
   const admin = createAdminClient();
   if (admin) {
     try {
@@ -686,23 +895,62 @@ export async function listClassroomGroups(
         .order("created_at", { ascending: true });
 
       if (!error && data) {
+        const ids = data.map((group) => String(group.id));
+        const memberships = new Map<string, string[]>();
+        if (ids.length > 0) {
+          const { data: memberRows, error: memberError } = await admin
+            .from("classroom_group_members")
+            .select("group_id, user_id")
+            .in("group_id", ids);
+          if (memberError) {
+            if (isAuthConfigured()) {
+              return { success: false, error: memberError.message };
+            }
+            throw new Error(memberError.message);
+          } else {
+            for (const row of memberRows || []) {
+              const groupId = String(row.group_id);
+              const list = memberships.get(groupId) || [];
+              list.push(String(row.user_id));
+              memberships.set(groupId, list);
+            }
+          }
+        }
+        const roster = await listClassroomRoster(userId, classroomId);
+        const byUser = new Map((roster.members || []).map((member) => [member.userId, member]));
         return {
           success: true,
-          groups: data.map((g) => ({
-            id: g.id,
-            classroomId: g.classroom_id,
-            name: g.name,
-            createdAt: g.created_at,
-          })),
+          groups: data.map((group) => {
+            const userIds = memberships.get(String(group.id)) || [];
+            const members: ClassroomMember[] = userIds.map((memberId) => {
+              const known = byUser.get(memberId);
+              if (known) return { ...known, email: includeEmail ? known.email : undefined };
+              return {
+                classroomId,
+                userId: memberId,
+                role: "student" as const,
+                joinedAt: String(group.created_at),
+              };
+            });
+            return {
+              id: String(group.id),
+              classroomId: String(group.classroom_id),
+              name: String(group.name),
+              memberCount: members.length,
+              members,
+              createdAt: String(group.created_at),
+            };
+          }),
         };
       }
     } catch {
-      // Memory fallback below
+      if (isAuthConfigured()) {
+        return { success: false, error: "Could not load groups" };
+      }
     }
   }
 
-  const groups = memoryGroups.get(classroomId) || [];
-  return { success: true, groups };
+  return { success: true, groups: memoryGroupViews(classroomId, includeEmail) };
 }
 
 function normalizeAssignmentTests(
@@ -793,6 +1041,10 @@ export async function createAssignment(
           hidden_test_cases: hiddenTestCases,
           due_date: input.dueDate || null,
           allow_late: input.allowLate ?? true,
+          locked: input.locked ?? false,
+          allow_run: input.allowRun !== false,
+          allow_trace: input.allowTrace === true,
+          time_limit_ms: clampTimeLimitMs(input.timeLimitMs ?? CLASSROOM_TIME_LIMIT_DEFAULT_MS),
           max_points: maxPoints,
           group_mode: input.groupMode ?? false,
           is_published: input.isPublished ?? false,
@@ -803,25 +1055,7 @@ export async function createAssignment(
         .single();
 
       if (!error && data) {
-        return {
-          success: true,
-          assignment: {
-            id: data.id,
-            classroomId: data.classroom_id,
-            title: data.title,
-            description: data.description,
-            starterCode: data.starter_code,
-            publicTestCases: data.public_test_cases,
-            hiddenTestCases: data.hidden_test_cases,
-            dueDate: data.due_date,
-            allowLate: data.allow_late,
-            maxPoints: data.max_points,
-            groupMode: data.group_mode,
-            isPublished: data.is_published,
-            createdAt: data.created_at,
-            updatedAt: data.updated_at,
-          },
-        };
+        return { success: true, assignment: toAssignment(data, true) };
       }
     } catch {
       // Memory fallback below
@@ -839,6 +1073,10 @@ export async function createAssignment(
     hiddenTestCases,
     dueDate: input.dueDate,
     allowLate: input.allowLate ?? true,
+    locked: input.locked ?? false,
+    allowRun: input.allowRun !== false,
+    allowTrace: input.allowTrace === true,
+    timeLimitMs: clampTimeLimitMs(input.timeLimitMs ?? CLASSROOM_TIME_LIMIT_DEFAULT_MS),
     maxPoints,
     groupMode: input.groupMode ?? false,
     isPublished: input.isPublished ?? false,
@@ -881,27 +1119,11 @@ export async function listAssignments(
 
       const { data, error } = await query;
       if (!error && data) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const list: ClassroomAssignment[] = (data as any[]).map((d) => ({
-          id: d.id as string,
-          classroomId: d.classroom_id as string,
-          title: d.title as string,
-          description: (d.description as string | null) ?? "",
-          starterCode: (d.starter_code as Record<string, string> | null) ?? {},
-          publicTestCases: (d.public_test_cases as AssignmentTestCase[] | null) ?? [],
-          // Security: Strip hidden tests for students
-          hiddenTestCases: isTeacher
-            ? ((d.hidden_test_cases as AssignmentTestCase[] | null) ?? [])
-            : undefined,
-          dueDate: (d.due_date as string | null) ?? undefined,
-          allowLate: d.allow_late as boolean,
-          maxPoints: d.max_points as number,
-          groupMode: d.group_mode as boolean,
-          isPublished: d.is_published as boolean,
-          createdAt: d.created_at as string,
-          updatedAt: d.updated_at as string,
-        }));
-        return { success: true, assignments: list };
+        return {
+          success: true,
+          // Hidden tests are omitted for students inside toAssignment.
+          assignments: (data as object[]).map((row) => toAssignment(row, Boolean(isTeacher))),
+        };
       }
     } catch {
       // Memory fallback below
@@ -911,10 +1133,7 @@ export async function listAssignments(
   const all = memoryAssignments.get(classroomId) || [];
   const list = all
     .filter((a) => isTeacher || a.isPublished)
-    .map((a) => ({
-      ...a,
-      hiddenTestCases: isTeacher ? a.hiddenTestCases : undefined,
-    }));
+    .map((a) => toAssignment(a, Boolean(isTeacher)));
 
   return { success: true, assignments: list };
 }
@@ -954,22 +1173,7 @@ export async function getAssignment(
 
       return {
         success: true,
-        assignment: {
-          id: data.id,
-          classroomId: data.classroom_id,
-          title: data.title,
-          description: data.description,
-          starterCode: data.starter_code,
-          publicTestCases: data.public_test_cases || [],
-          hiddenTestCases: isTeacher ? (data.hidden_test_cases || []) : undefined,
-          dueDate: data.due_date,
-          allowLate: data.allow_late,
-          maxPoints: data.max_points,
-          groupMode: data.group_mode,
-          isPublished: data.is_published,
-          createdAt: data.created_at,
-          updatedAt: data.updated_at,
-        },
+        assignment: toAssignment(data, Boolean(isTeacher)),
         isTeacher,
       };
     } catch {
@@ -990,12 +1194,121 @@ export async function getAssignment(
 
   return {
     success: true,
-    assignment: {
-      ...item,
-      hiddenTestCases: isTeacher ? item.hiddenTestCases : undefined,
-    },
+    assignment: toAssignment(item, Boolean(isTeacher)),
     isTeacher,
   };
+}
+
+export async function readAssignmentPolicy(classroomId: string, assignmentId: string) {
+  const admin = createAdminClient();
+  if (admin) {
+    try {
+      const { data, error } = await admin
+        .from("classroom_assignments")
+        .select("due_date, allow_late, locked, allow_run, allow_trace, time_limit_ms")
+        .eq("id", assignmentId)
+        .eq("classroom_id", classroomId)
+        .maybeSingle();
+      if (!error && data) return policyFromRow(data);
+      if (!error && !data) return null;
+    } catch {
+      // Memory fallback below.
+    }
+  }
+  const item = (memoryAssignments.get(classroomId) || []).find((assignment) => assignment.id === assignmentId);
+  return item ? policyFromRow(item) : null;
+}
+
+export async function updateAssignmentPolicy(
+  actorUserId: string,
+  classroomId: string,
+  assignmentId: string,
+  patch: {
+    locked?: boolean;
+    allowLate?: boolean;
+    allowRun?: boolean;
+    allowTrace?: boolean;
+    timeLimitMs?: number;
+  }
+): Promise<{ success: boolean; assignment?: ClassroomAssignment; error?: string }> {
+  const access = await getClassroom(actorUserId, classroomId);
+  if (!access.success || !access.classroom) {
+    return { success: false, error: access.error || "Classroom not found" };
+  }
+  const canManage = await checkCanManageClassroom(actorUserId, access.classroom.teacherId);
+  if (!canManage) {
+    return { success: false, error: "Unauthorized. Teacher privileges required." };
+  }
+
+  const current = await getAssignment(actorUserId, classroomId, assignmentId);
+  if (!current.success || !current.assignment) {
+    return { success: false, error: current.error || "Assignment not found" };
+  }
+
+  if (patch.locked !== undefined && typeof patch.locked !== "boolean") {
+    return { success: false, error: "locked must be true or false." };
+  }
+  if (patch.allowLate !== undefined && typeof patch.allowLate !== "boolean") {
+    return { success: false, error: "allowLate must be true or false." };
+  }
+  if (patch.allowRun !== undefined && typeof patch.allowRun !== "boolean") {
+    return { success: false, error: "allowRun must be true or false." };
+  }
+  if (patch.allowTrace !== undefined && typeof patch.allowTrace !== "boolean") {
+    return { success: false, error: "allowTrace must be true or false." };
+  }
+  if (
+    patch.timeLimitMs !== undefined &&
+    (typeof patch.timeLimitMs !== "number" || !Number.isFinite(patch.timeLimitMs))
+  ) {
+    return { success: false, error: "timeLimitMs must be a number of milliseconds." };
+  }
+
+  const next = {
+    locked: patch.locked ?? current.assignment.locked,
+    allowLate: patch.allowLate ?? current.assignment.allowLate,
+    allowRun: patch.allowRun ?? current.assignment.allowRun,
+    allowTrace: patch.allowTrace ?? current.assignment.allowTrace,
+    timeLimitMs:
+      patch.timeLimitMs === undefined
+        ? current.assignment.timeLimitMs
+        : clampTimeLimitMs(patch.timeLimitMs),
+  };
+  const updatedAt = new Date().toISOString();
+
+  const admin = createAdminClient();
+  if (admin) {
+    try {
+      const { data, error } = await admin
+        .from("classroom_assignments")
+        .update({
+          locked: next.locked,
+          allow_late: next.allowLate,
+          allow_run: next.allowRun,
+          allow_trace: next.allowTrace,
+          time_limit_ms: next.timeLimitMs,
+          updated_at: updatedAt,
+        })
+        .eq("id", assignmentId)
+        .eq("classroom_id", classroomId)
+        .select("*")
+        .single();
+      if (!error && data) return { success: true, assignment: toAssignment(data, true) };
+      if (error && isAuthConfigured()) return { success: false, error: error.message };
+    } catch {
+      if (isAuthConfigured()) return { success: false, error: "Could not update assignment policy." };
+    }
+  }
+
+  const stored = (memoryAssignments.get(classroomId) || []).find((assignment) => assignment.id === assignmentId);
+  if (!stored) return { success: false, error: "Assignment not found" };
+  stored.locked = next.locked;
+  stored.allowLate = next.allowLate;
+  stored.allowRun = next.allowRun;
+  stored.allowTrace = next.allowTrace;
+  stored.timeLimitMs = next.timeLimitMs;
+  stored.updatedAt = updatedAt;
+  return { success: true, assignment: toAssignment(stored, true) };
 }
 
 /**

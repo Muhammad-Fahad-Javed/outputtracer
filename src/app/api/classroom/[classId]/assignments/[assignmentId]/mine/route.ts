@@ -11,6 +11,7 @@ import {
 } from "@/lib/classroom/classroomService";
 import { pickOwnSubmission } from "@/lib/classroom/ownSubmission";
 import { classroomRequestUser } from "@/lib/classroom/requestUser";
+import { readMemorySubmission } from "@/lib/classroom/submissionMemory";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(
@@ -33,7 +34,9 @@ export async function GET(
 
   const admin = createAdminClient();
   if (!admin) {
-    return NextResponse.json({ success: true, submission: null });
+    const groupIds = await listCallerGroupIds(user.id, classId);
+    const submission = readMemorySubmission(assignmentId, user.id, groupIds);
+    return NextResponse.json({ success: true, submission });
   }
 
   const columns = "id, status, code_files, submitted_at, is_late, grade, feedback, graded_at, student_id, group_id";

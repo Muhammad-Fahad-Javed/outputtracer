@@ -171,12 +171,13 @@ export async function runTestCase(
   files: Record<string, string>,
   language: string,
   stdin: string,
-  expectedOutput: string
+  expectedOutput: string,
+  timeLimitMs = 8_000
 ): Promise<{ passed: boolean; actualOutput: string; durationMs: number }> {
   // Use stub-aware wrapper so tests can intercept
   const result = _sandboxStub
-    ? await _sandboxStub({ files, language, stdin, timeLimitMs: 8_000 })
-    : await runInSandbox({ files, language, stdin, timeLimitMs: 8_000 });
+    ? await _sandboxStub({ files, language, stdin, timeLimitMs })
+    : await runInSandbox({ files, language, stdin, timeLimitMs });
 
   const normalize = (s: string) => s.replace(/\r\n/g, "\n").trimEnd();
   const passed = normalize(result.stdout) === normalize(expectedOutput) && !result.timedOut && result.exitCode === 0;

@@ -17,6 +17,9 @@ import {
   seedDoc,
 } from "@/lib/cloud/collabDoc";
 import { canEdit, isUuid, type ProjectRole } from "@/lib/cloud/roles";
+import { assignmentFreezeState } from "@/lib/classroom/assignmentPolicy";
+import { verifyClassroomCollabToken } from "@/lib/classroom/collabToken";
+import type { ResolvedClassroomDocument } from "@/lib/classroom/documents";
 import { ALLOWED_STANDARDS, type AllowedStandard, execConfig } from "@/lib/execConfig";
 import { inspectSourceFiles, isValidSourceFilename } from "@/lib/sourceFiles";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -57,6 +60,13 @@ interface ClientState {
 
 interface Room {
   projectId: string;
+  kind: "project" | "classroom";
+  classroom?: {
+    classId: string;
+    assignmentId: string;
+    groupId?: string;
+    studentId?: string;
+  };
   doc: Y.Doc;
   awareness: Awareness;
   standard: string;
@@ -67,7 +77,8 @@ interface Room {
 }
 
 type ClientMessage =
-  | { type: "join"; projectId?: string; token?: string; clientId?: number }
+  | { type: "join"; projectId?: string; token?: string; clientId?: number; kind?: string }
+  | { type: "client"; clientId?: number }
   | { type: "update"; update?: string }
   | { type: "awareness"; update?: string }
   | { type: "file-create"; name?: string; content?: string }
@@ -105,6 +116,41 @@ class CollabHub {
   async readFiles(projectId: string): Promise<{ files: Record<string, string>; standard: string }> {
     const room = await this.room(projectId);
     return { files: readFiles(room.doc), standard: room.standard };
+  }
+
+  /** Live classroom files when that room is already open. Does not create a room. */
+  peekClassroomFiles(docKey: string): Record<string, string> | null {
+    const room = this.rooms.get(docKey);
+    if (!room || room.kind !== "classroom") return null;
+    const files = readFiles(room.doc);
+    return Object.keys(files).length > 0 ? files : null;
+  }
+
+  classroomPresence(docKey: string): { userId: string; name: string; file: string | null }[] {
+    const room = this.rooms.get(docKey);
+    if (!room) return [];
+    const states = room.awareness.getStates();
+    const online: { userId: string; name: string; file: string | null }[] = [];
+    for (const client of room.clients.values()) {
+      const state = states.get(client.clientId) as { user?: { name?: string }; file?: unknown } | undefined;
+      online.push({
+        userId: client.userId,
+        name: state?.user?.name || "Student",
+        file: typeof state?.file === "string" ? state.file : null,
+      });
+    }
+    return online;
+  }
+
+  /** Drops open rooms. Persisted documents are left in place. */
+  closeAllForTests(): void {
+    for (const room of this.rooms.values()) {
+      if (room.saveTimer) clearTimeout(room.saveTimer);
+      if (room.evictTimer) clearTimeout(room.evictTimer);
+      room.doc.destroy();
+    }
+    this.rooms.clear();
+    this.opening.clear();
   }
 
   async setStandard(projectId: string, value: string): Promise<void> {
@@ -210,8 +256,15 @@ class CollabHub {
     if (!current) return;
     const { room, state } = current;
 
+    if (message.type === "client") {
+      const nextId = Number(message.clientId);
+      if (Number.isFinite(nextId)) state.clientId = nextId;
+      return;
+    }
+
     if (message.type === "update") {
       if (!canEdit(state.role) || typeof message.update !== "string") return;
+      if (await this.classroomEditBlocked(ws, room)) return;
       const bytes = base64ToBytes(message.update);
       if (bytes.byteLength > MAX_UPDATE_BYTES) return;
       if (!updateKeepsFilesValid(room.doc, bytes)) {
@@ -231,6 +284,7 @@ class CollabHub {
 
     if (message.type === "file-create") {
       if (!canEdit(state.role) || typeof message.name !== "string") return;
+      if (await this.classroomEditBlocked(ws, room)) return;
       const created = createFile(room.doc, message.name, message.content || "");
       if (!created.ok) send(ws, { type: "error", message: created.message });
       return;
@@ -238,13 +292,14 @@ class CollabHub {
 
     if (message.type === "file-delete") {
       if (!canEdit(state.role) || typeof message.name !== "string") return;
+      if (await this.classroomEditBlocked(ws, room)) return;
       const removed = deleteFile(room.doc, message.name);
       if (!removed.ok) send(ws, { type: "error", message: removed.message });
       return;
     }
 
     if (message.type === "standard" && typeof message.value === "string") {
-      if (!canEdit(state.role)) return;
+      if (!canEdit(state.role) || room.kind === "classroom") return;
       await this.setStandard(room.projectId, message.value);
     }
   }
@@ -258,6 +313,10 @@ class CollabHub {
     }
   ) {
     if (message.type !== "join") return;
+    if (message.kind === "classroom") {
+      await this.joinClassroom(ws, message, ctx);
+      return;
+    }
     const projectId = message.projectId || "";
     const token = message.token || "";
     const clientId = Number(message.clientId);
@@ -316,13 +375,119 @@ class CollabHub {
     }
   }
 
+  private async joinClassroom(
+    ws: WebSocket,
+    message: ClientMessage,
+    ctx: {
+      markJoined: () => void;
+      bind: (room: Room, state: ClientState) => void;
+    }
+  ) {
+    if (message.type !== "join") return;
+    const claims = verifyClassroomCollabToken(message.token || "");
+    const clientId = Number(message.clientId);
+    if (!claims || !Number.isFinite(clientId)) {
+      send(ws, { type: "error", message: "Invalid join." });
+      ws.close();
+      return;
+    }
+
+    const { getClassroom } = await import("@/lib/classroom/classroomService");
+    const { resolveClassroomDocument } = await import("@/lib/classroom/documents");
+    const access = await getClassroom(claims.userId, claims.classId);
+    if (!access.success) {
+      send(ws, { type: "error", message: "You do not have access to this class." });
+      ws.close();
+      return;
+    }
+
+    const resolved = await resolveClassroomDocument({
+      actorId: claims.userId,
+      classroomId: claims.classId,
+      assignmentId: claims.assignmentId,
+      isTeacher: Boolean(access.isTeacher),
+      groupId: claims.groupId,
+      studentId: claims.studentId,
+    });
+    if (!resolved.ok) {
+      send(ws, { type: "error", message: resolved.error });
+      ws.close();
+      return;
+    }
+
+    let room: Room;
+    try {
+      room = await this.classroomRoom(resolved.doc);
+    } catch (error) {
+      const err = error as Error;
+      send(ws, { type: "error", message: err.message || "Could not open the document." });
+      ws.close();
+      return;
+    }
+
+    if (room.evictTimer) {
+      clearTimeout(room.evictTimer);
+      room.evictTimer = null;
+    }
+    if (room.clients.size >= MAX_ROOM_CLIENTS) {
+      send(ws, { type: "error", message: "This document already has too many people connected." });
+      ws.close();
+      return;
+    }
+
+    const role: ProjectRole = resolved.doc.role === "editor" ? "editor" : "viewer";
+    const state: ClientState = { userId: claims.userId, role, clientId };
+    room.clients.set(ws, state);
+    ctx.bind(room, state);
+    ctx.markJoined();
+
+    send(ws, {
+      type: "init",
+      role,
+      standard: room.standard,
+      state: encodeDoc(room.doc),
+      locked: resolved.doc.frozen,
+      lockMessage: resolved.doc.freezeReason ?? null,
+    });
+
+    const ids = [...room.awareness.getStates().keys()];
+    if (ids.length > 0) {
+      send(ws, {
+        type: "awareness",
+        update: bytesToBase64(encodeAwarenessUpdate(room.awareness, ids)),
+      });
+    }
+  }
+
+  private async classroomEditBlocked(ws: WebSocket, room: Room): Promise<boolean> {
+    if (room.kind !== "classroom" || !room.classroom) return false;
+    const { readAssignmentPolicy } = await import("@/lib/classroom/classroomService");
+    const policy = await readAssignmentPolicy(room.classroom.classId, room.classroom.assignmentId);
+    if (!policy) {
+      send(ws, { type: "error", message: "Assignment not found." });
+      return true;
+    }
+    const freeze = assignmentFreezeState(policy);
+    if (!freeze.frozen) return false;
+    send(ws, { type: "locked", message: freeze.reason || "This assignment is locked." });
+    return true;
+  }
+
   private async room(projectId: string): Promise<Room> {
-    const existing = this.rooms.get(projectId);
+    return this.roomBy(projectId, () => this.open(projectId));
+  }
+
+  private classroomRoom(doc: ResolvedClassroomDocument): Promise<Room> {
+    return this.roomBy(doc.docKey, () => this.openClassroom(doc));
+  }
+
+  private async roomBy(id: string, opener: () => Promise<Room>): Promise<Room> {
+    const existing = this.rooms.get(id);
     if (existing) return existing;
-    const pending = this.opening.get(projectId);
+    const pending = this.opening.get(id);
     if (pending) return pending;
-    const job = this.open(projectId).finally(() => this.opening.delete(projectId));
-    this.opening.set(projectId, job);
+    const job = opener().finally(() => this.opening.delete(id));
+    this.opening.set(id, job);
     return job;
   }
 
@@ -360,6 +525,7 @@ class CollabHub {
 
     const room: Room = {
       projectId,
+      kind: "project",
       doc,
       awareness: new Awareness(doc),
       standard: typeof project.standard === "string" ? project.standard : "c++17",
@@ -368,7 +534,56 @@ class CollabHub {
       evictTimer: null,
       saving: null,
     };
+    this.attachRoomListeners(room);
+    this.rooms.set(projectId, room);
+    if (!snapshot?.state_b64) this.scheduleSave(room);
+    return room;
+  }
 
+  private async openClassroom(resolved: ResolvedClassroomDocument): Promise<Room> {
+    const { readClassroomDocument } = await import("@/lib/classroom/documents");
+    const doc = new Y.Doc();
+    const persisted = await readClassroomDocument(resolved.docKey);
+    let seeded = false;
+    if (persisted?.stateB64) {
+      try {
+        applyEncoded(doc, persisted.stateB64);
+      } catch {
+        seedDoc(doc, persisted.files && Object.keys(persisted.files).length > 0 ? persisted.files : resolved.starterCode);
+        seeded = true;
+      }
+    } else if (persisted?.files && Object.keys(persisted.files).length > 0) {
+      seedDoc(doc, persisted.files);
+      seeded = true;
+    } else {
+      seedDoc(doc, resolved.starterCode);
+      seeded = true;
+    }
+
+    const room: Room = {
+      projectId: resolved.docKey,
+      kind: "classroom",
+      classroom: {
+        classId: resolved.classroomId,
+        assignmentId: resolved.assignmentId,
+        groupId: resolved.groupId,
+        studentId: resolved.studentId,
+      },
+      doc,
+      awareness: new Awareness(doc),
+      standard: "c++17",
+      clients: new Map(),
+      saveTimer: null,
+      evictTimer: null,
+      saving: null,
+    };
+    this.attachRoomListeners(room);
+    this.rooms.set(resolved.docKey, room);
+    if (seeded) this.scheduleSave(room);
+    return room;
+  }
+
+  private attachRoomListeners(room: Room) {
     room.doc.on("update", (update: Uint8Array, origin: unknown) => {
       const payload = { type: "update", update: bytesToBase64(update) };
       for (const client of room.clients.keys()) {
@@ -396,10 +611,6 @@ class CollabHub {
         }
       }
     );
-
-    this.rooms.set(projectId, room);
-    if (!snapshot?.state_b64) this.scheduleSave(room);
-    return room;
   }
 
   private scheduleSave(room: Room) {
@@ -416,6 +627,22 @@ class CollabHub {
   }
 
   private async write(room: Room) {
+    if (room.kind === "classroom" && room.classroom) {
+      const { writeClassroomDocument } = await import("@/lib/classroom/documents");
+      await writeClassroomDocument({
+        docKey: room.projectId,
+        classroomId: room.classroom.classId,
+        assignmentId: room.classroom.assignmentId,
+        studentId: room.classroom.studentId,
+        groupId: room.classroom.groupId,
+        stateB64: encodeDoc(room.doc),
+        files: readFiles(room.doc),
+        updatedAt: new Date().toISOString(),
+      });
+      this.broadcast(room, { type: "saved" });
+      return;
+    }
+
     const admin = createAdminClient();
     if (!admin) return;
     const files = readFiles(room.doc);

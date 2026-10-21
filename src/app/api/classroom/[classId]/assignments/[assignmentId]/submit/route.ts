@@ -1,27 +1,24 @@
 /**
  * POST /api/classroom/[classId]/assignments/[assignmentId]/submit
  *
- * Formally submits an assignment. This:
- * 1. Creates/updates the classroom_submissions row (status = "submitted")
- * 2. Saves a new code version (the submitted snapshot)
- * 3. Creates an immutable submission_snapshot referencing that version
- * 4. Records a "submit" activity event
- *
- * After submission, code_files in the snapshot are FROZEN.
+ * Formally submits the shared document. Students cannot submit while the
+ * assignment is frozen. Hidden tests are not read here.
  */
 
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { actorForClassroomRequest } from "@/lib/classroom/classroomActor";
+import { isPastDue, studentEditDenial } from "@/lib/classroom/assignmentPolicy";
+import { loadCanonicalClassroomFiles } from "@/lib/classroom/classroomRun";
+import { resolveClassroomDocument } from "@/lib/classroom/documents";
+import { createSubmissionSnapshot } from "@/lib/classroom/gradingService";
+import { LOCAL_PREVIEW_STUDENT_ID } from "@/lib/classroom/localTeacherPreview";
+import { classroomRequestUser, isLocalPreviewActor } from "@/lib/classroom/requestUser";
+import { saveMemorySubmission } from "@/lib/classroom/submissionMemory";
 import {
   assignmentBelongsToClassroom,
-  callerCanUseGroup,
   getClassroom,
 } from "@/lib/classroom/classroomService";
-import {
-  saveCodeVersion,
-  recordActivityEvent,
-} from "@/lib/classroom/versioningService";
-import { createSubmissionSnapshot } from "@/lib/classroom/gradingService";
+import { recordActivityEvent, saveCodeVersion } from "@/lib/classroom/versioningService";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAuthConfigured } from "@/lib/supabase/env";
 import { inspectSourceFiles } from "@/lib/sourceFiles";
@@ -31,9 +28,7 @@ export async function POST(
   { params }: { params: Promise<{ classId: string; assignmentId: string }> }
 ) {
   const { classId, assignmentId } = await params;
-  const supabase = await createServerClient();
-  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
-
+  const user = await classroomRequestUser();
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
   const access = await getClassroom(user.id, classId);
@@ -43,62 +38,66 @@ export async function POST(
     return NextResponse.json({ success: false, error: "Assignment not found." }, { status: 404 });
   }
 
-  let body: { codeFiles?: unknown; language?: string; groupId?: string };
-  try { body = await request.json(); } catch {
+  let body: { groupId?: string; studentId?: string; previewStudent?: boolean } = {};
+  try {
+    const parsed = await request.json();
+    if (parsed && typeof parsed === "object") body = parsed;
+  } catch {
     return NextResponse.json({ success: false, error: "Invalid JSON." }, { status: 400 });
   }
 
-  if (!body.codeFiles || typeof body.codeFiles !== "object") {
-    return NextResponse.json({ success: false, error: "codeFiles is required." }, { status: 400 });
+  const actor = actorForClassroomRequest({
+    userId: user.id,
+    isTeacher: Boolean(access.isTeacher),
+    previewStudent: body.previewStudent === true,
+    previewAllowed: isLocalPreviewActor(user),
+    previewStudentId: LOCAL_PREVIEW_STUDENT_ID,
+  });
+  if (actor.error) {
+    return NextResponse.json({ success: false, error: actor.error }, { status: 403 });
+  }
+  if (actor.isTeacher) {
+    return NextResponse.json({ success: false, error: "Teachers do not submit this assignment." }, { status: 403 });
   }
 
-  const files = body.codeFiles as Record<string, string>;
+  const resolved = await resolveClassroomDocument({
+    actorId: actor.actorId,
+    classroomId: classId,
+    assignmentId,
+    isTeacher: false,
+    groupId: typeof body.groupId === "string" ? body.groupId : undefined,
+    studentId: typeof body.studentId === "string" ? body.studentId : undefined,
+  });
+  if (!resolved.ok) {
+    return NextResponse.json(
+      { success: false, error: resolved.error, code: resolved.code },
+      { status: resolved.status }
+    );
+  }
+  const denial = studentEditDenial(resolved.doc);
+  if (denial) {
+    return NextResponse.json({ success: false, error: denial.error, code: denial.code }, { status: denial.status });
+  }
+
+  const files = await loadCanonicalClassroomFiles(resolved.doc);
   const inspected = inspectSourceFiles(files, { maxFiles: 16, maxSourceBytes: 200 * 1024 });
   if (!inspected.ok) {
     return NextResponse.json({ success: false, error: inspected.message }, { status: 400 });
   }
-  const language = typeof body.language === "string" ? body.language : "cpp";
-  const groupId = typeof body.groupId === "string" ? body.groupId : undefined;
-  if (groupId && !(await callerCanUseGroup(user.id, classId, groupId))) {
-    return NextResponse.json({ success: false, error: "You are not a member of that group." }, { status: 403 });
-  }
 
-  // Determine lateness
-  const admin = createAdminClient();
-  let isLate = false;
-  if (admin) {
-    try {
-      const { data: asgn } = await admin
-        .from("classroom_assignments")
-        .select("due_date, allow_late, is_published")
-        .eq("id", assignmentId)
-        .single();
+  const groupId = resolved.doc.groupId;
+  const studentId = groupId ? undefined : resolved.doc.studentId;
+  const isLate = isPastDue(resolved.doc.dueDate);
 
-      if (!asgn?.is_published) {
-        return NextResponse.json({ success: false, error: "Assignment is not published." }, { status: 403 });
-      }
-      if (asgn.due_date) {
-        const due = new Date(asgn.due_date);
-        isLate = new Date() > due;
-        if (isLate && !asgn.allow_late) {
-          return NextResponse.json({ success: false, error: "The submission deadline has passed and late submissions are not allowed." }, { status: 403 });
-        }
-      }
-    } catch {
-      // Non-fatal validation error
-    }
-  }
-
-  // Step 1: Save an immutable code version
   const version = await saveCodeVersion({
     assignmentId,
     codeFiles: files,
-    language,
-    studentId: groupId ? undefined : user.id,
+    language: "cpp",
+    studentId,
     groupId,
   });
 
-  // Step 2: Upsert the submission record (one per student per assignment)
+  const admin = createAdminClient();
   let submissionId: string;
   if (admin) {
     try {
@@ -110,11 +109,8 @@ export async function POST(
         is_late: isLate,
         updated_at: new Date().toISOString(),
       };
-      if (groupId) {
-        submissionData.group_id = groupId;
-      } else {
-        submissionData.student_id = user.id;
-      }
+      if (groupId) submissionData.group_id = groupId;
+      else submissionData.student_id = studentId;
 
       const { data, error } = await admin
         .from("classroom_submissions")
@@ -135,32 +131,48 @@ export async function POST(
         console.error("Critical submission database persistence failure:", e.message);
         return NextResponse.json({ success: false, error: "Submission could not be saved to durable database." }, { status: 500 });
       }
-      // Fall back to a generated ID for offline unit tests
       submissionId = `sub-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      console.warn("Submission DB write failed, using memory ID for test:", e.message);
+      saveMemorySubmission({
+        id: submissionId,
+        assignmentId,
+        studentId,
+        groupId,
+        status: "submitted",
+        codeFiles: files,
+        submittedAt: new Date().toISOString(),
+        isLate,
+      });
     }
   } else {
     if (isAuthConfigured()) {
       return NextResponse.json({ success: false, error: "Database service client is unavailable." }, { status: 500 });
     }
     submissionId = `sub-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    saveMemorySubmission({
+      id: submissionId,
+      assignmentId,
+      studentId,
+      groupId,
+      status: "submitted",
+      codeFiles: files,
+      submittedAt: new Date().toISOString(),
+      isLate,
+    });
   }
 
-  // Step 3: Create the immutable snapshot (links submission <-> exact version)
   const snapshot = await createSubmissionSnapshot({
     submissionId,
     versionId: version.id,
     assignmentId,
-    studentId: groupId ? undefined : user.id,
+    studentId,
     groupId,
     codeFiles: files,
     isLate,
   });
 
-  // Step 4: Record submit event
   void recordActivityEvent({
     assignmentId,
-    actorId: user.id,
+    actorId: actor.actorId,
     eventType: "submit",
     versionId: version.id,
     submissionId,
@@ -175,5 +187,6 @@ export async function POST(
     versionNumber: version.versionNumber,
     isLate,
     contentHash: version.contentHash,
+    groupId,
   });
 }

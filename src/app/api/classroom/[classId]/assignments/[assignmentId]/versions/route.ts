@@ -11,7 +11,12 @@
  */
 
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { studentEditDenial } from "@/lib/classroom/assignmentPolicy";
+import { actorForClassroomRequest } from "@/lib/classroom/classroomActor";
+import { loadCanonicalClassroomFiles } from "@/lib/classroom/classroomRun";
+import { resolveClassroomDocument } from "@/lib/classroom/documents";
+import { LOCAL_PREVIEW_STUDENT_ID } from "@/lib/classroom/localTeacherPreview";
+import { classroomRequestUser, isLocalPreviewActor } from "@/lib/classroom/requestUser";
 import { getClassroom } from "@/lib/classroom/classroomService";
 import {
   saveCodeVersion,
@@ -20,14 +25,14 @@ import {
   computeVersionDiff,
   recordActivityEvent,
 } from "@/lib/classroom/versioningService";
+import { inspectSourceFiles } from "@/lib/sourceFiles";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ classId: string; assignmentId: string }> }
 ) {
   const { classId, assignmentId } = await params;
-  const supabase = await createServerClient();
-  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  const user = await classroomRequestUser();
 
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
@@ -65,33 +70,71 @@ export async function POST(
   { params }: { params: Promise<{ classId: string; assignmentId: string }> }
 ) {
   const { classId, assignmentId } = await params;
-  const supabase = await createServerClient();
-  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  const user = await classroomRequestUser();
 
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
   const access = await getClassroom(user.id, classId);
   if (!access.success) return NextResponse.json({ success: false, error: access.error }, { status: 403 });
 
-  let body: { codeFiles?: unknown; language?: string; groupId?: string };
-  try { body = await request.json(); } catch { return NextResponse.json({ success: false, error: "Invalid JSON." }, { status: 400 }); }
+  let body: { groupId?: string; studentId?: string; previewStudent?: boolean } = {};
+  try {
+    const parsed = await request.json();
+    if (parsed && typeof parsed === "object") body = parsed;
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid JSON." }, { status: 400 });
+  }
 
-  if (!body.codeFiles || typeof body.codeFiles !== "object") {
-    return NextResponse.json({ success: false, error: "codeFiles is required and must be an object." }, { status: 400 });
+  const actor = actorForClassroomRequest({
+    userId: user.id,
+    isTeacher: Boolean(access.isTeacher),
+    previewStudent: body.previewStudent === true,
+    previewAllowed: isLocalPreviewActor(user),
+    previewStudentId: LOCAL_PREVIEW_STUDENT_ID,
+  });
+  if (actor.error) {
+    return NextResponse.json({ success: false, error: actor.error }, { status: 403 });
+  }
+
+  const resolved = await resolveClassroomDocument({
+    actorId: actor.actorId,
+    classroomId: classId,
+    assignmentId,
+    isTeacher: actor.isTeacher,
+    groupId: typeof body.groupId === "string" ? body.groupId : undefined,
+    studentId: typeof body.studentId === "string" ? body.studentId : undefined,
+  });
+  if (!resolved.ok) {
+    return NextResponse.json(
+      { success: false, error: resolved.error, code: resolved.code },
+      { status: resolved.status }
+    );
+  }
+  if (!actor.isTeacher) {
+    const denial = studentEditDenial(resolved.doc);
+    if (denial) {
+      return NextResponse.json({ success: false, error: denial.error, code: denial.code }, { status: denial.status });
+    }
+  }
+
+  const files = await loadCanonicalClassroomFiles(resolved.doc);
+  const inspected = inspectSourceFiles(files, { maxFiles: 16, maxSourceBytes: 200 * 1024 });
+  if (!inspected.ok) {
+    return NextResponse.json({ success: false, error: inspected.message }, { status: 400 });
   }
 
   const version = await saveCodeVersion({
     assignmentId,
-    codeFiles: body.codeFiles as Record<string, string>,
-    language: typeof body.language === "string" ? body.language : "cpp",
-    studentId: body.groupId ? undefined : user.id,
-    groupId: typeof body.groupId === "string" ? body.groupId : undefined,
+    codeFiles: files,
+    language: "cpp",
+    studentId: resolved.doc.groupId ? undefined : resolved.doc.studentId,
+    groupId: resolved.doc.groupId,
   });
 
   // Record save activity (fire-and-forget)
   void recordActivityEvent({
     assignmentId,
-    actorId: user.id,
+    actorId: actor.actorId,
     eventType: "save",
     versionId: version.id,
     metadata: { versionNumber: version.versionNumber, language: version.language },

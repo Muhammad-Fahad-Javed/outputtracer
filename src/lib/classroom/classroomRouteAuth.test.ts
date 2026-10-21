@@ -12,11 +12,13 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-vi.mock("@/lib/classroom/classroomService", () => ({
-  getClassroom,
-  assignmentBelongsToClassroom: async () => true,
-  callerCanUseGroup: async () => true,
-}));
+vi.mock("@/lib/classroom/classroomService", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/classroom/classroomService")>();
+  return {
+    ...actual,
+    getClassroom,
+  };
+});
 
 import { POST as execute } from "@/app/api/classroom/[classId]/assignments/[assignmentId]/execute/route";
 import { GET as rubricGet, POST as rubricPost } from "@/app/api/classroom/[classId]/assignments/[assignmentId]/rubric/route";

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { ClassroomAssignment } from "@/lib/classroom/types";
 import AssignmentWorkspace from "@/components/classroom/AssignmentWorkspace";
+import TeacherWatch from "@/components/classroom/TeacherWatch";
 
 export default function AssignmentDetailPage({
   params,
@@ -25,6 +26,7 @@ export default function AssignmentDetailPage({
 
   const [assignment, setAssignment] = useState<ClassroomAssignment | null>(null);
   const [isTeacher, setIsTeacher] = useState(false);
+  const [localPreview, setLocalPreview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +42,7 @@ export default function AssignmentDetailPage({
         } else {
           setAssignment(data.assignment);
           setIsTeacher(Boolean(data.isTeacher));
+          setLocalPreview(Boolean(data.localPreview));
         }
       })
       .catch(() => {
@@ -59,7 +62,7 @@ export default function AssignmentDetailPage({
       <Header />
 
       <main className="flex-1 py-10 px-4 sm:px-6">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-6xl">
           <Link
             href={`/classroom/${classId}`}
             className="inline-flex items-center gap-1.5 text-xs text-[#666666] hover:text-black mb-6"
@@ -194,12 +197,16 @@ export default function AssignmentDetailPage({
                 )}
               </div>
 
-              {!isTeacher && (
+              {isTeacher && (
+                <TeacherWatch classId={classId} assignmentId={assignmentId} />
+              )}
+
+              {(!isTeacher || localPreview) && (
                 <AssignmentWorkspace
                   classId={classId}
                   assignmentId={assignmentId}
-                  starterCode={assignment.starterCode || { "main.cpp": "" }}
                   allowLate={assignment.allowLate}
+                  previewStudent={isTeacher && localPreview}
                 />
               )}
             </div>

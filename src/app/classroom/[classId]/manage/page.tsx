@@ -61,6 +61,9 @@ export default function ClassroomManagePage({
   const [asgGroupMode, setAsgGroupMode] = useState(false);
   const [asgPublish, setAsgPublish] = useState(true);
   const [asgAllowLate, setAsgAllowLate] = useState(true);
+  const [asgAllowRun, setAsgAllowRun] = useState(true);
+  const [asgAllowTrace, setAsgAllowTrace] = useState(false);
+  const [asgTimeLimit, setAsgTimeLimit] = useState(10000);
   const [asgStarter, setAsgStarter] = useState(
     "#include <iostream>\n\nint main() {\n    // Write your solution here.\n    return 0;\n}\n"
   );
@@ -195,6 +198,25 @@ export default function ClassroomManagePage({
     }
   };
 
+  const handleRemoveFromGroup = async (groupId: string, userId: string, name: string) => {
+    if (!confirm(`Remove ${name} from this group? They stay enrolled in the class.`)) return;
+    try {
+      const res = await fetch(
+        `/api/classroom/${classId}/groups?groupId=${encodeURIComponent(groupId)}&studentUserId=${encodeURIComponent(userId)}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setFeedback({ type: "error", message: data.error || "Failed to remove the student from the group." });
+      } else {
+        setFeedback({ type: "success", message: `Removed ${name} from the group.` });
+        loadAll();
+      }
+    } catch {
+      setFeedback({ type: "error", message: "Network error." });
+    }
+  };
+
   const handleAssignStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     setAssignSubmitting(true);
@@ -257,6 +279,9 @@ export default function ClassroomManagePage({
           groupMode: asgGroupMode,
           isPublished: asgPublish,
           allowLate: asgAllowLate,
+          allowRun: asgAllowRun,
+          allowTrace: asgAllowTrace,
+          timeLimitMs: Number(asgTimeLimit) || 10000,
           starterCode: Object.keys(starterCode).length > 0 ? starterCode : undefined,
           publicTestCases,
           hiddenTestCases,
@@ -551,13 +576,42 @@ export default function ClassroomManagePage({
                     No collaborative groups created yet. Create groups for multi-student coding projects.
                   </div>
                 ) : (
-                  <div className="divide-y divide-[#F0F0F0]">
-                    {groups.map((g) => (
-                      <div key={g.id} className="p-4 flex items-center justify-between text-xs">
-                        <span className="font-semibold text-black">{g.name}</span>
-                        <span className="text-[#888888]">Group ID: {g.id.slice(0, 8)}</span>
-                      </div>
-                    ))}
+                  <div className="max-h-[32rem] overflow-y-auto divide-y divide-[#F0F0F0]">
+                    {groups.map((g) => {
+                      const members = g.members || [];
+                      return (
+                        <div key={g.id} className="p-4 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-semibold text-black">{g.name}</span>
+                            <span className="text-[#888888]">
+                              {members.length} {members.length === 1 ? "member" : "members"}
+                            </span>
+                          </div>
+                          {members.length === 0 ? (
+                            <p className="mt-2 text-[11px] text-[#888888]">No students in this group.</p>
+                          ) : (
+                            <ul className="mt-2 space-y-1">
+                              {members.map((member) => {
+                                const label = member.displayName || member.email || member.userId;
+                                return (
+                                  <li key={member.userId} className="flex items-center justify-between gap-3">
+                                    <span className="truncate text-[#333333]">{label}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveFromGroup(g.id, member.userId, label)}
+                                      className="shrink-0 text-[11px] font-medium text-rose-600 hover:text-rose-800"
+                                      aria-label={`Remove ${label} from ${g.name}`}
+                                    >
+                                      Remove
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -776,7 +830,7 @@ export default function ClassroomManagePage({
                 </div>
               </div>
 
-              <div className="flex items-center gap-6 pt-1 text-xs">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1 text-xs">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -795,6 +849,36 @@ export default function ClassroomManagePage({
                   />
                   <span>Allow late submissions</span>
                 </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={asgAllowRun}
+                    onChange={(e) => setAsgAllowRun(e.target.checked)}
+                    className="rounded border-[#DCDCDC]"
+                  />
+                  <span>Students can run</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={asgAllowTrace}
+                    onChange={(e) => setAsgAllowTrace(e.target.checked)}
+                    className="rounded border-[#DCDCDC]"
+                  />
+                  <span>Allow trace</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  Time limit (ms)
+                  <input
+                    aria-label="Assignment time limit"
+                    type="number"
+                    min={1000}
+                    max={10000}
+                    value={asgTimeLimit}
+                    onChange={(e) => setAsgTimeLimit(Number(e.target.value))}
+                    className="w-24 rounded-md border border-[#DCDCDC] px-2 py-1 text-xs"
+                  />
+                </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -806,6 +890,9 @@ export default function ClassroomManagePage({
                   <span>Publish Immediately</span>
                 </label>
               </div>
+              <p className="text-[11px] text-[#777777]">
+                Classroom runs stay in C++ and do not start a trace. The time limit cannot exceed 10 seconds.
+              </p>
 
               <div className="flex justify-end gap-2 pt-3">
                 <button
