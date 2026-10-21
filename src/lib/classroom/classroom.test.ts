@@ -15,6 +15,8 @@ import {
   createAssignment,
   listAssignments,
   getAssignment,
+  callerCanUseGroup,
+  assignmentBelongsToClassroom,
   _resetClassroomMemory,
 } from "./classroomService";
 
@@ -287,6 +289,30 @@ describe("OutputTracer Classroom — Phase 2: Classrooms, Membership, Groups, an
       const res = await listAssignments(outsider, classId);
       expect(res.success).toBe(false);
       expect(res.error).toMatch(/access denied/i);
+    });
+  });
+
+  describe("6. Group membership and assignment binding", () => {
+    it("allows only a member of that classroom's group to use the group id", async () => {
+      const created = await createClassroom(teacherA, { name: "Binding" });
+      const classId = created.classroom!.id;
+      await joinClassroomByCode(student1, created.classroom!.joinCode);
+      const group = await createClassroomGroup(teacherA, classId, "Group Alpha");
+
+      expect(await callerCanUseGroup(student1, classId, group.group!.id)).toBe(false);
+      await assignStudentToGroup(teacherA, classId, group.group!.id, student1);
+      expect(await callerCanUseGroup(student1, classId, group.group!.id)).toBe(true);
+      expect(await callerCanUseGroup(student2, classId, group.group!.id)).toBe(false);
+    });
+
+    it("rejects an assignment id that belongs to a different classroom", async () => {
+      const first = await createClassroom(teacherA, { name: "Class A" });
+      const second = await createClassroom(teacherB, { name: "Class B" });
+      const assignment = await createAssignment(teacherA, first.classroom!.id, { title: "Trace" });
+
+      expect(await assignmentBelongsToClassroom(first.classroom!.id, assignment.assignment!.id)).toBe(true);
+      expect(await assignmentBelongsToClassroom(second.classroom!.id, assignment.assignment!.id)).toBe(false);
+      expect(await assignmentBelongsToClassroom(first.classroom!.id, "missing-assignment")).toBe(false);
     });
   });
 });

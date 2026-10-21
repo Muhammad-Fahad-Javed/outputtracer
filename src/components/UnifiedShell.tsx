@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { consumePendingExample } from "@/lib/examples";
 import Link from "next/link";
 import Image from "next/image";
 import { saveAs } from "file-saver";
@@ -316,6 +317,9 @@ const EXAMPLE_CATEGORIES: ExampleCategory[] = [
 
 export default function UnifiedShell() {
   const { user, signOut } = useAuth();
+  const [pendingExample] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : consumePendingExample()
+  );
   const [lang, setLang] = useState<SupportedLanguage>("cpp");
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>("output");
   const [panelHeight, setPanelHeight] = useState(280);
@@ -330,11 +334,11 @@ export default function UnifiedShell() {
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   // Per-language code buffers
-  const [codeBuffers, setCodeBuffers] = useState<Record<SupportedLanguage, string>>({
-    cpp: CPP_SAMPLE,
+  const [codeBuffers, setCodeBuffers] = useState<Record<SupportedLanguage, string>>(() => ({
+    cpp: pendingExample ?? CPP_SAMPLE,
     python: PYTHON_SAMPLE,
     assembly: ASM_SAMPLE,
-  });
+  }));
 
   // Stdin & interactive output state
   const [stdinInput, setStdinInput] = useState("");

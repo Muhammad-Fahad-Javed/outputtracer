@@ -11,7 +11,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { getClassroom } from "@/lib/classroom/classroomService";
+import { assignmentBelongsToClassroom, getClassroom } from "@/lib/classroom/classroomService";
 import { autoGradeSubmission, manualGradeSubmission, getGrade } from "@/lib/classroom/gradingService";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AssignmentTestCase } from "@/lib/classroom/types";
@@ -21,13 +21,17 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ classId: string; assignmentId: string; submissionId: string }> }
 ) {
-  const { classId, submissionId } = await params;
+  const { classId, assignmentId, submissionId } = await params;
   const supabase = await createServerClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
-  const access = await getClassroom(classId, user.id);
+  const access = await getClassroom(user.id, classId);
   if (!access.success) return NextResponse.json({ success: false, error: access.error }, { status: 403 });
+
+  if (!(await assignmentBelongsToClassroom(classId, assignmentId))) {
+    return NextResponse.json({ success: false, error: "Assignment not found." }, { status: 404 });
+  }
 
   const grade = await getGrade(submissionId);
   if (!grade) return NextResponse.json({ success: true, grade: null });
@@ -61,9 +65,13 @@ export async function POST(
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
-  const access = await getClassroom(classId, user.id);
+  const access = await getClassroom(user.id, classId);
   if (!access.success || !access.isTeacher) {
     return NextResponse.json({ success: false, error: "Teacher access required." }, { status: 403 });
+  }
+
+  if (!(await assignmentBelongsToClassroom(classId, assignmentId))) {
+    return NextResponse.json({ success: false, error: "Assignment not found." }, { status: 404 });
   }
 
   let body: { mode?: string } & Partial<GradeInput>;
@@ -83,6 +91,7 @@ export async function POST(
         .from("classroom_assignments")
         .select("public_test_cases, hidden_test_cases, max_points")
         .eq("id", assignmentId)
+        .eq("classroom_id", classId)
         .single();
 
       if (!asgn) return NextResponse.json({ success: false, error: "Assignment not found." }, { status: 404 });

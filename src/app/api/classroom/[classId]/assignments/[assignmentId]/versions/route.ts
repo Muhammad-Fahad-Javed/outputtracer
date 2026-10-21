@@ -31,7 +31,7 @@ export async function GET(
 
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
-  const access = await getClassroom(classId, user.id);
+  const access = await getClassroom(user.id, classId);
   if (!access.success) return NextResponse.json({ success: false, error: access.error }, { status: 403 });
 
   const url = new URL(request.url);
@@ -70,7 +70,7 @@ export async function POST(
 
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
-  const access = await getClassroom(classId, user.id);
+  const access = await getClassroom(user.id, classId);
   if (!access.success) return NextResponse.json({ success: false, error: access.error }, { status: 403 });
 
   let body: { codeFiles?: unknown; language?: string; groupId?: string };

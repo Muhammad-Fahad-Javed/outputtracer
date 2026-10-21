@@ -942,3 +942,66 @@ export async function getAssignment(
     isTeacher,
   };
 }
+
+/**
+ * True when this user is a member of a group that belongs to the classroom.
+ * Fail closed when the group cannot be found.
+ */
+export async function callerCanUseGroup(
+  userId: string,
+  classroomId: string,
+  groupId: string
+): Promise<boolean> {
+  const admin = createAdminClient();
+  if (admin) {
+    const { data: group } = await admin
+      .from("classroom_groups")
+      .select("classroom_id")
+      .eq("id", groupId)
+      .maybeSingle();
+    if (!group || group.classroom_id !== classroomId) return false;
+    const { data: member } = await admin
+      .from("classroom_group_members")
+      .select("user_id")
+      .eq("group_id", groupId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    return Boolean(member);
+  }
+
+  const groups = memoryGroups.get(classroomId) || [];
+  if (!groups.some((group) => group.id === groupId)) return false;
+  return memoryGroupMembers.get(groupId)?.has(userId) ?? false;
+}
+
+/**
+ * True when the assignment belongs to this classroom.
+ *
+ * With a database, a missing row is a denial. Without one, the in-memory
+ * catalog is checked when it contains anything; an empty catalog (unit tests
+ * and the offline fallback) does not invent a denial.
+ */
+export async function assignmentBelongsToClassroom(
+  classroomId: string,
+  assignmentId: string
+): Promise<boolean> {
+  const admin = createAdminClient();
+  if (admin) {
+    const { data, error } = await admin
+      .from("classroom_assignments")
+      .select("classroom_id")
+      .eq("id", assignmentId)
+      .maybeSingle();
+    if (error || !data) return false;
+    return data.classroom_id === classroomId;
+  }
+
+  let catalog = false;
+  for (const [id, list] of memoryAssignments) {
+    if (list.length > 0) catalog = true;
+    if (list.some((assignment) => assignment.id === assignmentId)) {
+      return id === classroomId;
+    }
+  }
+  return !catalog;
+}

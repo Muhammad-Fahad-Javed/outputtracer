@@ -92,6 +92,8 @@ export interface RunOptions {
   stdin?: string;
   standard?: string;
   ownerKey?: string;
+  /** When false, skip the second GDB execution. The program output is unchanged. */
+  trace?: boolean;
 }
 
 // --- Compiler availability (checked lazily, cached for process lifetime) --
@@ -452,7 +454,7 @@ async function runAcquired(
     // Only trace on successful execution — there's nothing useful to trace
     // for compile errors, timeouts, etc.
     let trace: TraceResult = { steps: [], truncated: false };
-    if (runResult.status === "success" && execConfig.traceEnabled) {
+    if (runResult.status === "success" && execConfig.traceEnabled && opts.trace !== false) {
       try {
         log(execId, "trace_started");
         trace = await traceExecution({

@@ -70,6 +70,21 @@ describe("planSandboxedCommand", () => {
     });
     expect(plan.isolation).toBe(await selectIsolation());
   });
+
+  it("keeps compiler arguments when prlimit wraps the command", async () => {
+    const plan = await planSandboxedCommand({
+      tempDir,
+      command: "g++",
+      args: ["main.cpp", "-o", "main.out"],
+      remapTempDirPaths: false,
+    });
+    const rendered = [plan.command, ...plan.args].join(" ");
+    expect(rendered).toContain("main.cpp");
+    expect(rendered).toContain("main.out");
+    if (plan.isolation === "prlimit" || plan.isolation === "unshare-net" || plan.isolation === "bwrap") {
+      expect(rendered).toContain("g++");
+    }
+  });
 });
 
 // The fail-closed policy: untrusted code must never run unsandboxed in

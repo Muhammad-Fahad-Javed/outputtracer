@@ -81,6 +81,7 @@ describe("OutputTracer Learn Platform — Test Suite", () => {
 
       studentQuestions.forEach((q) => {
         expect(q.answer).toBe(""); // Strictly masked!
+        expect(q.explanation).toBe("");
       });
     });
 

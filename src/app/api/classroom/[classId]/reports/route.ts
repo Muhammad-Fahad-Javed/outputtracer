@@ -33,7 +33,7 @@ export async function GET(
     return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
   }
 
-  const access = await getClassroom(classId, user.id);
+  const access = await getClassroom(user.id, classId);
   if (!access.success || !access.isTeacher) {
     return NextResponse.json({ success: false, error: "Instructor access required to review reports." }, { status: 403 });
   }

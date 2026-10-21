@@ -15,7 +15,11 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { globalRateLimiter, clientIpFromForwarded } from "@/lib/rateLimit";
-import { getClassroom } from "@/lib/classroom/classroomService";
+import {
+  assignmentBelongsToClassroom,
+  callerCanUseGroup,
+  getClassroom,
+} from "@/lib/classroom/classroomService";
 import { runInSandboxSafe } from "@/lib/classroom/executionClient";
 import { runTestCase } from "@/lib/classroom/executionClient";
 import {
@@ -50,8 +54,12 @@ export async function POST(
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
-  const access = await getClassroom(classId, user.id);
+  const access = await getClassroom(user.id, classId);
   if (!access.success) return NextResponse.json({ success: false, error: access.error }, { status: 403 });
+
+  if (!(await assignmentBelongsToClassroom(classId, assignmentId))) {
+    return NextResponse.json({ success: false, error: "Assignment not found." }, { status: 404 });
+  }
 
   let body: { codeFiles?: unknown; stdin?: string; language?: string; runTests?: boolean; groupId?: string };
   try { body = await request.json(); } catch {
@@ -65,14 +73,18 @@ export async function POST(
   const files = body.codeFiles as Record<string, string>;
   const language = typeof body.language === "string" ? body.language : "cpp";
   const stdin = typeof body.stdin === "string" ? body.stdin : "";
+  const groupId = typeof body.groupId === "string" ? body.groupId : undefined;
+  if (groupId && !(await callerCanUseGroup(user.id, classId, groupId))) {
+    return NextResponse.json({ success: false, error: "You are not a member of that group." }, { status: 403 });
+  }
 
   // Save a version for this run
   const version = await saveCodeVersion({
     assignmentId,
     codeFiles: files,
     language,
-    studentId: body.groupId ? undefined : user.id,
-    groupId: typeof body.groupId === "string" ? body.groupId : undefined,
+    studentId: groupId ? undefined : user.id,
+    groupId,
   });
 
   // Execute code in sandbox

@@ -44,14 +44,6 @@ function validateRequest(req: SandboxRequest): void {
   }
 }
 
-function buildSource(files: Record<string, string>): string {
-  // For single-file submissions, use the content directly.
-  // For multi-file, concatenate with file headers (sandbox handles preprocessing).
-  const entries = Object.entries(files);
-  if (entries.length === 1) return entries[0][1];
-  return entries.map(([name, content]) => `// === ${name} ===\n${content}`).join("\n\n");
-}
-
 /**
  * Executes student code in an isolated sandbox.
  * Falls back to the internal /api/predict endpoint if SANDBOX_EXECUTION_URL is not set.
@@ -113,13 +105,22 @@ export async function runInSandbox(req: SandboxRequest): Promise<SandboxResult> 
       process.env.INTERNAL_BASE_URL || `http://127.0.0.1:${process.env.PORT || "3000"}`;
     const predictUrl = `${internalBaseUrl.replace(/\/+$/, "")}/api/predict`;
 
-    const source = buildSource(req.files);
+    // Send the real file map. Concatenating translation units into one
+    // main.cpp drops headers, so #include "helper.h" cannot see a file.
+    // trace:false skips the second GDB execution; grading only needs stdout.
     const response = await fetch(predictUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, stdin: req.stdin ?? "" }),
+      body: JSON.stringify({ files: req.files, stdin: req.stdin ?? "", trace: false }),
       signal: controller.signal,
     });
+
+    if (!response.ok) {
+      throw new ExecutionError(
+        `Code execution is unavailable (HTTP ${response.status}).`,
+        response.status === 429 ? "timeout" : "sandbox_unavailable"
+      );
+    }
 
     const raw = (await response.json()) as {
       status?: string;
@@ -150,8 +151,9 @@ export async function runInSandbox(req: SandboxRequest): Promise<SandboxResult> 
       compilationError: isCompileError ? raw.error?.message : undefined,
     };
   } catch (err: unknown) {
+    if (err instanceof ExecutionError) throw err;
     const error = err as Error;
-    if (error.name === "AbortError") {
+    if (error.name === "AbortError" || error.name === "TimeoutError") {
       throw new ExecutionError(`Code execution timed out after ${timeoutMs}ms.`, "timeout");
     }
     throw new ExecutionError(error.message || "Sandbox unreachable.", "sandbox_unavailable");

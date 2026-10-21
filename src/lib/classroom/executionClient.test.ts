@@ -49,4 +49,32 @@ describe("runInSandbox internal fallback", () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe("https://sandbox.internal/run");
   });
+
+  it("posts the file map and skips tracing on the internal fallback", async () => {
+    const files = {
+      "main.cpp": '#include "helper.h"\nint main(){ return 0; }',
+      "helper.h": "int helper();",
+    };
+    await runInSandbox({ files, language: "cpp" });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({
+      files,
+      stdin: "",
+      trace: false,
+    });
+  });
+
+  it("treats an unavailable predict response as a sandbox failure", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: "error" }), { status: 503 }));
+    await expect(runInSandbox(request)).rejects.toMatchObject({
+      name: "ExecutionError",
+      kind: "sandbox_unavailable",
+    });
+  });
+
+  it("treats a rate-limited predict response as a timeout, not a wrong answer", async () => {
+    fetchMock.mockResolvedValue(new Response("{}", { status: 429 }));
+    await expect(runInSandbox(request)).rejects.toMatchObject({ kind: "timeout" });
+  });
 });

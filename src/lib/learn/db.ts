@@ -99,7 +99,9 @@ export function normalizeQuestion(q: any, maskAnswer = true): LearnQuestion {
     codeSnippet: q.code_snippet || q.codeSnippet,
     answer: maskAnswer ? "" : q.answer,
     hint: q.hint,
-    explanation: q.explanation || "",
+    // Explanations in the seed data restate the answer. Students receive one
+    // only after the grading API checks their submission.
+    explanation: maskAnswer ? "" : q.explanation || "",
     points: q.points || 10,
     isPublished: q.is_published ?? true,
     is_published: q.is_published ?? true,
@@ -276,7 +278,7 @@ export async function getLessonsForModule(moduleId: string, includeDrafts = fals
     if (supabase) {
       let query = supabase
         .from("learn_lessons")
-        .select("*")
+        .select("id,module_id,course_id,title,notes,code_snippet,display_order,is_published,created_at,updated_at")
         .eq("module_id", moduleId)
         .order("display_order", { ascending: true });
       if (!includeDrafts) {
@@ -303,7 +305,7 @@ export async function getLessonBySlug(
     if (supabase) {
       let query = supabase
         .from("learn_lessons")
-        .select("*")
+        .select("id,module_id,course_id,title,notes,code_snippet,display_order,is_published,created_at,updated_at")
         .eq("id", lessonId);
       if (!includeDrafts) {
         query = query.eq("is_published", true);
@@ -344,7 +346,7 @@ export async function getQuestionsForLesson(
         .select(
           (includeAnswers
             ? "*"
-            : "id,lesson_id,course_id,type,title,question_text,code_snippet,options,explanation,hint,points,difficulty,display_order,is_published,created_at,updated_at") as string,
+            : "id,lesson_id,course_id,type,title,question_text,code_snippet,options,hint,points,difficulty,display_order,is_published,created_at,updated_at") as string,
         )
         .eq("lesson_id", lessonId)
         .order("display_order", { ascending: true });

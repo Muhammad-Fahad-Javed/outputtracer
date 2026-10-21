@@ -1,6 +1,9 @@
 // HTTP client for the sandbox worker service (sandbox-worker/server.mjs).
-// The Next.js process never executes Python or Docker itself. If the worker is
-// not configured or reachable, every call fails closed with a PythonSystemError.
+// Production never executes Python in this process. A local interpreter is
+// used only outside production, and only when the worker is not configured
+// and ALLOW_UNSANDBOXED_EXECUTION is explicitly set. A configured worker
+// that fails is never replaced by a host process.
+import { unsandboxedExecutionAllowed } from "../sandbox";
 import { PythonSystemError } from "./pythonTypes";
 import { executePythonLocally } from "./localExecutor";
 
@@ -33,12 +36,8 @@ export async function callWorker(args: WorkerCallArgs): Promise<Record<string, u
   const config = args.config ?? loadSandboxConfig();
   if (!config.enabled) throw new PythonSystemError("disabled");
 
-  const canFallbackLocal =
-    process.env.NODE_ENV !== "test" &&
-    (process.env.ALLOW_UNSANDBOXED_EXECUTION === "true" || process.env.NODE_ENV !== "production");
-
   if (!config.url || config.token.length < 32) {
-    if (canFallbackLocal) {
+    if (unsandboxedExecutionAllowed()) {
       const mode = args.path === "/v1/trace" ? "trace" : "run";
       return (await executePythonLocally({
         mode,
@@ -62,16 +61,6 @@ export async function callWorker(args: WorkerCallArgs): Promise<Record<string, u
       cache: "no-store",
     });
   } catch {
-    if (canFallbackLocal) {
-      const mode = args.path === "/v1/trace" ? "trace" : "run";
-      return (await executePythonLocally({
-        mode,
-        code: (args.body.code as string) || "",
-        stdin: (args.body.stdin as string) || "",
-        limits: args.body.limits as { maxSteps?: number; maxDepth?: number } | undefined,
-        timeoutMs: args.timeoutMs,
-      })) as unknown as Record<string, unknown>;
-    }
     throw new PythonSystemError("sandbox_unavailable");
   }
 

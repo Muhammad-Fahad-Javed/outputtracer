@@ -41,6 +41,25 @@ log()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
 fail() { printf '\n\033[1;31m!!! %s\033[0m\n' "$*" >&2; exit 1; }
 
+# The candidate is already the live directory. Put the previous release back
+# before exiting so a failed health check does not leave the new build serving.
+rollback_promoted() {
+  local reason="$1"
+  if [ -d .next ] && [ -d "$PREV_DIR" ]; then
+    local failed_dir=".next.failed.$(date +%Y%m%d%H%M%S)"
+    mv .next "$failed_dir"
+    mv "$PREV_DIR" .next
+    info "restored the previous release; failed release kept in $failed_dir"
+    unset NEXT_DIST_DIR
+    if ! pm2 restart "$PM2_APP" --update-env; then
+      info "PM2 did not restart the restored release; check: pm2 logs $PM2_APP --lines 50 --nostream"
+    fi
+  else
+    info "could not roll back automatically (.next or $PREV_DIR is missing)"
+  fi
+  fail "$reason"
+}
+
 # Next.js rewrites tsconfig.json during a build when the include patterns do
 # not match the distDir in use. A candidate build therefore appends its own
 # ".next-candidate/types/**" globs and reformats the file. tsconfig.json is a
@@ -260,7 +279,7 @@ sleep 1
 if ! pm2 restart "$PM2_APP" --update-env; then
   info "---- pm2 logs ----"
   pm2 logs "$PM2_APP" --lines 40 --nostream || true
-  fail "PM2 could not start the new release"
+  rollback_promoted "PM2 could not start the new release"
 fi
 info "PM2 restarted"
 
@@ -278,19 +297,19 @@ for _ in $(seq 1 45); do
 done
 
 if [ "$HEALTHY" -ne 1 ]; then
-  fail "health check failed; rolling back to $PREV_DIR"
+  rollback_promoted "health check failed; rolled back to the previous release"
 fi
 
 # The live site must now be serving the new release id.
 if ! curl -s --max-time 30 "$BASE_URL/" | grep -q "data-dpl-id=\"$TARGET_SHORT\""; then
-  fail "the live site is not serving release $TARGET_SHORT; rolling back"
+  rollback_promoted "the live site is not serving release $TARGET_SHORT; rolled back"
 fi
 info "live site is serving release $TARGET_SHORT"
 
 for route in "${PUBLIC_ROUTES[@]}"; do
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$BASE_URL$route" || echo 000)"
   if [ "$code" != "200" ]; then
-    fail "live site returned $code for $route; rolling back"
+    rollback_promoted "live site returned $code for $route; rolled back"
   fi
 done
 info "all ${#PUBLIC_ROUTES[@]} public routes answered 200 on the live site"

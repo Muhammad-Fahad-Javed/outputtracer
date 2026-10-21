@@ -12,7 +12,11 @@
 
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { getClassroom } from "@/lib/classroom/classroomService";
+import {
+  assignmentBelongsToClassroom,
+  callerCanUseGroup,
+  getClassroom,
+} from "@/lib/classroom/classroomService";
 import {
   saveCodeVersion,
   recordActivityEvent,
@@ -31,8 +35,12 @@ export async function POST(
 
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
-  const access = await getClassroom(classId, user.id);
+  const access = await getClassroom(user.id, classId);
   if (!access.success) return NextResponse.json({ success: false, error: access.error }, { status: 403 });
+
+  if (!(await assignmentBelongsToClassroom(classId, assignmentId))) {
+    return NextResponse.json({ success: false, error: "Assignment not found." }, { status: 404 });
+  }
 
   let body: { codeFiles?: unknown; language?: string; groupId?: string };
   try { body = await request.json(); } catch {
@@ -46,6 +54,9 @@ export async function POST(
   const files = body.codeFiles as Record<string, string>;
   const language = typeof body.language === "string" ? body.language : "cpp";
   const groupId = typeof body.groupId === "string" ? body.groupId : undefined;
+  if (groupId && !(await callerCanUseGroup(user.id, classId, groupId))) {
+    return NextResponse.json({ success: false, error: "You are not a member of that group." }, { status: 403 });
+  }
 
   // Determine lateness
   const admin = createAdminClient();

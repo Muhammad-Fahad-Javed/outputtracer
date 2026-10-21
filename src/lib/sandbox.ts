@@ -165,6 +165,7 @@ export async function describeIsolation(): Promise<IsolationLevel> {
 
 function prlimitPrefix(
   exePath: string,
+  exeArgs: string[],
   limits: ResourceLimits
 ): { command: string; args: string[] } {
   return {
@@ -175,6 +176,7 @@ function prlimitPrefix(
       `--cpu=${limits.maxCpuSeconds}`,
       "--",
       exePath,
+      ...exeArgs,
     ],
   };
 }
@@ -297,10 +299,10 @@ export async function planSandboxedCommand(
   const isolation = await selectIsolation();
 
   const hostInner = usePrlimit
-    ? prlimitPrefix(hostCommand, limits)
+    ? prlimitPrefix(hostCommand, hostArgs, limits)
     : { command: hostCommand, args: hostArgs };
   const sandboxInner = usePrlimit
-    ? prlimitPrefix(sandboxCommand, limits)
+    ? prlimitPrefix(sandboxCommand, sandboxArgs, limits)
     : { command: sandboxCommand, args: sandboxArgs };
 
   if (isolation === "bwrap") {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { PracticeQuestion } from "@/lib/practice";
+import { setPendingExample } from "@/lib/examples";
 import Editor from "@monaco-editor/react";
 import { CheckCircle2, XCircle, ChevronRight, Play, Check } from "lucide-react";
 import Link from "next/link";
@@ -97,13 +98,8 @@ export default function QuestionClient({
   };
 
   const handleTestInPredictor = () => {
-    // Store the code in localStorage or URL to pass to predictor
-    // The simplest way for now is just opening the predictor, but passing state 
-    // requires a bit more wiring. We'll use localStorage.
-    if (typeof window !== "undefined") {
-      localStorage.setItem("outputtracer_practice_code", question.code);
-      window.open("/#predictor", "_blank");
-    }
+    setPendingExample(question.code);
+    window.open("/", "_blank");
   };
 
   return (
