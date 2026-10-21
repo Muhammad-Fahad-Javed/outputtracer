@@ -1,5 +1,7 @@
 # Remaining issues
 
+The status table that this audit now maintains is [../OUTPUTTRACER_AUDIT_TRACKER.md](../OUTPUTTRACER_AUDIT_TRACKER.md). Rows below that were closed after this file was first written are marked there.
+
 These are not fixed, or they are fixed only in code and still need an operator.
 
 ## Blocked on production access
@@ -17,12 +19,12 @@ These are not fixed, or they are fixed only in code and still need an operator.
 
 | Item | Notes |
 | --- | --- |
-| GDB variable quality | A traced `int x = 1` produced one step, but the variable string included `argc`, `argv`, and unwind internals. Output was correct. The step text is not a reliable view of `x`. |
+| GDB variable quality | Closed in code. `readableTraceVariables` drops `argc`, `argv`, and runtime symbols before a step is returned. Unit-tested. A fresh GDB session was not re-captured after the filter. |
 | CSP enforcement | The policy is report-only. It allows `'unsafe-inline'` and `'unsafe-eval'` because Monaco and Next need a browser pass before enforcement. |
 | HSTS | Off until `ENABLE_HSTS=1` after the certificate on `https://outputtracer.com` is confirmed. |
-| Group submission status | `GET .../mine` loads the row where `student_id` is the caller. A group submission stored only with `group_id` is not shown there yet. |
+| Group submission status | Closed in code. `GET .../mine` also loads a submission whose `group_id` is a group the caller belongs to. Selection is unit-tested. The query was not run against Supabase. |
 | Assignment editor | One public test and one hidden test in the create form. There is no list editor for many cases. |
-| Announcement composer | Not built. |
+| Announcement composer | Closed for the class page. A teacher can post from the Announcements tab. Checked in the local browser against the in-memory store. |
 | Admin invite without a service client | Still not rechecked in this pass. |
 | `nasm` | Not installed here. The lab uses the built-in assembler. |
 | Python | Still disabled unless a configured isolated worker is present. There is no worker in this environment. |

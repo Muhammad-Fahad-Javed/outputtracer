@@ -1,5 +1,5 @@
 import { isAuthConfigured } from "@/lib/supabase/env";
-import { createClassroom, listUserClassrooms } from "./classroomService";
+import { createClassroom, listUserClassrooms, _setMemoryMemberLabel } from "./classroomService";
 import { _setMemoryTeacherAppStatus, _setMemoryTeacherProfile } from "./roles";
 
 /** Fixed id for the on-machine teacher shown when accounts are not configured. */
@@ -39,11 +39,19 @@ export async function ensureLocalPreviewTeacher(): Promise<{ id: string; email: 
     seedPromise = (async () => {
       const existing = await listUserClassrooms(LOCAL_PREVIEW_TEACHER_ID);
       if (existing.teaching.length > 0) return;
-      await createClassroom(LOCAL_PREVIEW_TEACHER_ID, {
+      const created = await createClassroom(LOCAL_PREVIEW_TEACHER_ID, {
         name: "CS106B Programming Abstractions",
         subject: "C++",
         description: "Sample class on this machine so the teacher dashboard can be opened without Supabase.",
       });
+      if (created.classroom) {
+        _setMemoryMemberLabel(
+          created.classroom.id,
+          LOCAL_PREVIEW_TEACHER_ID,
+          "Local teacher",
+          LOCAL_PREVIEW_TEACHER_EMAIL
+        );
+      }
     })();
   }
   await seedPromise;

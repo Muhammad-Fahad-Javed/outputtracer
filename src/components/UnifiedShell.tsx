@@ -27,7 +27,6 @@ import {
   BookOpen,
   Search,
   ArrowRight,
-  X,
   Plus,
   Save,
   Zap,
@@ -1231,15 +1230,6 @@ export default function UnifiedShell() {
           <div className="flex h-full items-center gap-1.5 border-r border-[#2E2E2E] border-t-2 border-t-white bg-[#121212] px-3 font-mono text-[12px] font-medium text-white">
             <FileCode size={13} className="text-[#CCCCCC]" />
             <span>{fileMeta.name}</span>
-            <button
-              type="button"
-              onClick={() => {}}
-              className="ml-1 rounded p-0.5 text-[#858585] hover:bg-[#252526] hover:text-white transition-colors"
-              title="Close tab"
-              aria-label="Close tab"
-            >
-              <X size={11} />
-            </button>
           </div>
           <button
             type="button"

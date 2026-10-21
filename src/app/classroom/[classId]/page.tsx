@@ -39,6 +39,11 @@ export default function ClassroomDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"assignments" | "announcements" | "roster">("assignments");
+  const [annTitle, setAnnTitle] = useState("");
+  const [annContent, setAnnContent] = useState("");
+  const [annPinned, setAnnPinned] = useState(false);
+  const [annSubmitting, setAnnSubmitting] = useState(false);
+  const [annError, setAnnError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -72,6 +77,39 @@ export default function ClassroomDetailPage({
       active = false;
     };
   }, [classId]);
+
+  const handlePostAnnouncement = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAnnSubmitting(true);
+    setAnnError(null);
+    try {
+      const res = await fetch(`/api/classroom/${classId}/announcements`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: annTitle,
+          content: annContent,
+          isPinned: annPinned,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.announcement) {
+        setAnnError(data.error || "Could not post the announcement.");
+        return;
+      }
+      setAnnouncements((current) => [
+        data.announcement,
+        ...current.filter((item) => item.id !== data.announcement.id),
+      ]);
+      setAnnTitle("");
+      setAnnContent("");
+      setAnnPinned(false);
+    } catch {
+      setAnnError("A network error occurred.");
+    } finally {
+      setAnnSubmitting(false);
+    }
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-[#FAFAFA]">
@@ -259,7 +297,63 @@ export default function ClassroomDetailPage({
                 )
               ) : activeTab === "announcements" ? (
                 /* Announcements Tab */
-                announcements.length === 0 ? (
+                <div className="space-y-4">
+                {isTeacher && (
+                  <form
+                    onSubmit={handlePostAnnouncement}
+                    className="rounded-2xl border border-[#EAEAEA] bg-white p-5 shadow-xs space-y-3"
+                  >
+                    <h3 className="text-sm font-bold text-black">Post an announcement</h3>
+                    {annError && (
+                      <p className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                        {annError}
+                      </p>
+                    )}
+                    <div>
+                      <label htmlFor="announcement-title" className="block text-xs font-semibold text-black mb-1">
+                        Title
+                      </label>
+                      <input
+                        id="announcement-title"
+                        required
+                        value={annTitle}
+                        onChange={(event) => setAnnTitle(event.target.value)}
+                        className="w-full rounded-md border border-[#DCDCDC] px-3 py-2 text-xs outline-none focus:border-black"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="announcement-body" className="block text-xs font-semibold text-black mb-1">
+                        Message
+                      </label>
+                      <textarea
+                        id="announcement-body"
+                        required
+                        rows={3}
+                        value={annContent}
+                        onChange={(event) => setAnnContent(event.target.value)}
+                        className="w-full rounded-md border border-[#DCDCDC] p-2.5 text-xs outline-none focus:border-black"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-black">
+                      <input
+                        type="checkbox"
+                        checked={annPinned}
+                        onChange={(event) => setAnnPinned(event.target.checked)}
+                      />
+                      Pin this announcement
+                    </label>
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={annSubmitting}
+                        className="rounded-[4px] bg-black px-4 py-2 text-xs font-semibold text-white hover:bg-[#333333] disabled:opacity-50"
+                      >
+                        {annSubmitting ? "Posting..." : "Post announcement"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+                {announcements.length === 0 ? (
                   <div className="rounded-2xl border border-[#EAEAEA] bg-white p-12 text-center shadow-xs">
                     <Megaphone size={32} className="mx-auto text-[#AAAAAA] mb-2" />
                     <h3 className="text-sm font-bold text-black">No announcements yet</h3>
@@ -305,7 +399,8 @@ export default function ClassroomDetailPage({
                       </div>
                     ))}
                   </div>
-                )
+                )}
+                </div>
               ) : (
                 /* Roster Tab */
                 <div className="rounded-2xl border border-[#EAEAEA] bg-white shadow-xs overflow-hidden">

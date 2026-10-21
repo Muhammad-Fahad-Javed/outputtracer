@@ -4,11 +4,13 @@
  */
 
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
   assignmentBelongsToClassroom,
   getClassroom,
+  listCallerGroupIds,
 } from "@/lib/classroom/classroomService";
+import { pickOwnSubmission } from "@/lib/classroom/ownSubmission";
+import { classroomRequestUser } from "@/lib/classroom/requestUser";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(
@@ -16,8 +18,7 @@ export async function GET(
   { params }: { params: Promise<{ classId: string; assignmentId: string }> }
 ) {
   const { classId, assignmentId } = await params;
-  const supabase = await createServerClient();
-  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  const user = await classroomRequestUser();
   if (!user) {
     return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
   }
@@ -35,9 +36,10 @@ export async function GET(
     return NextResponse.json({ success: true, submission: null });
   }
 
-  const { data, error } = await admin
+  const columns = "id, status, code_files, submitted_at, is_late, grade, feedback, graded_at, student_id, group_id";
+  const { data: personal, error } = await admin
     .from("classroom_submissions")
-    .select("id, status, code_files, submitted_at, is_late, grade, feedback, graded_at")
+    .select(columns)
     .eq("assignment_id", assignmentId)
     .eq("student_id", user.id)
     .maybeSingle();
@@ -46,18 +48,35 @@ export async function GET(
     return NextResponse.json({ success: false, error: "Could not load your submission." }, { status: 500 });
   }
 
+  let row = personal;
+  if (!row) {
+    const groupIds = await listCallerGroupIds(user.id, classId);
+    if (groupIds.length > 0) {
+      const { data: grouped, error: groupError } = await admin
+        .from("classroom_submissions")
+        .select(columns)
+        .eq("assignment_id", assignmentId)
+        .in("group_id", groupIds)
+        .order("submitted_at", { ascending: false });
+      if (groupError) {
+        return NextResponse.json({ success: false, error: "Could not load your submission." }, { status: 500 });
+      }
+      row = pickOwnSubmission(grouped || [], user.id, groupIds);
+    }
+  }
+
   return NextResponse.json({
     success: true,
-    submission: data
+    submission: row
       ? {
-          id: data.id,
-          status: data.status,
-          codeFiles: data.code_files || {},
-          submittedAt: data.submitted_at,
-          isLate: data.is_late,
-          grade: data.grade,
-          feedback: data.feedback,
-          gradedAt: data.graded_at,
+          id: row.id,
+          status: row.status,
+          codeFiles: row.code_files || {},
+          submittedAt: row.submitted_at,
+          isLate: row.is_late,
+          grade: row.grade,
+          feedback: row.feedback,
+          gradedAt: row.graded_at,
         }
       : null,
   });

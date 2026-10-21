@@ -117,6 +117,8 @@ export default function Header() {
                   <button
                     type="button"
                     onClick={() => setAccountMenuOpen((v) => !v)}
+                    aria-expanded={accountMenuOpen}
+                    aria-haspopup="menu"
                     className="flex items-center gap-1.5 rounded-[4px] border border-[#DCDCDC] bg-white px-2 py-1 text-xs font-medium text-black hover:bg-[#F8F8F8] transition-colors"
                   >
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-black text-[10px] font-bold text-white shrink-0">

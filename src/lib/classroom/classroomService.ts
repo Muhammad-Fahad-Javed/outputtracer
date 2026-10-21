@@ -23,6 +23,19 @@ const memoryGroups = new Map<string, ClassroomGroup[]>(); // classroomId -> grou
 const memoryGroupMembers = new Map<string, Set<string>>(); // groupId -> set of userIds
 const memoryAssignments = new Map<string, ClassroomAssignment[]>(); // classroomId -> assignments
 
+export function _setMemoryMemberLabel(
+  classroomId: string,
+  userId: string,
+  displayName: string,
+  email?: string
+): void {
+  const members = memoryMembers.get(classroomId);
+  const member = members?.find((item) => item.userId === userId);
+  if (!member) return;
+  member.displayName = displayName;
+  if (email) member.email = email;
+}
+
 export function _resetClassroomMemory(): void {
   memoryClassrooms.clear();
   memoryMembers.clear();
@@ -1014,6 +1027,36 @@ export async function callerCanUseGroup(
   const groups = memoryGroups.get(classroomId) || [];
   if (!groups.some((group) => group.id === groupId)) return false;
   return memoryGroupMembers.get(groupId)?.has(userId) ?? false;
+}
+
+/** Group ids in this classroom that include the caller. Empty when none match. */
+export async function listCallerGroupIds(
+  userId: string,
+  classroomId: string
+): Promise<string[]> {
+  if (!userId || !classroomId) return [];
+
+  const admin = createAdminClient();
+  if (admin) {
+    const { data: groups, error } = await admin
+      .from("classroom_groups")
+      .select("id")
+      .eq("classroom_id", classroomId);
+    if (error || !groups?.length) return [];
+    const ids = groups.map((group) => String(group.id));
+    const { data: members, error: memberError } = await admin
+      .from("classroom_group_members")
+      .select("group_id")
+      .eq("user_id", userId)
+      .in("group_id", ids);
+    if (memberError || !members) return [];
+    return members.map((member) => String(member.group_id));
+  }
+
+  const groups = memoryGroups.get(classroomId) || [];
+  return groups
+    .filter((group) => memoryGroupMembers.get(group.id)?.has(userId))
+    .map((group) => group.id);
 }
 
 /**

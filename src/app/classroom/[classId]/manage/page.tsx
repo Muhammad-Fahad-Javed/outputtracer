@@ -573,8 +573,9 @@ export default function ClassroomManagePage({
             <h2 className="text-base font-bold text-black mb-1">Create Student Group</h2>
             <form onSubmit={handleCreateGroup} className="space-y-3.5 mt-3">
               <div>
-                <label className="block text-xs font-semibold text-black mb-1">Group Name</label>
+                <label htmlFor="group-name" className="block text-xs font-semibold text-black mb-1">Group Name</label>
                 <input
+                  id="group-name"
                   type="text"
                   required
                   placeholder="e.g. Group Alpha (Project Team 1)"
@@ -611,8 +612,9 @@ export default function ClassroomManagePage({
             <h2 className="text-base font-bold text-black mb-1">Assign Student to Group</h2>
             <form onSubmit={handleAssignStudent} className="space-y-3.5 mt-3">
               <div>
-                <label className="block text-xs font-semibold text-black mb-1">Select Group</label>
+                <label htmlFor="assign-group" className="block text-xs font-semibold text-black mb-1">Select Group</label>
                 <select
+                  id="assign-group"
                   required
                   value={selectedGroupId}
                   onChange={(e) => setSelectedGroupId(e.target.value)}
@@ -626,8 +628,9 @@ export default function ClassroomManagePage({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-black mb-1">Select Student</label>
+                <label htmlFor="assign-student" className="block text-xs font-semibold text-black mb-1">Select Student</label>
                 <select
+                  id="assign-student"
                   required
                   value={selectedStudentId}
                   onChange={(e) => setSelectedStudentId(e.target.value)}
@@ -668,8 +671,9 @@ export default function ClassroomManagePage({
             <h2 className="text-base font-bold text-black mb-1">Create Coding Assignment</h2>
             <form onSubmit={handleCreateAssignment} className="space-y-3 mt-3">
               <div>
-                <label className="block text-xs font-semibold text-black mb-1">Assignment Title *</label>
+                <label htmlFor="assignment-title" className="block text-xs font-semibold text-black mb-1">Assignment Title *</label>
                 <input
+                  id="assignment-title"
                   type="text"
                   required
                   placeholder="e.g. Project 1: Binary Search Tree Tracer"
@@ -680,8 +684,9 @@ export default function ClassroomManagePage({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-black mb-1">Instructions / Description</label>
+                <label htmlFor="assignment-description" className="block text-xs font-semibold text-black mb-1">Instructions / Description</label>
                 <textarea
+                  id="assignment-description"
                   rows={3}
                   placeholder="Detailed task instructions for your students..."
                   value={asgDescription}
@@ -692,8 +697,9 @@ export default function ClassroomManagePage({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-black mb-1">Due Date</label>
+                  <label htmlFor="assignment-due" className="block text-xs font-semibold text-black mb-1">Due Date</label>
                   <input
+                    id="assignment-due"
                     type="date"
                     value={asgDueDate}
                     onChange={(e) => setAsgDueDate(e.target.value)}
@@ -701,8 +707,9 @@ export default function ClassroomManagePage({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-black mb-1">Max Points</label>
+                  <label htmlFor="assignment-points" className="block text-xs font-semibold text-black mb-1">Max Points</label>
                   <input
+                    id="assignment-points"
                     type="number"
                     min="0"
                     value={asgPoints}

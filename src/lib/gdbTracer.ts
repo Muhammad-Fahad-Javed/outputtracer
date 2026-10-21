@@ -34,6 +34,43 @@ export interface TraceResult {
   determinismWarning?: string;
 }
 
+const TRACE_NOISE_NAMES = new Set(["argc", "argv"]);
+
+/**
+ * Keep student variables. GDB's `info args` on main always includes argc/argv,
+ * and a step into the runtime adds unwind and standard-library symbols.
+ * Values may contain commas, so assignments are split only at the next name.
+ */
+export function readableTraceVariables(raw: string | undefined): string {
+  if (!raw) return "—";
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "—" || trimmed === "\\u2014") return "—";
+
+  const parts: string[] = [];
+  // A new assignment can be `name =` or `qualified type name =`, including a pointer star.
+  const boundary = /,\s+(?=(?:[A-Za-z_][\w:<>]*\s*\*?\s+)*[A-Za-z_][\w]*\s*=)/g;
+  let start = 0;
+  for (const match of trimmed.matchAll(boundary)) {
+    const index = match.index ?? 0;
+    parts.push(trimmed.slice(start, index));
+    start = index + match[0].length;
+  }
+  parts.push(trimmed.slice(start));
+
+  const kept = parts
+    .map((part) => part.trim())
+    .filter((part) => {
+      const name = part.split("=")[0]?.trim() ?? "";
+      if (!/^[A-Za-z_][\w:]*$/.test(name)) return false;
+      if (TRACE_NOISE_NAMES.has(name)) return false;
+      if (name.startsWith("_") || name.includes("::")) return false;
+      if (/unwind|__gnu_cxx|std::/i.test(part)) return false;
+      return true;
+    });
+
+  return kept.length > 0 ? kept.join(", ") : "—";
+}
+
 // The trace re-executes the student's binary under GDB. That re-run MUST be
 // sandboxed just like the normal run, otherwise tracing would be a way to
 // execute untrusted code without isolation. If the only available mode is
@@ -390,7 +427,10 @@ export async function traceExecution(opts: {
     }
 
     return {
-      steps: data.steps,
+      steps: data.steps.map((step) => ({
+        ...step,
+        variables: readableTraceVariables(step.variables),
+      })),
       truncated: !!data.truncated,
     };
   } catch {
