@@ -19,6 +19,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            gdb \
+            bubblewrap \
+            util-linux
+          g++ --version
+          gdb --version
+          prlimit --version
+          unshare --help >/dev/null
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
