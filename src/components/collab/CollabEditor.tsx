@@ -106,7 +106,7 @@ export default function CollabEditor({
       );
       setAuthorCss(
         [...colors.entries()]
-          .map(([authorId, color]) => `.ot-author-${safeClass(authorId)}{background-color:${color}55;border-bottom:2px solid ${color}}`)
+          .map(([authorId, color]) => `.ot-author-${safeClass(authorId)}{background-color:${color}2e;box-shadow:inset 0 -2px 0 ${color}}`)
           .join("\n")
       );
     };
@@ -151,8 +151,9 @@ export default function CollabEditor({
         }
         ${cursorCss}
         ${authorCss}
+        ${showAuthorship ? ".yRemoteSelectionHead::after{content:none !important;display:none !important}" : ""}
       `}</style>
-      <div className="min-h-0 flex-1">
+      <div className={`min-h-0 flex-1 ${showAuthorship ? "ot-authorship" : ""}`}>
         <Editor
           height="100%"
           defaultLanguage="cpp"

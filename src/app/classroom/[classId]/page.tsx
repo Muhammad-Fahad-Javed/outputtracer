@@ -267,6 +267,11 @@ export default function ClassroomDetailPage({
                                 Group Assignment
                               </span>
                             )}
+                            {isTeacher && (
+                              <span className="rounded-full bg-[#F4F4F5] px-2 py-0.5 text-[10px] font-semibold text-[#444]">
+                                Watch
+                              </span>
+                            )}
                             {!asg.isPublished && (
                               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
                                 Draft
