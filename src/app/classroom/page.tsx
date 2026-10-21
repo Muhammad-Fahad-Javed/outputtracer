@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -15,6 +15,14 @@ import {
   Calendar,
 } from "lucide-react";
 import { Classroom, UserCapabilities } from "@/lib/classroom/types";
+
+interface ClassroomApiResponse {
+  success?: boolean;
+  teaching?: Classroom[];
+  enrolled?: Classroom[];
+  capabilities?: UserCapabilities | null;
+  unauthorized?: boolean;
+}
 
 export default function ClassroomHubPage() {
   const [teaching, setTeaching] = useState<Classroom[]>([]);
@@ -39,64 +47,53 @@ export default function ClassroomHubPage() {
 
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const loadData = async () => {
-    try {
-      const res = await fetch("/api/classroom");
-      if (res.status === 401) {
-        setCapabilities(null);
-        setLoading(false);
-        return;
-      }
-      const data = await res.json();
-      if (data.success) {
-        setTeaching(data.teaching || []);
-        setEnrolled(data.enrolled || []);
-        setCapabilities(data.capabilities);
-        if (data.teaching?.length > 0 && data.enrolled?.length === 0) {
-          setActiveTab("teaching");
-        }
-      }
-    } catch {
-      setFeedback({ type: "error", message: "Failed loading classrooms." });
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Guards against setting state after the component unmounts.
+  const mountedRef = useRef(true);
   useEffect(() => {
-    let active = true;
-    fetch("/api/classroom")
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Promise chain rather than an async function: every setState happens in a
+  // promise callback, so it is never a synchronous update inside the effect.
+  const loadData = useCallback(() => {
+    return fetch("/api/classroom")
       .then((res) => {
-        if (res.status === 401) {
-          if (active) {
-            setCapabilities(null);
-            setLoading(false);
-          }
-          return null;
-        }
+        if (res.status === 401) return { unauthorized: true as const };
         return res.json();
       })
-      .then((data) => {
-        if (active && data?.success) {
-          setTeaching(data.teaching || []);
-          setEnrolled(data.enrolled || []);
-          setCapabilities(data.capabilities);
-          if (data.teaching?.length > 0 && data.enrolled?.length === 0) {
+      .then((data: ClassroomApiResponse) => {
+        if (!mountedRef.current) return;
+        if (data?.unauthorized) {
+          setCapabilities(null);
+          setLoading(false);
+          return;
+        }
+        if (data?.success) {
+          setTeaching(data.teaching ?? []);
+          setEnrolled(data.enrolled ?? []);
+          setCapabilities(data.capabilities ?? null);
+          if ((data.teaching?.length ?? 0) > 0 && (data.enrolled?.length ?? 0) === 0) {
             setActiveTab("teaching");
           }
         }
       })
       .catch(() => {
-        if (active) setFeedback({ type: "error", message: "Failed loading classrooms." });
+        if (mountedRef.current) setFeedback({ type: "error", message: "Failed loading classrooms." });
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (mountedRef.current) setLoading(false);
       });
-
-    return () => {
-      active = false;
-    };
   }, []);
+
+  // Load once on mount. The previous implementation duplicated the fetch
+  // instead of calling loadData(), so every page view issued two identical
+  // requests and raced two responses into the same state.
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();

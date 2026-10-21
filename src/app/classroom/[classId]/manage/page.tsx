@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, useCallback, useRef, use } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -88,6 +88,15 @@ export default function ClassroomManagePage({
     }>;
   } | null>(null);
 
+  // Guards against setting state after the component unmounts.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const loadAll = useCallback(() => {
     Promise.all([
       fetch(`/api/classroom/${classId}`).then((r) => r.json()),
@@ -96,6 +105,7 @@ export default function ClassroomManagePage({
       fetch(`/api/classroom/${classId}/invitations`).then((r) => r.json()),
       fetch(`/api/classroom/${classId}/reports/progress`).then((r) => r.json()),
     ]).then(([classRes, rosterRes, groupRes, invRes, progRes]) => {
+      if (!mountedRef.current) return;
       if (!classRes.success || !classRes.isTeacher) {
         setError(classRes.error || "Instructor privileges required to manage this classroom.");
         setLoading(false);
@@ -108,35 +118,19 @@ export default function ClassroomManagePage({
       if (progRes?.success) setProgressReport(progRes.report || null);
       setLoading(false);
     }).catch(() => {
+      if (!mountedRef.current) return;
       setError("Failed to load management console.");
       setLoading(false);
     });
   }, [classId]);
 
+  // Load once on mount. The previous implementation re-implemented the fetch
+  // list here with only three of the five endpoints, so opening the console
+  // issued eight requests instead of five and raced two responses into the
+  // same state.
   useEffect(() => {
-    let active = true;
-    Promise.all([
-      fetch(`/api/classroom/${classId}`).then((r) => r.json()),
-      fetch(`/api/classroom/${classId}/roster`).then((r) => r.json()),
-      fetch(`/api/classroom/${classId}/groups`).then((r) => r.json()),
-    ]).then(([classRes, rosterRes, groupRes]) => {
-      if (!active) return;
-      if (!classRes.success || !classRes.isTeacher) {
-        setError(classRes.error || "Instructor privileges required to manage this classroom.");
-        setLoading(false);
-        return;
-      }
-      setClassroom(classRes.classroom);
-      if (rosterRes.success) setMembers(rosterRes.members || []);
-      if (groupRes.success) setGroups(groupRes.groups || []);
-      setLoading(false);
-    }).catch(() => {
-      if (!active) return;
-      setError("Failed to load management console.");
-      setLoading(false);
-    });
-    return () => { active = false; };
-  }, [classId]);
+    loadAll();
+  }, [loadAll]);
 
   const handleRemoveMember = async (userId: string, name: string) => {
     if (!confirm(`Are you sure you want to remove ${name} from this classroom?`)) return;

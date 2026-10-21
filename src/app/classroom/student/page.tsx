@@ -307,7 +307,7 @@ export default function StudentDashboardPage() {
                     <div className="py-6 text-center text-xs text-[#888888]">Checking upcoming due dates...</div>
                   ) : upcomingDeadlines.length === 0 ? (
                     <div className="py-8 text-center text-xs text-[#888888] border border-dashed border-[#EAEAEA] rounded-xl">
-                      No assignments due in the next 7 days.
+                      No upcoming deadlines.
                     </div>
                   ) : (
                     <div className="space-y-2.5">

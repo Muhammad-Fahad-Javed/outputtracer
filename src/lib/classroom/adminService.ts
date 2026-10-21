@@ -246,6 +246,158 @@ export interface ClassroomProgressReport {
   generatedAt: string;
 }
 
+export interface ProgressStudentRow {
+  user_id: string;
+  display_name?: string | null;
+  email?: string | null;
+}
+
+export interface ProgressSubmissionRow {
+  id: string;
+  assignment_id: string;
+  student_id: string | null;
+  group_id: string | null;
+  submitted_at: string;
+  status: string;
+}
+
+export interface ProgressGradeRow {
+  submission_id: string;
+  total_points: number | string;
+  max_points: number | string;
+}
+
+export interface ProgressGroupMemberRow {
+  group_id: string;
+  user_id: string;
+}
+
+export interface ComputedClassroomProgress {
+  studentBreakdown: StudentProgressSummary[];
+  totalSubmissions: number;
+  completionRatePercent: number;
+  averageClassScorePercent: number;
+}
+
+// A submission only counts as completed work once it has actually been handed
+// in. Drafts are still in progress.
+const COMPLETED_SUBMISSION_STATUSES = new Set(["submitted", "graded", "returned"]);
+
+/**
+ * Pure analytics for the educator progress report.
+ *
+ * Kept separate from the database access so the arithmetic can be unit
+ * tested, and so the rules are stated in one place:
+ *
+ * - Only PUBLISHED assignments are work that was given to students, so they
+ *   are the denominator.
+ * - Draft submissions are not completed work and do not count.
+ * - A group submission completes the assignment for every member of the group.
+ * - The completion rate is capped at 100%.
+ * - A student whose graded work scored zero still counts towards the class
+ *   average; a student with no graded work has no score to contribute.
+ */
+export function computeClassroomProgress(input: {
+  students: ProgressStudentRow[];
+  assignmentIds: string[];
+  submissions: ProgressSubmissionRow[];
+  grades: ProgressGradeRow[];
+  groupMembers: ProgressGroupMemberRow[];
+}): ComputedClassroomProgress {
+  const { students, assignmentIds, submissions, grades, groupMembers } = input;
+
+  const gradesMap = new Map<string, { totalPoints: number; maxPoints: number }>();
+  for (const g of grades) {
+    gradesMap.set(g.submission_id, {
+      totalPoints: Number(g.total_points),
+      maxPoints: Number(g.max_points),
+    });
+  }
+
+  // group_id -> member ids, so a group submission is credited to every
+  // member of that group instead of counting as a single submission.
+  const groupMemberMap = new Map<string, string[]>();
+  for (const row of groupMembers) {
+    const gid = String(row.group_id);
+    const list = groupMemberMap.get(gid) || [];
+    list.push(String(row.user_id));
+    groupMemberMap.set(gid, list);
+  }
+
+  const completedSubmissions = submissions.filter((s) =>
+    COMPLETED_SUBMISSION_STATUSES.has(s.status),
+  );
+
+  const studentBreakdown: StudentProgressSummary[] = students.map((m) => {
+    const sId = m.user_id;
+    const studentSubs = submissions.filter((s) => s.student_id === sId);
+    const graded = studentSubs.filter((s) => gradesMap.has(s.id));
+
+    let scoreSum = 0;
+    let maxScoreSum = 0;
+    for (const s of graded) {
+      const g = gradesMap.get(s.id)!;
+      scoreSum += g.totalPoints;
+      maxScoreSum += g.maxPoints;
+    }
+
+    const avgPercent = maxScoreSum > 0 ? Math.round((scoreSum / maxScoreSum) * 100) : 0;
+    const sortedSubs = [...studentSubs].sort(
+      (a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime(),
+    );
+
+    return {
+      studentId: sId,
+      displayName: m.display_name ?? undefined,
+      email: m.email ?? undefined,
+      submissionsCount: studentSubs.length,
+      gradedCount: graded.length,
+      averageScorePercent: avgPercent,
+      lastActiveAt: sortedSubs[0]?.submitted_at,
+    };
+  });
+
+  // Count one completed unit per (student, assignment) pair. A group
+  // submission completes the assignment for every member of the group.
+  const completedPairs = new Set<string>();
+  for (const s of completedSubmissions) {
+    if (s.student_id) {
+      completedPairs.add(`${s.student_id}:${s.assignment_id}`);
+      continue;
+    }
+    if (s.group_id) {
+      for (const memberId of groupMemberMap.get(String(s.group_id)) || []) {
+        completedPairs.add(`${memberId}:${s.assignment_id}`);
+      }
+    }
+  }
+
+  const totalPossibleSubmissions = students.length * assignmentIds.length;
+  const completionRatePercent =
+    totalPossibleSubmissions > 0
+      ? Math.min(
+          100,
+          Math.round((completedPairs.size / totalPossibleSubmissions) * 100),
+        )
+      : 0;
+
+  const scoredStudents = studentBreakdown.filter((s) => s.gradedCount > 0);
+  const averageClassScorePercent =
+    scoredStudents.length > 0
+      ? Math.round(
+          scoredStudents.reduce((a, s) => a + s.averageScorePercent, 0) /
+            scoredStudents.length,
+        )
+      : 0;
+
+  return {
+    studentBreakdown,
+    totalSubmissions: completedSubmissions.length,
+    completionRatePercent,
+    averageClassScorePercent,
+  };
+}
+
 export async function generateClassroomProgressReport(
   actorUserId: string,
   classroomId: string
@@ -265,7 +417,12 @@ export async function generateClassroomProgressReport(
 
   if (admin) {
     try {
-      const [membersRes, assignmentsRes, gradesRes] = await Promise.all([
+      // Only PUBLISHED assignments count as work that was actually given to
+      // students. Unpublished (draft) assignments were never visible to them,
+      // so including them in the denominator depressed the completion rate and
+      // disagreed with the student dashboard, which only counts published
+      // assignments.
+      const [membersRes, assignmentsRes] = await Promise.all([
         admin
           .from("classroom_members")
           .select("user_id, role, profiles(display_name, email)")
@@ -274,70 +431,73 @@ export async function generateClassroomProgressReport(
         admin
           .from("classroom_assignments")
           .select("id, title, max_points")
-          .eq("classroom_id", classroomId),
-        admin
-          .from("submission_grades")
-          .select("submission_id, total_points, max_points"),
+          .eq("classroom_id", classroomId)
+          .eq("is_published", true),
       ]);
 
       const assignmentIds = (assignmentsRes.data || []).map((a) => a.id);
-      let submissionsData: Array<{ id: string; assignment_id: string; student_id: string | null; submitted_at: string; status: string }> = [];
+      let submissionsData: Array<{
+        id: string;
+        assignment_id: string;
+        student_id: string | null;
+        group_id: string | null;
+        submitted_at: string;
+        status: string;
+      }> = [];
 
       if (assignmentIds.length > 0) {
         const { data: subData } = await admin
           .from("classroom_submissions")
-          .select("id, assignment_id, student_id, submitted_at, status")
+          .select("id, assignment_id, student_id, group_id, submitted_at, status")
           .in("assignment_id", assignmentIds);
         submissionsData = subData || [];
       }
 
-      const gradesMap = new Map<string, { totalPoints: number; maxPoints: number }>();
-      for (const g of gradesRes.data || []) {
-        gradesMap.set(g.submission_id, { totalPoints: Number(g.total_points), maxPoints: Number(g.max_points) });
+      // Scope the grade lookup to this classroom's submissions. Fetching every
+      // grade on the platform was both wasteful and wrong: it made the report
+      // depend on rows that have nothing to do with this class.
+      let gradesData: ProgressGradeRow[] = [];
+      if (submissionsData.length > 0) {
+        const res = await admin
+          .from("submission_grades")
+          .select("submission_id, total_points, max_points")
+          .in(
+            "submission_id",
+            submissionsData.map((s) => s.id),
+          );
+        gradesData = (res.data || []) as unknown as ProgressGradeRow[];
       }
 
-      const studentList = membersRes.data || [];
-      const totalStudents = studentList.length;
-      const totalAssignments = assignmentIds.length;
-      const totalPossibleSubmissions = totalStudents * totalAssignments;
+      // Group membership is only needed for groups that actually have a
+      // submission in this classroom, so this costs one extra round trip and
+      // only when a group assignment was handed in.
+      let groupMemberRows: ProgressGroupMemberRow[] = [];
+      const submittedGroupIds = Array.from(
+        new Set(
+          submissionsData
+            .map((s) => s.group_id)
+            .filter((gid): gid is string => Boolean(gid)),
+        ),
+      );
+      if (submittedGroupIds.length > 0) {
+        const res = await admin
+          .from("classroom_group_members")
+          .select("group_id, user_id")
+          .in("group_id", submittedGroupIds);
+        groupMemberRows = (res.data || []) as unknown as ProgressGroupMemberRow[];
+      }
 
-      const studentBreakdown: StudentProgressSummary[] = studentList.map((m) => {
-        const sId = m.user_id;
-        const studentSubs = submissionsData.filter((s) => s.student_id === sId);
-        const graded = studentSubs.filter((s) => gradesMap.has(s.id));
-
-        let scoreSum = 0;
-        let maxScoreSum = 0;
-        for (const s of graded) {
-          const g = gradesMap.get(s.id)!;
-          scoreSum += g.totalPoints;
-          maxScoreSum += g.maxPoints;
-        }
-
-        const avgPercent = maxScoreSum > 0 ? Math.round((scoreSum / maxScoreSum) * 100) : 0;
-        const sortedSubs = [...studentSubs].sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime());
-        const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-
-        return {
-          studentId: sId,
-          displayName: prof?.display_name,
-          email: prof?.email,
-          submissionsCount: studentSubs.length,
-          gradedCount: graded.length,
-          averageScorePercent: avgPercent,
-          lastActiveAt: sortedSubs[0]?.submitted_at,
-        };
+      const studentList = (membersRes.data || []) as unknown as ProgressStudentRow[];
+      const computed = computeClassroomProgress({
+        students: studentList,
+        assignmentIds,
+        submissions: submissionsData,
+        grades: gradesData,
+        groupMembers: groupMemberRows,
       });
 
-      const totalSubmissions = submissionsData.length;
-      const completionRatePercent = totalPossibleSubmissions > 0
-        ? Math.round((totalSubmissions / totalPossibleSubmissions) * 100)
-        : 0;
-
-      const studentAvgs = studentBreakdown.map((s) => s.averageScorePercent).filter((p) => p > 0);
-      const averageClassScorePercent = studentAvgs.length > 0
-        ? Math.round(studentAvgs.reduce((a, b) => a + b, 0) / studentAvgs.length)
-        : 0;
+      const totalStudents = studentList.length;
+      const totalAssignments = assignmentIds.length;
 
       return {
         success: true,
@@ -346,10 +506,10 @@ export async function generateClassroomProgressReport(
           classroomName: access.classroom.name,
           totalStudents,
           totalAssignments,
-          totalSubmissions,
-          completionRatePercent,
-          averageClassScorePercent,
-          studentBreakdown,
+          totalSubmissions: computed.totalSubmissions,
+          completionRatePercent: computed.completionRatePercent,
+          averageClassScorePercent: computed.averageClassScorePercent,
+          studentBreakdown: computed.studentBreakdown,
           generatedAt: now,
         },
       };

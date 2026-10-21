@@ -18,9 +18,18 @@ export async function GET() {
 
   const admin = createAdminClient();
   if (!admin) {
+    // Every stat the page renders must be present here, otherwise the cards
+    // show "undefined" instead of a number.
     return NextResponse.json({
       success: true,
-      stats: { enrolledCount: 0, pendingAssignmentsCount: 0, unreadCount: 0 },
+      stats: {
+        enrolledCount: 0,
+        pendingAssignmentsCount: 0,
+        unreadCount: 0,
+        completedLessonsCount: 0,
+        solvedProblemsCount: 0,
+        savedProjectsCount: 0,
+      },
       classrooms: [],
       upcomingDeadlines: [],
       recentGrades: [],
@@ -154,7 +163,14 @@ export async function GET() {
       .order("created_at", { ascending: false })
       .limit(10);
 
-    const unreadCount = (notificationsData || []).filter((n: Record<string, unknown>) => !n.is_read).length;
+    // The unread badge must be the real number of unread notifications, not
+    // the number of unread ones inside the 10 most recent rows. Deriving it
+    // from the limited list capped the badge at 10.
+    const { count: unreadCount } = await admin
+      .from("classroom_notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", user.id)
+      .eq("is_read", false);
 
     // 5. Format classrooms list
     const classrooms = (memberRows || []).map((m: Record<string, unknown>) => {
@@ -172,7 +188,14 @@ export async function GET() {
     // 6. Persistent learning & project metrics
     const [lessonsRes, practiceRes, projectsRes] = await Promise.all([
       admin.from("learn_lesson_completions").select("*", { count: "exact", head: true }).eq("user_id", user.id),
-      admin.from("practice_progress").select("*", { count: "exact", head: true }).eq("user_id", user.id),
+      // "Practice Solved" must count SOLVED questions. practice_progress has a
+      // row for every question the student has started, so without this filter
+      // the card counted attempts as well.
+      admin
+        .from("practice_progress")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_completed", true),
       admin.from("projects").select("*", { count: "exact", head: true }).eq("owner_id", user.id),
     ]);
 
@@ -181,7 +204,7 @@ export async function GET() {
       stats: {
         enrolledCount: classrooms.length,
         pendingAssignmentsCount,
-        unreadCount,
+        unreadCount: unreadCount ?? 0,
         completedLessonsCount: lessonsRes.count ?? 0,
         solvedProblemsCount: practiceRes.count ?? 0,
         savedProjectsCount: projectsRes.count ?? 0,
