@@ -1,23 +1,15 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
   listClassroomRoster,
   removeClassroomMember,
 } from "@/lib/classroom/classroomService";
+import { classroomRequestUser } from "@/lib/classroom/requestUser";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ classId: string }> }
 ) {
-  let user = null;
-  try {
-    const supabase = await createServerClient();
-    if (supabase) {
-      user = (await supabase.auth.getUser()).data.user;
-    }
-  } catch {
-    // Unauthenticated
-  }
+  const user = await classroomRequestUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized. Sign in required." }, { status: 401 });
@@ -40,15 +32,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ classId: string }> }
 ) {
-  let user = null;
-  try {
-    const supabase = await createServerClient();
-    if (supabase) {
-      user = (await supabase.auth.getUser()).data.user;
-    }
-  } catch {
-    // Unauthenticated
-  }
+  const user = await classroomRequestUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized. Sign in required." }, { status: 401 });

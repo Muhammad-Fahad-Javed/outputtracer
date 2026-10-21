@@ -38,6 +38,7 @@ export default function ClassroomHubPage() {
   const [joinError, setJoinError] = useState<string | null>(null);
 
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [localPreview, setLocalPreview] = useState(false);
 
   const loadData = async () => {
     try {
@@ -52,7 +53,11 @@ export default function ClassroomHubPage() {
         setTeaching(data.teaching || []);
         setEnrolled(data.enrolled || []);
         setCapabilities(data.capabilities);
-        if (data.teaching?.length > 0 && data.enrolled?.length === 0) {
+        setLocalPreview(Boolean(data.localPreview));
+        if (
+          data.capabilities?.canCreateClassroom &&
+          (data.enrolled?.length ?? 0) === 0
+        ) {
           setActiveTab("teaching");
         }
       }
@@ -81,7 +86,11 @@ export default function ClassroomHubPage() {
           setTeaching(data.teaching || []);
           setEnrolled(data.enrolled || []);
           setCapabilities(data.capabilities);
-          if (data.teaching?.length > 0 && data.enrolled?.length === 0) {
+          setLocalPreview(Boolean(data.localPreview));
+          if (
+            data.capabilities?.canCreateClassroom &&
+            (data.enrolled?.length ?? 0) === 0
+          ) {
             setActiveTab("teaching");
           }
         }
@@ -176,6 +185,12 @@ export default function ClassroomHubPage() {
               }`}
             >
               {feedback.message}
+            </div>
+          )}
+
+          {localPreview && (
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-xs font-medium text-amber-950">
+              Local teacher preview. This machine is signed in as a sample teacher so the dashboard can be opened without Supabase. Connect accounts before using real classes.
             </div>
           )}
 
