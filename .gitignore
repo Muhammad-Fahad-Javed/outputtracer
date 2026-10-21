@@ -48,3 +48,7 @@ next-env.d.ts
 compile-error.txt
 /test.cpp
 
+# local archives and one-off source backups (not part of the app)
+*.zip
+*.backup
+
