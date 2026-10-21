@@ -35,9 +35,22 @@ if (
   );
 }
 
+// Dev-only. The IDE is loaded as a separate browser chunk. When the page is
+// opened through a cloud preview host, Next.js otherwise rejects /_next
+// assets and the homepage stays on "Loading OutputTracer IDE…".
+// Wildcards match subdomains only. Override with ALLOWED_DEV_ORIGINS.
+const allowedDevOrigins = [
+  "**.agent.cvm.dev",
+  ...(process.env.ALLOWED_DEV_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+];
+
 const nextConfig: NextConfig = {
   deploymentId,
   distDir: rawDistDir,
+  allowedDevOrigins,
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders() }];
