@@ -9,6 +9,7 @@ import {
   unsandboxedExecutionAllowed,
   unsandboxedTraceAllowed,
   isolationPermitsUntrustedExecution,
+  effectiveProcessLimit,
   type IsolationLevel,
 } from "./sandbox";
 
@@ -43,6 +44,25 @@ describe("sanitizedChildEnv", () => {
 describe("selectIsolation", () => {
   it("returns a valid isolation level", async () => {
     expect(LEVELS).toContain(await selectIsolation());
+  });
+});
+
+describe("effectiveProcessLimit", () => {
+  it("adds the configured allowance on top of the uid's ambient task count", () => {
+    // A CI runner or PM2 host already owns more tasks than the old absolute
+    // ceiling of 64, which made every g++ fork fail (and GCC retry for ~15s).
+    expect(effectiveProcessLimit(80, 64)).toBe(144);
+    expect(effectiveProcessLimit(600, 32)).toBe(632);
+  });
+
+  it("is always above the ambient count so trusted tools can fork", () => {
+    expect(effectiveProcessLimit(0, 32)).toBe(32);
+    expect(effectiveProcessLimit(500, 1)).toBe(501);
+  });
+
+  it("falls back to a usable minimum for invalid input", () => {
+    expect(effectiveProcessLimit(Number.NaN, 0)).toBe(1);
+    expect(effectiveProcessLimit(-10, Number.POSITIVE_INFINITY)).toBe(1);
   });
 });
 

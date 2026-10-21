@@ -177,24 +177,87 @@ export async function describeIsolation(): Promise<IsolationLevel> {
   return selectIsolation();
 }
 
+// RLIMIT_NPROC is enforced per *real user id*, and it counts every task the
+// uid owns — including the Node server, its worker/test processes and their
+// threads — not just the processes one request creates. Treating the
+// configured value as an absolute ceiling is therefore wrong: on a busy host
+// (a GitHub Actions runner running several vitest workers, or a production
+// box with PM2) the uid can already own more tasks than the ceiling, so
+// fork() fails with EAGAIN before the compiler can even start cc1plus. g++
+// retries vfork() with exponential backoff (~15s) in that case, which is
+// exactly what made every compile hit our 10s compile timeout in CI.
+//
+// The configured value is the number of *additional* tasks an execution may
+// create; add the ambient count so the ceiling is always above what is
+// already running.
+export function effectiveProcessLimit(ambientTasks: number, allowedExtra: number): number {
+  const ambient =
+    Number.isFinite(ambientTasks) && ambientTasks > 0 ? Math.floor(ambientTasks) : 0;
+  const extra =
+    Number.isFinite(allowedExtra) && allowedExtra > 0 ? Math.floor(allowedExtra) : 1;
+  return ambient + extra;
+}
+
+const TASK_COUNT_TTL_MS = 1000;
+let taskCountCache: { count: number; at: number } | null = null;
+
+// Count this uid's tasks (processes *and* threads, because RLIMIT_NPROC counts
+// threads too) from /proc. Returns null when it cannot be determined, in which
+// case the caller leaves RLIMIT_NPROC alone rather than risking a ceiling
+// below the ambient count.
+async function countTasksForCurrentUser(): Promise<number | null> {
+  if (os.platform() !== "linux" || typeof process.getuid !== "function") return null;
+
+  const now = Date.now();
+  if (taskCountCache && now - taskCountCache.at < TASK_COUNT_TTL_MS) {
+    return taskCountCache.count;
+  }
+
+  const uid = process.getuid();
+  let entries: string[];
+  try {
+    entries = await fs.readdir("/proc");
+  } catch {
+    return null;
+  }
+
+  let total = 0;
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      const status = await fs.readFile(`/proc/${entry}/status`, "utf8");
+      const uidMatch = /^Uid:\s+(\d+)/m.exec(status);
+      if (!uidMatch || Number(uidMatch[1]) !== uid) continue;
+      const threadsMatch = /^Threads:\s+(\d+)/m.exec(status);
+      total += threadsMatch ? Number(threadsMatch[1]) : 1;
+    } catch {
+      // The process exited while we were scanning /proc; ignore it.
+    }
+  }
+
+  if (total === 0) return null;
+  taskCountCache = { count: total, at: Date.now() };
+  return total;
+}
+
 function prlimitPrefix(
   exePath: string,
   exeArgs: string[],
-  limits: ResourceLimits
+  limits: ResourceLimits,
+  processLimit: number | null
 ): { command: string; args: string[] } {
   const fileBytes = limits.maxFileBytes ?? execConfig.maxOutputFileBytes;
-  return {
-    command: "prlimit",
-    args: [
-      `--nproc=${limits.maxProcesses}`,
-      `--as=${limits.maxMemoryMb * 1024 * 1024}`,
-      `--cpu=${limits.maxCpuSeconds}`,
-      `--fsize=${fileBytes}`,
-      "--",
-      exePath,
-      ...exeArgs,
-    ],
-  };
+  const args: string[] = [];
+  if (processLimit !== null) args.push(`--nproc=${processLimit}`);
+  args.push(
+    `--as=${limits.maxMemoryMb * 1024 * 1024}`,
+    `--cpu=${limits.maxCpuSeconds}`,
+    `--fsize=${fileBytes}`,
+    "--",
+    exePath,
+    ...exeArgs
+  );
+  return { command: "prlimit", args };
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -313,12 +376,15 @@ export async function planSandboxedCommand(
 
   const usePrlimit = await hasPrlimit();
   const isolation = await selectIsolation();
+  const ambientTasks = usePrlimit ? await countTasksForCurrentUser() : null;
+  const processLimit =
+    ambientTasks === null ? null : effectiveProcessLimit(ambientTasks, limits.maxProcesses);
 
   const hostInner = usePrlimit
-    ? prlimitPrefix(hostCommand, hostArgs, limits)
+    ? prlimitPrefix(hostCommand, hostArgs, limits, processLimit)
     : { command: hostCommand, args: hostArgs };
   const sandboxInner = usePrlimit
-    ? prlimitPrefix(sandboxCommand, sandboxArgs, limits)
+    ? prlimitPrefix(sandboxCommand, sandboxArgs, limits, processLimit)
     : { command: sandboxCommand, args: sandboxArgs };
 
   if (isolation === "bwrap") {
