@@ -26,6 +26,7 @@ export async function POST(request: Request) {
     action?: string;
     sessionId?: string;
     source?: string;
+    code?: string;
     stdin?: string;
     limit?: number;
   };
@@ -39,7 +40,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const { action = "assemble", sessionId, source, stdin, limit } = body;
+  const { action = "assemble", sessionId, stdin, limit } = body;
+  const source = body.source ?? body.code;
 
   if (source && typeof source === "string" && Buffer.byteLength(source, "utf8") > MAX_ASM_SOURCE_BYTES) {
     return NextResponse.json(
@@ -135,6 +137,10 @@ export async function POST(request: Request) {
       }
 
       case "run": {
+        if (typeof stdin === "string") {
+          session.stdin = stdin;
+          session.cpu.stdinBuffer = stdin;
+        }
         const steps = session.run(limit || 2000);
         const status = session.getStatus();
         return NextResponse.json({

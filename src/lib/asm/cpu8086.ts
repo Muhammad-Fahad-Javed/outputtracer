@@ -1,8 +1,6 @@
 // Accurate 8086 CPU emulator with DOS INT 21h compatibility and execution tracking
 
 import {
-  CpuRegisters,
-  CpuFlags,
   CpuStateSnapshot,
   MemoryAccess,
   StackChange,
@@ -121,6 +119,18 @@ export class Cpu8086 {
     for (let i = 0; i < binary.length; i++) {
       this.memory[(startPhysical + i) & 0xfffff] = binary[i];
     }
+  }
+
+  public feedStdin(text: string) {
+    this.stdinBuffer += text;
+  }
+
+  public getStdout(): string {
+    return this.stdout;
+  }
+
+  public getExitCode(): number | undefined {
+    return this.exitCode;
   }
 
   public physical(segment: number, offset: number): number {
@@ -1438,6 +1448,31 @@ export class Cpu8086 {
           } else {
             this.al = 0;
           }
+          break;
+        }
+        case 0x0a: { // Buffered Keyboard Input DS:DX
+          const maxLen = this.readByte(this.ds, this.dx);
+          if (maxLen === 0) break;
+          let inputLine = "";
+          const newlineIdx = this.stdinBuffer.indexOf("\n");
+          if (newlineIdx !== -1) {
+            inputLine = this.stdinBuffer.slice(0, newlineIdx);
+            this.stdinBuffer = this.stdinBuffer.slice(newlineIdx + 1);
+          } else if (this.stdinBuffer.length > 0) {
+            inputLine = this.stdinBuffer;
+            this.stdinBuffer = "";
+          }
+          if (inputLine.endsWith("\r")) {
+            inputLine = inputLine.slice(0, -1);
+          }
+          const actualChars = inputLine.slice(0, Math.max(0, maxLen - 1));
+          const actualLen = actualChars.length;
+          this.writeByte(this.ds, (this.dx + 1) & 0xffff, actualLen);
+          for (let i = 0; i < actualLen; i++) {
+            this.writeByte(this.ds, (this.dx + 2 + i) & 0xffff, actualChars.charCodeAt(i));
+          }
+          this.writeByte(this.ds, (this.dx + 2 + actualLen) & 0xffff, 0x0d);
+          this.stdout += actualChars + "\n";
           break;
         }
         case 0x4c: { // Terminate Process with Return Code AL

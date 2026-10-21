@@ -1,18 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { compileAndRun } from "./cppRunner";
-import { execFile } from "child_process";
-import { promisify } from "util";
+import { probeSandboxTools, skipUnless } from "./testTools";
 
-const execFileAsync = promisify(execFile);
-
-async function hasGxx(): Promise<boolean> {
-  try {
-    await execFileAsync("g++", ["--version"], { timeout: 3000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
+// Probe the compiler once. When it is missing these tests are SKIPPED (not
+// silently passed); set REQUIRE_SANDBOX_TOOLS=1 to make them fail instead.
+const tools = await probeSandboxTools();
 
 describe("compileAndRun", () => {
   it("rejects path-like filenames without spawning the compiler", async () => {
@@ -28,30 +20,38 @@ describe("compileAndRun", () => {
     expect(result.status).toBe("invalid_request");
   });
 
-  it("compiles and runs a hello-world when g++ is installed", async () => {
-    if (!(await hasGxx())) return;
-    const result = await compileAndRun({
-      source: `#include <iostream>
+  it.skipIf(skipUnless(tools.compiler))(
+    "compiles and runs a hello-world when g++ is installed",
+    async () => {
+      const result = await compileAndRun({
+        source: `#include <iostream>
 int main() { std::cout << "ok"; return 0; }`,
-    });
-    expect(result.status).toBe("success");
-    expect(result.stdout).toBe("ok");
-  });
+      });
+      expect(result.status).toBe("success");
+      expect(result.stdout).toBe("ok");
+    }
+  );
 
-  it("times out infinite loops", async () => {
-    if (!(await hasGxx())) return;
-    const result = await compileAndRun({
-      source: "int main() { for(;;) {} }",
-    });
-    expect(result.status).toBe("timeout");
-  }, 20_000);
+  it.skipIf(skipUnless(tools.compiler))(
+    "times out infinite loops",
+    async () => {
+      const result = await compileAndRun({
+        source: "int main() { for(;;) {} }",
+      });
+      expect(result.status).toBe("timeout");
+    },
+    20_000
+  );
 
-  it("kills programs that spam stdout", async () => {
-    if (!(await hasGxx())) return;
-    const result = await compileAndRun({
-      source: `#include <iostream>
+  it.skipIf(skipUnless(tools.compiler))(
+    "kills programs that spam stdout",
+    async () => {
+      const result = await compileAndRun({
+        source: `#include <iostream>
 int main() { while (true) std::cout << "aaaaaaaaaaaaaaaaaaaaaaaa"; }`,
-    });
-    expect(["output_limit", "timeout"]).toContain(result.status);
-  }, 20_000);
+      });
+      expect(["output_limit", "timeout"]).toContain(result.status);
+    },
+    20_000
+  );
 });

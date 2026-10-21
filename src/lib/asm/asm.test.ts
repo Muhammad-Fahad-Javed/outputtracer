@@ -434,4 +434,85 @@ hlt            ; line 6
     sessionManager.deleteSession(sessionA.id);
     sessionManager.deleteSession(sessionB.id);
   });
+
+  // Test 17: Full ASM_SAMPLE with non-colon labels, times directive, and INT 21h AH=0Ah
+  it("17. Non-colon labels, times directive, and INT 21h AH=0Ah buffered input", () => {
+    const src = `
+      org 100h
+      section .text
+      start:
+          mov dx, prompt
+          mov ah, 09h
+          int 21h
+
+          mov dx, in_buf
+          mov ah, 0Ah
+          int 21h
+
+          mov ax, 4C00h
+          int 21h
+
+      section .data
+      prompt  db 'enter text: $'
+      in_buf  db 100, 0
+              times 100 db 0
+    `;
+    const asm = assemble8086(src);
+    expect(asm.success).toBe(true);
+    expect(asm.diagnostics.length).toBe(0);
+
+    const cpu = new Cpu8086();
+    cpu.loadBinary(asm.binary, 0x1000, 0x0100);
+    cpu.feedStdin("OutputTracer Assembly User\n");
+
+    while (!cpu.terminated && !cpu.halted && cpu.instructionCount < 50) {
+      cpu.step();
+    }
+
+    expect(cpu.terminated).toBe(true);
+    expect(cpu.exitCode).toBe(0);
+    expect(cpu.stdout).toContain("enter text: OutputTracer Assembly User");
+
+    // Check buffer struct at in_buf: byte 0=100, byte 1=actual length (26)
+    // DS:dx had in_buf address
+    const actualLen = cpu.readByte(0x1000, cpu.dx + 1);
+    expect(actualLen).toBe("OutputTracer Assembly User".length);
+  });
+
+  // Test 18: Phase 5 Arithmetic & Loop Execution
+  it("18. Arithmetic loop (sum 1..5)", () => {
+    const src = `
+      org 100h
+      mov cx, 5
+      xor ax, ax
+    loop_start:
+      add ax, cx
+      dec cx
+      jnz loop_start
+      hlt
+    `;
+    const asm = assemble8086(src);
+    expect(asm.success).toBe(true);
+
+    const cpu = new Cpu8086();
+    cpu.loadBinary(asm.binary, 0x1000, 0x0100);
+    while (!cpu.halted && cpu.instructionCount < 50) {
+      cpu.step();
+    }
+    expect(cpu.ax).toBe(15); // 5+4+3+2+1 = 15
+    expect(cpu.cx).toBe(0);
+  });
+
+  // Test 19: Phase 5 Invalid Assembly reports clean diagnostic
+  it("19. Invalid assembly syntax reports error diagnostic", () => {
+    const src = `
+      org 100h
+      invalid_opcode_xyz ax, bx
+      mov ax, [invalid syntax
+    `;
+    const asm = assemble8086(src);
+    expect(asm.success).toBe(false);
+    expect(asm.diagnostics.length).toBeGreaterThan(0);
+    expect(asm.diagnostics[0].type).toBe("error");
+  });
 });

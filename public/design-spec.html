@@ -1,0 +1,2338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OutputTracer — Design System & 6 Artboards Specification</title>
+  <!-- IBM Plex Sans for UI & JetBrains Mono for Code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <style>
+    /* CSS Reset & Design System Tokens */
+    :root {
+      --bg-canvas: #0d1117;
+      --bg-editor: #1e1e1e;
+      --bg-panel: #141414;
+      --bg-surface: #202020;
+      --bg-hover: #2a2a2a;
+      --border-dark: #333333;
+      --border-light: #444444;
+      --action-green: #238636;
+      --action-green-hover: #2ea043;
+      --accent-blue: #3794ff;
+      --accent-blue-hover: #1e70d4;
+      --step-yellow: #ffd166;
+      --step-yellow-bg: rgba(255, 209, 102, 0.18);
+      --step-yellow-gutter: #ffd166;
+      --danger-red: #f85149;
+      --text-main: #e6edf3;
+      --text-muted: #9da7b3;
+      --text-hint: #abb2bf;
+      --status-blue: #007acc;
+      --status-text: #ffffff;
+      
+      /* Syntax Tokens */
+      --syn-keyword: #569cd6;
+      --syn-string: #ce9178;
+      --syn-func: #dcdcaa;
+      --syn-number: #b5cea8;
+      --syn-prep: #c586c0;
+      --syn-comment: #8b949e;
+      --syn-type: #4ec9b0;
+      --syn-ident: #9cdcfe;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background-color: var(--bg-canvas);
+      color: var(--text-main);
+      font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    code, pre, .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Slim dark custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #141414;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #333333;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #444444;
+    }
+
+    /* Master Canvas Controller Bar */
+    .master-header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 12px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+
+    .master-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge {
+      background: #238636;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .canvas-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-pill {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn-pill:hover, .btn-pill.active {
+      background: #30363d;
+      color: #fff;
+      border-color: #8b949e;
+    }
+    .btn-pill.active {
+      background: #1f6feb;
+      border-color: #388bfd;
+    }
+
+    /* Canvas Grid with 80px Gaps */
+    .artboard-canvas {
+      padding: 60px 40px 100px;
+      display: flex;
+      flex-direction: column;
+      gap: 80px;
+      align-items: center;
+      width: 100%;
+      transition: transform 0.2s ease-out;
+      transform-origin: top center;
+    }
+
+    .canvas-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 80px;
+      justify-content: center;
+      width: 100%;
+      max-width: 3200px;
+    }
+
+    .artboard-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .artboard-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 4px;
+    }
+    .artboard-tag {
+      font-size: 13px;
+      font-weight: 600;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .artboard-tag span {
+      color: #58a6ff;
+    }
+    .artboard-dim {
+      font-size: 12px;
+      color: #6e7681;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* THE IDENTICAL INTERFACE SHELL (1440px wide) */
+    .app-shell {
+      width: 1440px;
+      max-width: 100%;
+      background: var(--bg-editor);
+      border: 1px solid var(--border-dark);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+      position: relative;
+    }
+
+    /* 1.a) Top Navigation Bar (48px) */
+    .top-nav {
+      height: 48px;
+      background: #181818;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-size: 14px;
+      user-select: none;
+    }
+    .nav-left, .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    .brand {
+      font-weight: 700;
+      font-size: 15px;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: -0.01em;
+      margin-right: 6px;
+    }
+    .brand-icon {
+      color: var(--accent-blue);
+    }
+    .nav-menu-btn {
+      color: var(--text-hint);
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    .nav-menu-btn:hover {
+      background: var(--bg-hover);
+      color: #fff;
+    }
+    .nav-link {
+      color: var(--text-hint);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .nav-link:hover {
+      color: #fff;
+      background: var(--bg-hover);
+    }
+    .btn-sign-in {
+      border: 1px solid var(--accent-blue);
+      color: var(--accent-blue);
+      background: transparent;
+      padding: 5px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-sign-in:hover {
+      background: var(--accent-blue);
+      color: #fff;
+    }
+
+    /* 1.b) Toolbar (60px) - Buttons have icon AND text label, min 44px touch target */
+    .toolbar {
+      height: 60px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      user-select: none;
+    }
+    .lang-select-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .lang-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .lang-dropdown {
+      height: 44px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 0 14px;
+      outline: none;
+      cursor: pointer;
+      min-width: 220px;
+    }
+    .lang-dropdown:focus {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 2px rgba(55, 148, 255, 0.25);
+    }
+    
+    .btn-run {
+      height: 44px;
+      background: var(--action-green);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      padding: 0 18px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s;
+    }
+    .btn-run:hover {
+      background: var(--action-green-hover);
+    }
+    .f5-badge {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    .btn-stop {
+      height: 44px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-light);
+      color: var(--danger-red);
+      border-radius: 6px;
+      padding: 0 16px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.15s;
+    }
+    .btn-stop:hover {
+      background: rgba(248, 81, 73, 0.15);
+      border-color: var(--danger-red);
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 30px;
+      background: var(--border-dark);
+      margin: 0 4px;
+    }
+
+    .btn-tool {
+      height: 44px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-hint);
+      border-radius: 6px;
+      padding: 0 12px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.15s;
+    }
+    .btn-tool:hover {
+      background: var(--bg-surface);
+      color: #ffffff;
+      border-color: var(--border-dark);
+    }
+
+    /* 1.c) File Tab Bar (42px) */
+    .tab-bar {
+      height: 42px;
+      background: #181818;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px;
+      user-select: none;
+    }
+    .file-tabs {
+      display: flex;
+      align-items: center;
+      height: 100%;
+    }
+    .file-tab {
+      height: 100%;
+      background: var(--bg-editor);
+      border-right: 1px solid var(--border-dark);
+      border-top: 2px solid var(--accent-blue);
+      color: #ffffff;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-add-tab {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      margin-left: 4px;
+      transition: background 0.15s;
+    }
+    .btn-add-tab:hover {
+      background: var(--bg-hover);
+      color: #fff;
+    }
+
+    /* 1.d) Code Editor */
+    .editor-container {
+      flex: 1;
+      min-height: 220px;
+      background: var(--bg-editor);
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+    .gutter {
+      width: 58px;
+      background: var(--bg-editor);
+      border-right: 1px solid #2d2d2d;
+      padding: 12px 0;
+      color: #6e7681;
+      font-size: 15px;
+      line-height: 26px;
+      text-align: right;
+      user-select: none;
+    }
+    .gutter-line {
+      height: 26px;
+      padding-right: 14px;
+      position: relative;
+    }
+    .gutter-line.active-step {
+      color: var(--step-yellow);
+      font-weight: 700;
+    }
+    .gutter-line.active-step::before {
+      content: "▶";
+      position: absolute;
+      left: 10px;
+      font-size: 11px;
+      color: var(--step-yellow-gutter);
+    }
+    .editor-code {
+      flex: 1;
+      padding: 12px 18px;
+      font-size: 15px;
+      line-height: 26px;
+      color: #d4d4d4;
+      overflow-y: auto;
+      white-space: pre;
+    }
+    .code-line {
+      height: 26px;
+      display: block;
+      border-radius: 2px;
+    }
+    .code-line.active-step-line {
+      background: var(--step-yellow-bg);
+      border-left: 3px solid var(--step-yellow);
+      margin-left: -18px;
+      padding-left: 15px;
+    }
+    /* Syntax highlighting classes */
+    .kwd { color: var(--syn-keyword); font-weight: 500; }
+    .str { color: var(--syn-string); }
+    .fn { color: var(--syn-func); }
+    .num { color: var(--syn-number); }
+    .prep { color: var(--syn-prep); }
+    .comment { color: var(--syn-comment); font-style: italic; }
+    .type { color: var(--syn-type); }
+    .ident { color: var(--syn-ident); }
+
+    /* 1.e) Drag Handle (12px) */
+    .drag-handle {
+      height: 12px;
+      background: #181818;
+      border-top: 1px solid var(--border-dark);
+      border-bottom: 1px solid var(--border-dark);
+      cursor: row-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .drag-handle:hover {
+      background: #252525;
+    }
+    .drag-grip {
+      width: 44px;
+      height: 4px;
+      border-radius: 2px;
+      background: #444444;
+    }
+
+    /* 1.f) Bottom Panel (default 300px or 462px for DOSBox debugger) */
+    .bottom-panel {
+      background: var(--bg-panel);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .bottom-panel-header {
+      height: 44px;
+      background: #1a1a1a;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      user-select: none;
+    }
+    .bottom-tabs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 100%;
+    }
+    .panel-tab {
+      height: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-hint);
+      padding: 0 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .panel-tab:hover {
+      color: #fff;
+    }
+    .panel-tab.active {
+      color: #ffffff;
+      border-bottom-color: var(--accent-blue);
+      background: #202020;
+    }
+
+    /* Download Controls (44px target) */
+    .download-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .download-format-select {
+      height: 32px;
+      background: #202020;
+      border: 1px solid var(--border-light);
+      border-radius: 4px;
+      color: #ffffff;
+      font-size: 12px;
+      font-family: inherit;
+      padding: 0 8px;
+      outline: none;
+      cursor: pointer;
+    }
+    .btn-download {
+      height: 32px;
+      background: #202020;
+      border: 1px solid var(--border-light);
+      color: #ffffff;
+      border-radius: 4px;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .btn-download:hover {
+      background: #2a2a2a;
+      border-color: #555555;
+    }
+    .btn-download.primary {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: #ffffff;
+    }
+    .btn-download.primary:hover {
+      background: var(--accent-blue-hover);
+    }
+
+    /* Bottom Panel Content: DEBUG VIEW */
+    .debug-view {
+      flex: 1;
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      line-height: 22px;
+    }
+    .terminal-output {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .out-line { color: #d4d4d4; }
+    .out-input { color: var(--accent-blue); font-weight: 600; }
+    .out-exit { color: #8b949e; margin-top: 8px; }
+
+    .terminal-input-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #181818;
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 8px 14px;
+      margin-top: 12px;
+    }
+    .terminal-prompt {
+      color: var(--action-green);
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .terminal-input-field {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      outline: none;
+    }
+    .terminal-input-field::placeholder {
+      color: #6e7681;
+    }
+
+    /* Bottom Panel Content: TRACE VIEW */
+    .trace-view {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .trace-summary-bar {
+      padding: 8px 16px;
+      background: #181818;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--text-hint);
+    }
+    .trace-table-container {
+      flex: 1;
+      overflow-y: auto;
+    }
+    .trace-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .trace-table th {
+      position: sticky;
+      top: 0;
+      background: #1a1a1a;
+      border-bottom: 2px solid var(--border-dark);
+      padding: 8px 12px;
+      color: #8b949e;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      z-index: 2;
+    }
+    .trace-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #262626;
+      color: #d4d4d4;
+    }
+    .trace-table tr:hover {
+      background: #1e1e1e;
+      cursor: pointer;
+    }
+    .trace-table tr.selected {
+      background: rgba(255, 209, 102, 0.14) !important;
+      border-left: 4px solid var(--step-yellow);
+    }
+    .trace-table tr.selected td {
+      color: #ffffff;
+      font-weight: 500;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(35, 134, 54, 0.22);
+      border: 1px solid rgba(46, 160, 67, 0.45);
+      color: #7ee787;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      margin-right: 4px;
+    }
+    .chip-empty {
+      color: #6e7681;
+    }
+
+    /* DOSBox Specific Views */
+    /* DOSBox Window (Screen 5) */
+    .dosbox-window {
+      flex: 1;
+      background: #000000;
+      display: flex;
+      flex-direction: column;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .dosbox-titlebar {
+      background: #0000aa;
+      color: #ffffff;
+      padding: 4px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .dosbox-hint {
+      color: #ffff55;
+      font-weight: normal;
+    }
+    .dosbox-screen {
+      flex: 1;
+      padding: 16px;
+      color: #aaaaaa;
+      font-size: 14px;
+      line-height: 22px;
+    }
+    .dos-cursor {
+      display: inline-block;
+      width: 9px;
+      height: 16px;
+      background: #aaaaaa;
+      vertical-align: sub;
+      animation: dosBlink 1s infinite step-start;
+    }
+    @keyframes dosBlink {
+      50% { opacity: 0; }
+    }
+
+    /* DOSBox Debugger Replica (Screen 6) */
+    .dos-debugger-container {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 820px 1fr;
+      background: #000000;
+      color: #aaaaaa;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 16px;
+      border-top: 1px solid #333;
+    }
+    .dos-debugger-left {
+      border-right: 1px solid #333;
+      display: flex;
+      flex-direction: column;
+      background: #000000;
+    }
+    .dos-reg-box {
+      display: grid;
+      grid-template-columns: 500px 1fr;
+      padding: 8px 12px;
+      border-bottom: 1px solid #333;
+      background: #0a0a0a;
+    }
+    .reg-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2px 14px;
+    }
+    .reg-item {
+      display: flex;
+      justify-content: space-between;
+    }
+    .reg-label { color: #888888; }
+    .reg-val { color: #55ff55; font-weight: 600; }
+    .flags-box {
+      border-left: 1px solid #333;
+      padding-left: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .flags-row {
+      display: flex;
+      gap: 6px;
+      font-size: 11px;
+    }
+    .flag-active { color: #55ff55; font-weight: 700; }
+    .flag-inactive { color: #555555; }
+
+    .dos-cmd-box {
+      padding: 4px 12px;
+      background: #111;
+      border-bottom: 1px solid #333;
+      color: #fff;
+    }
+    .dos-cmd-box span { color: #55ff55; font-weight: bold; }
+
+    .dos-middle-split {
+      display: grid;
+      grid-template-columns: 460px 1fr;
+      flex: 1;
+      border-bottom: 1px solid #333;
+    }
+    .dos-disasm {
+      padding: 8px 12px;
+      overflow-y: auto;
+      border-right: 1px solid #333;
+    }
+    .disasm-line {
+      display: flex;
+      gap: 12px;
+      padding: 2px 4px;
+    }
+    .disasm-line.current-ins {
+      background: #aaaaaa;
+      color: #000000;
+      font-weight: 700;
+    }
+    .disasm-line.current-ins .ins-addr { color: #000; }
+    .ins-addr { color: #55ff55; }
+
+    .dos-mem1 {
+      padding: 8px 12px;
+      overflow-y: auto;
+    }
+
+    .dos-mem2 {
+      height: 90px;
+      padding: 6px 12px;
+      border-bottom: 1px solid #333;
+      background: #080808;
+      overflow-y: auto;
+    }
+
+    /* DOS Function Key Bar (10 clickable buttons) */
+    .dos-fn-bar {
+      height: 30px;
+      background: #0000aa;
+      display: flex;
+      border-top: 1px solid #000088;
+    }
+    .dos-fn-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      border-right: 1px solid #000088;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .dos-fn-btn:hover {
+      background: #2222dd;
+    }
+    .fn-num {
+      color: #ffff55;
+      font-weight: 700;
+    }
+
+    /* DOS Visual Explanations Panel (Right side) */
+    .dos-visual-panel {
+      padding: 14px 16px;
+      background: #141414;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      overflow-y: auto;
+      font-family: 'IBM Plex Sans', sans-serif;
+    }
+    .vis-card {
+      background: #1c1c1c;
+      border: 1px solid #2e2e2e;
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .vis-card-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .vis-card-content {
+      font-size: 13px;
+      color: #e6edf3;
+    }
+    .flags-toggle-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+    .flag-toggle-pill {
+      background: #242424;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 11px;
+      display: flex;
+      justify-content: space-between;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .flag-toggle-pill.active {
+      background: rgba(35, 134, 54, 0.25);
+      border-color: #238636;
+      color: #7ee787;
+    }
+
+    /* 1.g) Status Bar (32px, Blue) */
+    .status-bar {
+      height: 32px;
+      background: var(--status-blue);
+      color: var(--status-text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-size: 14px; /* Minimum 14px requirement */
+      font-weight: 500;
+      user-select: none;
+    }
+    .status-left, .status-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #3fb950;
+      box-shadow: 0 0 6px rgba(63, 185, 80, 0.6);
+    }
+    .status-divider {
+      opacity: 0.4;
+    }
+
+    /* Inline Stroke SVG icons */
+    .icon {
+      width: 16px;
+      height: 16px;
+      stroke-width: 2;
+      stroke: currentColor;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0;
+    }
+    .icon-sm {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* Modal / Inspector Drawer */
+    .interactive-toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1f6feb;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 9999;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- MASTER TOOLBAR -->
+  <header class="master-header">
+    <div class="master-title">
+      <svg class="icon" style="width: 22px; height: 22px; color: #3794ff;" viewBox="0 0 24 24">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+      <h1 style="font-size: 16px; font-weight: 700; letter-spacing: -0.01em;">OutputTracer — Design System Specification & 6 Artboards</h1>
+      <span class="badge">Phase 1 Design Spec</span>
+    </div>
+
+    <div class="canvas-controls">
+      <button class="btn-pill" onclick="setZoom(0.5)" id="zoom-50">50%</button>
+      <button class="btn-pill" onclick="setZoom(0.75)" id="zoom-75">75%</button>
+      <button class="btn-pill active" onclick="setZoom(1.0)" id="zoom-100">100% (1:1)</button>
+      <button class="btn-pill" onclick="filterArtboard('all')">Show All 6</button>
+      <button class="btn-pill" onclick="filterArtboard('cpp')">C++</button>
+      <button class="btn-pill" onclick="filterArtboard('py')">Python 3</button>
+      <button class="btn-pill" onclick="filterArtboard('asm')">NASM Assembly</button>
+    </div>
+  </header>
+
+  <!-- CANVAS WITH 80px GAPS -->
+  <main class="artboard-canvas" id="canvas">
+
+    <!-- ROW 1: C++ & PYTHON 3 (4 Artboards) -->
+    <section class="canvas-row" id="row-1">
+
+      <!-- ========================================================== -->
+      <!-- ARTBOARD 1: C++ - DEBUG (1440px wide x 900px tall) -->
+      <!-- ========================================================== -->
+      <article class="artboard-wrapper" data-lang="cpp">
+        <div class="artboard-meta">
+          <div class="artboard-tag">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+            Artboard 1: <span>C++ — Debug View</span>
+          </div>
+          <div class="artboard-dim">1440 × 900 px · Panel: 300px</div>
+        </div>
+
+        <div class="app-shell" style="height: 900px;">
+          <!-- 1.a) Top Nav (48px) -->
+          <nav class="top-nav">
+            <div class="nav-left">
+              <div class="brand">
+                <svg class="icon brand-icon" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                OutputTracer
+              </div>
+              <div class="nav-menu-btn">File <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+              <div class="nav-menu-btn">View <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+            </div>
+            <div class="nav-right">
+              <a href="#examples" class="nav-link">Examples</a>
+              <a href="#practice" class="nav-link">Practice</a>
+              <a href="#learn" class="nav-link">Learn</a>
+              <a href="#projects" class="nav-link">Projects</a>
+              <button class="btn-sign-in">Sign in</button>
+            </div>
+          </nav>
+
+          <!-- 1.b) Toolbar (60px) -->
+          <div class="toolbar">
+            <div class="lang-select-group">
+              <label class="lang-label" for="lang-select-1">Language</label>
+              <select id="lang-select-1" class="lang-dropdown">
+                <option selected>C++</option>
+                <option>Python 3</option>
+                <option>Assembly (NASM + DOSBox)</option>
+              </select>
+            </div>
+
+            <button class="btn-run">
+              <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run & Debug
+              <span class="f5-badge">F5</span>
+            </button>
+
+            <button class="btn-stop">
+              <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Stop
+            </button>
+
+            <div class="toolbar-divider"></div>
+
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> New</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg> Reset</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI Assist</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save</button>
+          </div>
+
+          <!-- 1.c) File Tab Bar (42px) -->
+          <div class="tab-bar">
+            <div class="file-tabs">
+              <div class="file-tab">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                main.cpp
+              </div>
+              <button class="btn-add-tab" aria-label="Add file"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+          </div>
+
+          <!-- 1.d) Code Editor (Fills remaining height) -->
+          <div class="editor-container">
+            <div class="gutter">
+              <div class="gutter-line">1</div><div class="gutter-line">2</div><div class="gutter-line">3</div><div class="gutter-line">4</div><div class="gutter-line">5</div>
+              <div class="gutter-line">6</div><div class="gutter-line">7</div><div class="gutter-line">8</div><div class="gutter-line">9</div><div class="gutter-line">10</div>
+              <div class="gutter-line">11</div><div class="gutter-line">12</div><div class="gutter-line">13</div><div class="gutter-line">14</div><div class="gutter-line">15</div>
+              <div class="gutter-line">16</div><div class="gutter-line">17</div><div class="gutter-line">18</div>
+            </div>
+            <div class="editor-code font-mono">
+<span class="code-line"><span class="prep">#include</span> <span class="str">&lt;iostream&gt;</span></span>
+<span class="code-line"><span class="prep">#include</span> <span class="str">&lt;cstring&gt;</span></span>
+<span class="code-line"><span class="prep">#include</span> <span class="str">&lt;cctype&gt;</span></span>
+<span class="code-line"></span>
+<span class="code-line"><span class="kwd">using</span> <span class="kwd">namespace</span> <span class="ident">std</span>;</span>
+<span class="code-line"></span>
+<span class="code-line"><span class="type">int</span> <span class="fn">main</span>() {</span>
+<span class="code-line">    <span class="kwd">const</span> <span class="type">int</span> <span class="ident">size</span> = <span class="num">100</span>;</span>
+<span class="code-line">    <span class="type">char</span> <span class="ident">text</span>[<span class="ident">size</span>];</span>
+<span class="code-line"></span>
+<span class="code-line">    <span class="ident">cout</span> &lt;&lt; <span class="str">"enter text that should be less than 100 character"</span> &lt;&lt; <span class="ident">endl</span>;</span>
+<span class="code-line">    <span class="ident">cin</span>.<span class="fn">getline</span>(<span class="ident">text</span>, <span class="ident">size</span>);</span>
+<span class="code-line"></span>
+<span class="code-line">    <span class="ident">cout</span> &lt;&lt; <span class="str">"You entered: "</span> &lt;&lt; <span class="ident">text</span> &lt;&lt; <span class="ident">endl</span>;</span>
+<span class="code-line">    <span class="kwd">return</span> <span class="num">0</span>;</span>
+<span class="code-line">}</span>
+            </div>
+          </div>
+
+          <!-- 1.e) Drag Handle (12px) -->
+          <div class="drag-handle"><div class="drag-grip"></div></div>
+
+          <!-- 1.f) Bottom Panel (300px default) - DEBUG TAB -->
+          <div class="bottom-panel" style="height: 300px;">
+            <div class="bottom-panel-header">
+              <div class="bottom-tabs">
+                <button class="panel-tab active"><svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Debug</button>
+                <button class="panel-tab"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Trace</button>
+              </div>
+
+              <!-- Download Output Control -->
+              <div class="download-controls">
+                <button class="btn-download"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download output</button>
+              </div>
+            </div>
+
+            <!-- Debug Tab Content -->
+            <div class="debug-view">
+              <div class="terminal-output">
+                <div class="out-line">enter text that should be less than 100 character</div>
+                <div class="out-input">hello</div>
+                <div class="out-line">You entered: hello</div>
+                <div class="out-exit font-mono">Program finished · exit code 0</div>
+              </div>
+
+              <div class="terminal-input-bar">
+                <span class="terminal-prompt">›</span>
+                <input type="text" class="terminal-input-field" placeholder="Type here when the program asks for input" disabled>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1.g) Status Bar (32px, Blue) -->
+          <footer class="status-bar">
+            <div class="status-left">
+              <span class="status-dot"></span>
+              <span>Finished · exit code 0</span>
+            </div>
+            <div class="status-right font-mono">
+              <span>18 lines</span>
+              <span class="status-divider">|</span>
+              <span>Ln 18, Col 2</span>
+              <span class="status-divider">|</span>
+              <span>C++</span>
+              <span class="status-divider">|</span>
+              <span>main.cpp</span>
+            </div>
+          </footer>
+        </div>
+      </article>
+
+
+      <!-- ========================================================== -->
+      <!-- ARTBOARD 2: C++ - TRACE (1440px wide x 1080px tall) -->
+      <!-- ========================================================== -->
+      <article class="artboard-wrapper" data-lang="cpp">
+        <div class="artboard-meta">
+          <div class="artboard-tag">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+            Artboard 2: <span>C++ — Full-Program Trace View</span>
+          </div>
+          <div class="artboard-dim">1440 × 1080 px · Step 5 Selected</div>
+        </div>
+
+        <div class="app-shell" style="height: 1080px;">
+          <!-- 1.a) Top Nav (48px) -->
+          <nav class="top-nav">
+            <div class="nav-left">
+              <div class="brand">
+                <svg class="icon brand-icon" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                OutputTracer
+              </div>
+              <div class="nav-menu-btn">File <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+              <div class="nav-menu-btn">View <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+            </div>
+            <div class="nav-right">
+              <a href="#examples" class="nav-link">Examples</a>
+              <a href="#practice" class="nav-link">Practice</a>
+              <a href="#learn" class="nav-link">Learn</a>
+              <a href="#projects" class="nav-link">Projects</a>
+              <button class="btn-sign-in">Sign in</button>
+            </div>
+          </nav>
+
+          <!-- 1.b) Toolbar (60px) -->
+          <div class="toolbar">
+            <div class="lang-select-group">
+              <label class="lang-label" for="lang-select-2">Language</label>
+              <select id="lang-select-2" class="lang-dropdown">
+                <option selected>C++</option>
+                <option>Python 3</option>
+                <option>Assembly (NASM + DOSBox)</option>
+              </select>
+            </div>
+
+            <button class="btn-run">
+              <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run & Debug
+              <span class="f5-badge">F5</span>
+            </button>
+
+            <button class="btn-stop">
+              <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Stop
+            </button>
+
+            <div class="toolbar-divider"></div>
+
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> New</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg> Reset</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI Assist</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save</button>
+          </div>
+
+          <!-- 1.c) File Tab Bar (42px) -->
+          <div class="tab-bar">
+            <div class="file-tabs">
+              <div class="file-tab">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                main.cpp
+              </div>
+              <button class="btn-add-tab" aria-label="Add file"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+          </div>
+
+          <!-- 1.d) Code Editor (Fills remaining height) - With Line 14 Highlighted -->
+          <div class="editor-container">
+            <div class="gutter">
+              <div class="gutter-line">1</div><div class="gutter-line">2</div><div class="gutter-line">3</div><div class="gutter-line">4</div><div class="gutter-line">5</div>
+              <div class="gutter-line">6</div><div class="gutter-line">7</div><div class="gutter-line">8</div><div class="gutter-line">9</div><div class="gutter-line">10</div>
+              <div class="gutter-line">11</div><div class="gutter-line">12</div><div class="gutter-line">13</div>
+              <div class="gutter-line active-step">14</div>
+              <div class="gutter-line">15</div><div class="gutter-line">16</div><div class="gutter-line">17</div><div class="gutter-line">18</div>
+            </div>
+            <div class="editor-code font-mono">
+<span class="code-line"><span class="prep">#include</span> <span class="str">&lt;iostream&gt;</span></span>
+<span class="code-line"><span class="prep">#include</span> <span class="str">&lt;cstring&gt;</span></span>
+<span class="code-line"><span class="prep">#include</span> <span class="str">&lt;cctype&gt;</span></span>
+<span class="code-line"></span>
+<span class="code-line"><span class="kwd">using</span> <span class="kwd">namespace</span> <span class="ident">std</span>;</span>
+<span class="code-line"></span>
+<span class="code-line"><span class="type">int</span> <span class="fn">main</span>() {</span>
+<span class="code-line">    <span class="kwd">const</span> <span class="type">int</span> <span class="ident">size</span> = <span class="num">100</span>;</span>
+<span class="code-line">    <span class="type">char</span> <span class="ident">text</span>[<span class="ident">size</span>];</span>
+<span class="code-line"></span>
+<span class="code-line">    <span class="ident">cout</span> &lt;&lt; <span class="str">"enter text that should be less than 100 character"</span> &lt;&lt; <span class="ident">endl</span>;</span>
+<span class="code-line"></span>
+<span class="code-line active-step-line">    <span class="ident">cin</span>.<span class="fn">getline</span>(<span class="ident">text</span>, <span class="ident">size</span>);</span>
+<span class="code-line"></span>
+<span class="code-line">    <span class="ident">cout</span> &lt;&lt; <span class="str">"You entered: "</span> &lt;&lt; <span class="ident">text</span> &lt;&lt; <span class="ident">endl</span>;</span>
+<span class="code-line">    <span class="kwd">return</span> <span class="num">0</span>;</span>
+<span class="code-line">}</span>
+            </div>
+          </div>
+
+          <!-- 1.e) Drag Handle (12px) -->
+          <div class="drag-handle"><div class="drag-grip"></div></div>
+
+          <!-- 1.f) Bottom Panel (480px tall for full table display) - TRACE TAB -->
+          <div class="bottom-panel" style="height: 480px;">
+            <div class="bottom-panel-header">
+              <div class="bottom-tabs">
+                <button class="panel-tab"><svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Debug</button>
+                <button class="panel-tab active"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Trace</button>
+              </div>
+
+              <!-- Trace Download Control: Format dropdown (.txt, .csv, .pdf) + Download Trace button -->
+              <div class="download-controls">
+                <select class="download-format-select" aria-label="Export format">
+                  <option>.txt</option>
+                  <option selected>.csv</option>
+                  <option>.pdf</option>
+                </select>
+                <button class="btn-download primary"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download trace</button>
+              </div>
+            </div>
+
+            <!-- Trace Tab Content -->
+            <div class="trace-view">
+              <div class="trace-summary-bar">
+                <span><strong>8 steps in order.</strong> Click a row to jump to that line in the editor.</span>
+                <span>Input used: <strong style="color: var(--accent-blue);">hello</strong></span>
+              </div>
+
+              <div class="trace-table-container">
+                <table class="trace-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 70px;">Step</th>
+                      <th style="width: 70px;">Line</th>
+                      <th style="width: 380px;">Code</th>
+                      <th style="width: 320px;">What changed</th>
+                      <th>Output</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>1</td>
+                      <td>L8</td>
+                      <td>int main() {</td>
+                      <td><span class="chip">enter main()</span></td>
+                      <td>—</td>
+                    </tr>
+                    <tr>
+                      <td>2</td>
+                      <td>L10</td>
+                      <td>const int size = 100;</td>
+                      <td><span class="chip">size = 100</span></td>
+                      <td>—</td>
+                    </tr>
+                    <tr>
+                      <td>3</td>
+                      <td>L11</td>
+                      <td>char text[size];</td>
+                      <td><span class="chip">text = char[100]</span></td>
+                      <td>—</td>
+                    </tr>
+                    <tr>
+                      <td>4</td>
+                      <td>L13</td>
+                      <td>cout &lt;&lt; "enter text that should be less..." &lt;&lt; endl;</td>
+                      <td><span class="chip-empty">—</span></td>
+                      <td>enter text that should be less than 100 character</td>
+                    </tr>
+                    <tr class="selected">
+                      <td><strong>5</strong></td>
+                      <td><strong>L14</strong></td>
+                      <td><strong>cin.getline(text, size);</strong></td>
+                      <td><span class="chip">text = "hello"</span></td>
+                      <td><span style="color: var(--accent-blue); font-weight: 600;">(input: hello)</span></td>
+                    </tr>
+                    <tr>
+                      <td>6</td>
+                      <td>L16</td>
+                      <td>cout &lt;&lt; "You entered: " &lt;&lt; text &lt;&lt; endl;</td>
+                      <td><span class="chip-empty">—</span></td>
+                      <td>You entered: hello</td>
+                    </tr>
+                    <tr>
+                      <td>7</td>
+                      <td>L17</td>
+                      <td>return 0;</td>
+                      <td><span class="chip">return 0</span></td>
+                      <td>—</td>
+                    </tr>
+                    <tr>
+                      <td>8</td>
+                      <td>L18</td>
+                      <td>}</td>
+                      <td><span class="chip">exit code 0</span></td>
+                      <td>—</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1.g) Status Bar (32px, Blue) -->
+          <footer class="status-bar">
+            <div class="status-left">
+              <span class="status-dot"></span>
+              <span>Trace complete · 8 steps</span>
+            </div>
+            <div class="status-right font-mono">
+              <span>18 lines</span>
+              <span class="status-divider">|</span>
+              <span>Ln 14, Col 5</span>
+              <span class="status-divider">|</span>
+              <span>C++</span>
+              <span class="status-divider">|</span>
+              <span>main.cpp</span>
+            </div>
+          </footer>
+        </div>
+      </article>
+
+    </section>
+
+
+    <!-- ROW 1 (Continued): PYTHON 3 (2 Artboards) -->
+    <section class="canvas-row" id="row-2">
+
+      <!-- ========================================================== -->
+      <!-- ARTBOARD 3: PYTHON 3 - DEBUG (1440px wide x 900px tall) -->
+      <!-- ========================================================== -->
+      <article class="artboard-wrapper" data-lang="py">
+        <div class="artboard-meta">
+          <div class="artboard-tag">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+            Artboard 3: <span>Python 3 — Debug View</span>
+          </div>
+          <div class="artboard-dim">1440 × 900 px · Panel: 300px</div>
+        </div>
+
+        <div class="app-shell" style="height: 900px;">
+          <!-- 1.a) Top Nav (48px) -->
+          <nav class="top-nav">
+            <div class="nav-left">
+              <div class="brand">
+                <svg class="icon brand-icon" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                OutputTracer
+              </div>
+              <div class="nav-menu-btn">File <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+              <div class="nav-menu-btn">View <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+            </div>
+            <div class="nav-right">
+              <a href="#examples" class="nav-link">Examples</a>
+              <a href="#practice" class="nav-link">Practice</a>
+              <a href="#learn" class="nav-link">Learn</a>
+              <a href="#projects" class="nav-link">Projects</a>
+              <button class="btn-sign-in">Sign in</button>
+            </div>
+          </nav>
+
+          <!-- 1.b) Toolbar (60px) -->
+          <div class="toolbar">
+            <div class="lang-select-group">
+              <label class="lang-label" for="lang-select-3">Language</label>
+              <select id="lang-select-3" class="lang-dropdown">
+                <option>C++</option>
+                <option selected>Python 3</option>
+                <option>Assembly (NASM + DOSBox)</option>
+              </select>
+            </div>
+
+            <button class="btn-run">
+              <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run & Debug
+              <span class="f5-badge">F5</span>
+            </button>
+
+            <button class="btn-stop">
+              <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Stop
+            </button>
+
+            <div class="toolbar-divider"></div>
+
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> New</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg> Reset</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI Assist</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save</button>
+          </div>
+
+          <!-- 1.c) File Tab Bar (42px) -->
+          <div class="tab-bar">
+            <div class="file-tabs">
+              <div class="file-tab">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                main.py
+              </div>
+              <button class="btn-add-tab" aria-label="Add file"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+          </div>
+
+          <!-- 1.d) Code Editor (Fills remaining height) -->
+          <div class="editor-container">
+            <div class="gutter">
+              <div class="gutter-line">1</div><div class="gutter-line">2</div><div class="gutter-line">3</div><div class="gutter-line">4</div><div class="gutter-line">5</div>
+              <div class="gutter-line">6</div><div class="gutter-line">7</div><div class="gutter-line">8</div><div class="gutter-line">9</div>
+            </div>
+            <div class="editor-code font-mono">
+<span class="code-line"><span class="kwd">def</span> <span class="fn">main</span>():</span>
+<span class="code-line">    <span class="ident">text</span> = <span class="fn">input</span>(<span class="str">"enter text that should be less than 100 characters: "</span>)</span>
+<span class="code-line">    <span class="kwd">if</span> <span class="fn">len</span>(<span class="ident">text</span>) &gt;= <span class="num">100</span>:</span>
+<span class="code-line">        <span class="fn">print</span>(<span class="str">"Too long!"</span>)</span>
+<span class="code-line">        <span class="kwd">return</span></span>
+<span class="code-line">    <span class="fn">print</span>(<span class="str">"You entered:"</span>, <span class="ident">text</span>)</span>
+<span class="code-line"></span>
+<span class="code-line"><span class="fn">main</span>()</span>
+            </div>
+          </div>
+
+          <!-- 1.e) Drag Handle (12px) -->
+          <div class="drag-handle"><div class="drag-grip"></div></div>
+
+          <!-- 1.f) Bottom Panel (300px default) - DEBUG TAB -->
+          <div class="bottom-panel" style="height: 300px;">
+            <div class="bottom-panel-header">
+              <div class="bottom-tabs">
+                <button class="panel-tab active"><svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Debug</button>
+                <button class="panel-tab"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Trace</button>
+              </div>
+
+              <div class="download-controls">
+                <button class="btn-download"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download output</button>
+              </div>
+            </div>
+
+            <!-- Debug Tab Content -->
+            <div class="debug-view">
+              <div class="terminal-output">
+                <div class="out-line">enter text that should be less than 100 characters: </div>
+                <div class="out-input">hello</div>
+                <div class="out-line">You entered: hello</div>
+                <div class="out-exit font-mono">Program finished · exit code 0</div>
+              </div>
+
+              <div class="terminal-input-bar">
+                <span class="terminal-prompt">›</span>
+                <input type="text" class="terminal-input-field" placeholder="Type here when the program asks for input" disabled>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1.g) Status Bar (32px, Blue) -->
+          <footer class="status-bar">
+            <div class="status-left">
+              <span class="status-dot"></span>
+              <span>Finished · exit code 0</span>
+            </div>
+            <div class="status-right font-mono">
+              <span>9 lines</span>
+              <span class="status-divider">|</span>
+              <span>Ln 9, Col 1</span>
+              <span class="status-divider">|</span>
+              <span>Python 3</span>
+              <span class="status-divider">|</span>
+              <span>main.py</span>
+            </div>
+          </footer>
+        </div>
+      </article>
+
+
+      <!-- ========================================================== -->
+      <!-- ARTBOARD 4: PYTHON 3 - TRACE (1440px wide x 1080px tall) -->
+      <!-- ========================================================== -->
+      <article class="artboard-wrapper" data-lang="py">
+        <div class="artboard-meta">
+          <div class="artboard-tag">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+            Artboard 4: <span>Python 3 — Full-Program Trace View</span>
+          </div>
+          <div class="artboard-dim">1440 × 1080 px · Step 3 Selected</div>
+        </div>
+
+        <div class="app-shell" style="height: 1080px;">
+          <!-- 1.a) Top Nav (48px) -->
+          <nav class="top-nav">
+            <div class="nav-left">
+              <div class="brand">
+                <svg class="icon brand-icon" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                OutputTracer
+              </div>
+              <div class="nav-menu-btn">File <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+              <div class="nav-menu-btn">View <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+            </div>
+            <div class="nav-right">
+              <a href="#examples" class="nav-link">Examples</a>
+              <a href="#practice" class="nav-link">Practice</a>
+              <a href="#learn" class="nav-link">Learn</a>
+              <a href="#projects" class="nav-link">Projects</a>
+              <button class="btn-sign-in">Sign in</button>
+            </div>
+          </nav>
+
+          <!-- 1.b) Toolbar (60px) -->
+          <div class="toolbar">
+            <div class="lang-select-group">
+              <label class="lang-label" for="lang-select-4">Language</label>
+              <select id="lang-select-4" class="lang-dropdown">
+                <option>C++</option>
+                <option selected>Python 3</option>
+                <option>Assembly (NASM + DOSBox)</option>
+              </select>
+            </div>
+
+            <button class="btn-run">
+              <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run & Debug
+              <span class="f5-badge">F5</span>
+            </button>
+
+            <button class="btn-stop">
+              <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Stop
+            </button>
+
+            <div class="toolbar-divider"></div>
+
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> New</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg> Reset</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI Assist</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save</button>
+          </div>
+
+          <!-- 1.c) File Tab Bar (42px) -->
+          <div class="tab-bar">
+            <div class="file-tabs">
+              <div class="file-tab">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                main.py
+              </div>
+              <button class="btn-add-tab" aria-label="Add file"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+          </div>
+
+          <!-- 1.d) Code Editor (Fills remaining height) - With Line 3 Highlighted -->
+          <div class="editor-container">
+            <div class="gutter">
+              <div class="gutter-line">1</div><div class="gutter-line">2</div>
+              <div class="gutter-line active-step">3</div>
+              <div class="gutter-line">4</div><div class="gutter-line">5</div>
+              <div class="gutter-line">6</div><div class="gutter-line">7</div><div class="gutter-line">8</div><div class="gutter-line">9</div>
+            </div>
+            <div class="editor-code font-mono">
+<span class="code-line"><span class="kwd">def</span> <span class="fn">main</span>():</span>
+<span class="code-line active-step-line">    <span class="ident">text</span> = <span class="fn">input</span>(<span class="str">"enter text that should be less than 100 characters: "</span>)</span>
+<span class="code-line">    <span class="kwd">if</span> <span class="fn">len</span>(<span class="ident">text</span>) &gt;= <span class="num">100</span>:</span>
+<span class="code-line">        <span class="fn">print</span>(<span class="str">"Too long!"</span>)</span>
+<span class="code-line">        <span class="kwd">return</span></span>
+<span class="code-line">    <span class="fn">print</span>(<span class="str">"You entered:"</span>, <span class="ident">text</span>)</span>
+<span class="code-line"></span>
+<span class="code-line"><span class="fn">main</span>()</span>
+            </div>
+          </div>
+
+          <!-- 1.e) Drag Handle (12px) -->
+          <div class="drag-handle"><div class="drag-grip"></div></div>
+
+          <!-- 1.f) Bottom Panel (480px) - TRACE TAB -->
+          <div class="bottom-panel" style="height: 480px;">
+            <div class="bottom-panel-header">
+              <div class="bottom-tabs">
+                <button class="panel-tab"><svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Debug</button>
+                <button class="panel-tab active"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Trace</button>
+              </div>
+
+              <div class="download-controls">
+                <select class="download-format-select" aria-label="Export format">
+                  <option>.txt</option>
+                  <option selected>.csv</option>
+                  <option>.pdf</option>
+                </select>
+                <button class="btn-download primary"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download trace</button>
+              </div>
+            </div>
+
+            <!-- Trace Tab Content -->
+            <div class="trace-view">
+              <div class="trace-summary-bar">
+                <span><strong>5 steps in order.</strong> Click a row to jump to that line in the editor.</span>
+                <span>Input used: <strong style="color: var(--accent-blue);">hello</strong></span>
+              </div>
+
+              <div class="trace-table-container">
+                <table class="trace-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 70px;">Step</th>
+                      <th style="width: 70px;">Line</th>
+                      <th style="width: 380px;">Code</th>
+                      <th style="width: 320px;">What changed</th>
+                      <th>Output</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>1</td>
+                      <td>L1</td>
+                      <td>def main():</td>
+                      <td><span class="chip">main = function</span></td>
+                      <td>—</td>
+                    </tr>
+                    <tr>
+                      <td>2</td>
+                      <td>L9</td>
+                      <td>main()</td>
+                      <td><span class="chip">call main()</span></td>
+                      <td>—</td>
+                    </tr>
+                    <tr class="selected">
+                      <td><strong>3</strong></td>
+                      <td><strong>L2</strong></td>
+                      <td><strong>text = input("enter text that should be less...")</strong></td>
+                      <td><span class="chip">text = "hello"</span></td>
+                      <td><span style="color: var(--accent-blue); font-weight: 600;">(input: hello)</span></td>
+                    </tr>
+                    <tr>
+                      <td>4</td>
+                      <td>L3</td>
+                      <td>if len(text) &gt;= 100:</td>
+                      <td><span class="chip">len(text) = 5</span><span class="chip">condition = False</span></td>
+                      <td>—</td>
+                    </tr>
+                    <tr>
+                      <td>5</td>
+                      <td>L6</td>
+                      <td>print("You entered:", text)</td>
+                      <td><span class="chip-empty">—</span></td>
+                      <td>You entered: hello</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1.g) Status Bar (32px, Blue) -->
+          <footer class="status-bar">
+            <div class="status-left">
+              <span class="status-dot"></span>
+              <span>Trace complete · 5 steps</span>
+            </div>
+            <div class="status-right font-mono">
+              <span>9 lines</span>
+              <span class="status-divider">|</span>
+              <span>Ln 3, Col 5</span>
+              <span class="status-divider">|</span>
+              <span>Python 3</span>
+              <span class="status-divider">|</span>
+              <span>main.py</span>
+            </div>
+          </footer>
+        </div>
+      </article>
+
+    </section>
+
+
+    <!-- ROW 2: ASSEMBLY (NASM + DOSBOX) (2 Artboards) -->
+    <section class="canvas-row" id="row-3">
+
+      <!-- ========================================================== -->
+      <!-- ARTBOARD 5: NASM - DOSBOX WINDOW (1440px wide x 900px tall) -->
+      <!-- ========================================================== -->
+      <article class="artboard-wrapper" data-lang="asm">
+        <div class="artboard-meta">
+          <div class="artboard-tag">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+            Artboard 5: <span>NASM Assembly — DOSBox Interactive Window</span>
+          </div>
+          <div class="artboard-dim">1440 × 900 px · Panel: 300px · 16-bit DOS .COM</div>
+        </div>
+
+        <div class="app-shell" style="height: 900px;">
+          <!-- 1.a) Top Nav (48px) -->
+          <nav class="top-nav">
+            <div class="nav-left">
+              <div class="brand">
+                <svg class="icon brand-icon" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                OutputTracer
+              </div>
+              <div class="nav-menu-btn">File <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+              <div class="nav-menu-btn">View <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+            </div>
+            <div class="nav-right">
+              <a href="#examples" class="nav-link">Examples</a>
+              <a href="#practice" class="nav-link">Practice</a>
+              <a href="#learn" class="nav-link">Learn</a>
+              <a href="#projects" class="nav-link">Projects</a>
+              <button class="btn-sign-in">Sign in</button>
+            </div>
+          </nav>
+
+          <!-- 1.b) Toolbar (60px) -->
+          <div class="toolbar">
+            <div class="lang-select-group">
+              <label class="lang-label" for="lang-select-5">Language</label>
+              <select id="lang-select-5" class="lang-dropdown">
+                <option>C++</option>
+                <option>Python 3</option>
+                <option selected>Assembly (NASM + DOSBox)</option>
+              </select>
+            </div>
+
+            <button class="btn-run">
+              <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run & Debug
+              <span class="f5-badge">F5</span>
+            </button>
+
+            <button class="btn-stop">
+              <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Stop
+            </button>
+
+            <div class="toolbar-divider"></div>
+
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> New</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg> Reset</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI Assist</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save</button>
+          </div>
+
+          <!-- 1.c) File Tab Bar (42px) -->
+          <div class="tab-bar">
+            <div class="file-tabs">
+              <div class="file-tab">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                main.asm
+              </div>
+              <button class="btn-add-tab" aria-label="Add file"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+          </div>
+
+          <!-- 1.d) Code Editor (Fills remaining height) -->
+          <div class="editor-container">
+            <div class="gutter">
+              <div class="gutter-line">1</div><div class="gutter-line">2</div><div class="gutter-line">3</div><div class="gutter-line">4</div><div class="gutter-line">5</div>
+              <div class="gutter-line">6</div><div class="gutter-line">7</div><div class="gutter-line">8</div><div class="gutter-line">9</div><div class="gutter-line">10</div>
+              <div class="gutter-line">11</div><div class="gutter-line">12</div><div class="gutter-line">13</div><div class="gutter-line">14</div><div class="gutter-line">15</div>
+              <div class="gutter-line">16</div><div class="gutter-line">17</div><div class="gutter-line">18</div><div class="gutter-line">19</div><div class="gutter-line">20</div>
+            </div>
+            <div class="editor-code font-mono">
+<span class="code-line"><span class="kwd">org</span> <span class="num">100h</span>                  <span class="comment">; 16-bit DOS .COM program</span></span>
+<span class="code-line"></span>
+<span class="code-line"><span class="ident">section</span> <span class="type">.text</span></span>
+<span class="code-line"><span class="fn">start</span>:</span>
+<span class="code-line">    <span class="kwd">mov</span> <span class="ident">dx</span>, <span class="ident">prompt</span>        <span class="comment">; DS:DX -> prompt string</span></span>
+<span class="code-line">    <span class="kwd">mov</span> <span class="ident">ah</span>, <span class="num">09h</span>           <span class="comment">; DOS print string function</span></span>
+<span class="code-line">    <span class="kwd">int</span> <span class="num">21h</span></span>
+<span class="code-line"></span>
+<span class="code-line">    <span class="kwd">mov</span> <span class="ident">dx</span>, <span class="ident">in_buf</span>        <span class="comment">; DS:DX -> buffered input struct</span></span>
+<span class="code-line">    <span class="kwd">mov</span> <span class="ident">ah</span>, <span class="num">0Ah</span>           <span class="comment">; DOS buffered keyboard input</span></span>
+<span class="code-line">    <span class="kwd">int</span> <span class="num">21h</span></span>
+<span class="code-line"></span>
+<span class="code-line">    <span class="kwd">mov</span> <span class="ident">ax</span>, <span class="num">4C00h</span>         <span class="comment">; exit to DOS with code 0</span></span>
+<span class="code-line">    <span class="kwd">int</span> <span class="num">21h</span></span>
+<span class="code-line"></span>
+<span class="code-line"><span class="ident">section</span> <span class="type">.data</span></span>
+<span class="code-line"><span class="ident">prompt</span>  <span class="type">db</span> <span class="str">'enter text (max 99 chars): $'</span></span>
+<span class="code-line"><span class="ident">in_buf</span>  <span class="type">db</span> <span class="num">100</span>, <span class="num">0</span></span>
+<span class="code-line">        <span class="type">times</span> <span class="num">100</span> <span class="type">db</span> <span class="num">0</span></span>
+            </div>
+          </div>
+
+          <!-- 1.e) Drag Handle (12px) -->
+          <div class="drag-handle"><div class="drag-grip"></div></div>
+
+          <!-- 1.f) Bottom Panel (300px default) - DOSBox WINDOW -->
+          <div class="bottom-panel" style="height: 300px;">
+            <div class="bottom-panel-header">
+              <div class="bottom-tabs">
+                <button class="panel-tab active"><svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Debug</button>
+                <button class="panel-tab"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Trace</button>
+              </div>
+
+              <!-- Format dropdown (.txt, .csv, .png) + Download Output button -->
+              <div class="download-controls">
+                <select class="download-format-select" aria-label="Export format">
+                  <option selected>.txt</option>
+                  <option>.csv</option>
+                  <option>.png</option>
+                </select>
+                <button class="btn-download"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download output</button>
+              </div>
+            </div>
+
+            <!-- DOSBox Window Replica -->
+            <div class="dosbox-window">
+              <div class="dosbox-titlebar">
+                <span>DOSBox 0.74-3, Cpu speed: 3000 cycles, Program: MAIN</span>
+                <span class="dosbox-hint">Click inside and type when asked for input</span>
+              </div>
+              <div class="dosbox-screen font-mono">
+Z:\&gt;mount c C:\OutputTracer<br>
+Drive C is mounted as local directory C:\OutputTracer\<br>
+Z:\&gt;c:<br>
+C:\&gt;nasm -f bin main.asm -o main.com<br>
+C:\&gt;main.com<br>
+enter text (max 99 chars): <span class="dos-cursor"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1.g) Status Bar (32px, Blue) -->
+          <footer class="status-bar">
+            <div class="status-left">
+              <span class="status-dot"></span>
+              <span>Running in DOSBox</span>
+            </div>
+            <div class="status-right font-mono">
+              <span>18 lines</span>
+              <span class="status-divider">|</span>
+              <span>Ln 10, Col 1</span>
+              <span class="status-divider">|</span>
+              <span>Assembly (NASM + DOSBox)</span>
+              <span class="status-divider">|</span>
+              <span>main.asm</span>
+            </div>
+          </footer>
+        </div>
+      </article>
+
+
+      <!-- ========================================================== -->
+      <!-- ARTBOARD 6: NASM - DOSBOX DEBUGGER REPLICA (1440px wide x 1000px tall) -->
+      <!-- ========================================================== -->
+      <article class="artboard-wrapper" data-lang="asm">
+        <div class="artboard-meta">
+          <div class="artboard-tag">
+            <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+            Artboard 6: <span>NASM Assembly — DOSBox Debugger Replica (80×25)</span>
+          </div>
+          <div class="artboard-dim">1440 × 1000 px · Panel: 462px · Step 2 Paused</div>
+        </div>
+
+        <div class="app-shell" style="height: 1000px;">
+          <!-- 1.a) Top Nav (48px) -->
+          <nav class="top-nav">
+            <div class="nav-left">
+              <div class="brand">
+                <svg class="icon brand-icon" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                OutputTracer
+              </div>
+              <div class="nav-menu-btn">File <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+              <div class="nav-menu-btn">View <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
+            </div>
+            <div class="nav-right">
+              <a href="#examples" class="nav-link">Examples</a>
+              <a href="#practice" class="nav-link">Practice</a>
+              <a href="#learn" class="nav-link">Learn</a>
+              <a href="#projects" class="nav-link">Projects</a>
+              <button class="btn-sign-in">Sign in</button>
+            </div>
+          </nav>
+
+          <!-- 1.b) Toolbar (60px) -->
+          <div class="toolbar">
+            <div class="lang-select-group">
+              <label class="lang-label" for="lang-select-6">Language</label>
+              <select id="lang-select-6" class="lang-dropdown">
+                <option>C++</option>
+                <option>Python 3</option>
+                <option selected>Assembly (NASM + DOSBox)</option>
+              </select>
+            </div>
+
+            <button class="btn-run">
+              <svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run & Debug
+              <span class="f5-badge">F5</span>
+            </button>
+
+            <button class="btn-stop">
+              <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Stop
+            </button>
+
+            <div class="toolbar-divider"></div>
+
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> New</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg> Reset</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI Assist</button>
+            <button class="btn-tool"><svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save</button>
+          </div>
+
+          <!-- 1.c) File Tab Bar (42px) -->
+          <div class="tab-bar">
+            <div class="file-tabs">
+              <div class="file-tab">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                main.asm
+              </div>
+              <button class="btn-add-tab" aria-label="Add file"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+          </div>
+
+          <!-- 1.d) Code Editor (Fills remaining height) - With Line 6 Highlighted -->
+          <div class="editor-container">
+            <div class="gutter">
+              <div class="gutter-line">1</div><div class="gutter-line">2</div><div class="gutter-line">3</div><div class="gutter-line">4</div><div class="gutter-line">5</div>
+              <div class="gutter-line active-step">6</div>
+              <div class="gutter-line">7</div><div class="gutter-line">8</div><div class="gutter-line">9</div><div class="gutter-line">10</div>
+              <div class="gutter-line">11</div><div class="gutter-line">12</div><div class="gutter-line">13</div><div class="gutter-line">14</div><div class="gutter-line">15</div>
+              <div class="gutter-line">16</div><div class="gutter-line">17</div><div class="gutter-line">18</div>
+            </div>
+            <div class="editor-code font-mono">
+<span class="code-line"><span class="kwd">org</span> <span class="num">100h</span>                  <span class="comment">; 16-bit DOS .COM program</span></span>
+<span class="code-line"></span>
+<span class="code-line"><span class="ident">section</span> <span class="type">.text</span></span>
+<span class="code-line"><span class="fn">start</span>:</span>
+<span class="code-line">    <span class="kwd">mov</span> <span class="ident">dx</span>, <span class="ident">prompt</span>        <span class="comment">; DS:DX -> prompt string</span></span>
+<span class="code-line active-step-line">    <span class="kwd">mov</span> <span class="ident">ah</span>, <span class="num">09h</span>           <span class="comment">; DOS print string function</span></span>
+<span class="code-line">    <span class="kwd">int</span> <span class="num">21h</span></span>
+<span class="code-line"></span>
+<span class="code-line">    <span class="kwd">mov</span> <span class="ident">dx</span>, <span class="ident">in_buf</span>        <span class="comment">; DS:DX -> buffered input struct</span></span>
+<span class="code-line">    <span class="kwd">mov</span> <span class="ident">ah</span>, <span class="num">0Ah</span>           <span class="comment">; DOS buffered keyboard input</span></span>
+<span class="code-line">    <span class="kwd">int</span> <span class="num">21h</span></span>
+<span class="code-line"></span>
+<span class="code-line">    <span class="kwd">mov</span> <span class="ident">ax</span>, <span class="num">4C00h</span>         <span class="comment">; exit to DOS with code 0</span></span>
+<span class="code-line">    <span class="kwd">int</span> <span class="num">21h</span></span>
+<span class="code-line"></span>
+<span class="code-line"><span class="ident">section</span> <span class="type">.data</span></span>
+<span class="code-line"><span class="ident">prompt</span>  <span class="type">db</span> <span class="str">'enter text (max 99 chars): $'</span></span>
+<span class="code-line"><span class="ident">in_buf</span>  <span class="type">db</span> <span class="num">100</span>, <span class="num">0</span></span>
+<span class="code-line">        <span class="type">times</span> <span class="num">100</span> <span class="type">db</span> <span class="num">0</span></span>
+            </div>
+          </div>
+
+          <!-- 1.e) Drag Handle (12px) -->
+          <div class="drag-handle"><div class="drag-grip"></div></div>
+
+          <!-- 1.f) Bottom Panel (462px tall) - DOSBox DEBUGGER REPLICA -->
+          <div class="bottom-panel" style="height: 462px;">
+            <div class="bottom-panel-header">
+              <div class="bottom-tabs">
+                <button class="panel-tab"><svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> Debug</button>
+                <button class="panel-tab active"><svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Trace</button>
+              </div>
+
+              <!-- Format dropdown (.txt, .csv, .png) + Download Trace button -->
+              <div class="download-controls">
+                <select class="download-format-select" aria-label="Export format">
+                  <option>.txt</option>
+                  <option>.csv</option>
+                  <option selected>.png</option>
+                </select>
+                <button class="btn-download primary"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download trace</button>
+              </div>
+            </div>
+
+            <!-- DOSBox Debugger Layout: Left 80x25 Terminal + Right Visual Explanations -->
+            <div class="dos-debugger-container">
+              <!-- Left Column: Real DOSBox Debugger Screen Replica (640x400 / 80x25 character grid) -->
+              <div class="dos-debugger-left">
+                <!-- Rows 0-3: Registers & Flags -->
+                <div class="dos-reg-box font-mono">
+                  <div class="reg-grid">
+                    <div class="reg-item"><span class="reg-label">AX</span><span class="reg-val">0000</span></div>
+                    <div class="reg-item"><span class="reg-label">BX</span><span class="reg-val">0000</span></div>
+                    <div class="reg-item"><span class="reg-label">CX</span><span class="reg-val">00FF</span></div>
+                    <div class="reg-item"><span class="reg-label">DX</span><span class="reg-val" style="color: #ffd166; font-weight: 700;">010C</span></div>
+
+                    <div class="reg-item"><span class="reg-label">SI</span><span class="reg-val">0000</span></div>
+                    <div class="reg-item"><span class="reg-label">DI</span><span class="reg-val">0000</span></div>
+                    <div class="reg-item"><span class="reg-label">BP</span><span class="reg-val">0000</span></div>
+                    <div class="reg-item"><span class="reg-label">SP</span><span class="reg-val">FFFE</span></div>
+
+                    <div class="reg-item"><span class="reg-label">CS</span><span class="reg-val">1000</span></div>
+                    <div class="reg-item"><span class="reg-label">DS</span><span class="reg-val">1000</span></div>
+                    <div class="reg-item"><span class="reg-label">ES</span><span class="reg-val">1000</span></div>
+                    <div class="reg-item"><span class="reg-label">SS</span><span class="reg-val">1000</span></div>
+
+                    <div class="reg-item"><span class="reg-label">HS</span><span class="reg-val">0000</span></div>
+                    <div class="reg-item"><span class="reg-label">FS</span><span class="reg-val">0000</span></div>
+                    <div class="reg-item"><span class="reg-label">IP</span><span class="reg-val" style="color: #ffff55;">0102</span></div>
+                    <div class="reg-item"><span class="reg-label">FL</span><span class="reg-val">7202</span></div>
+                  </div>
+
+                  <div class="flags-box">
+                    <div style="color: #888; font-size: 11px;">Stack: +0[0000] +2[0000]</div>
+                    <div class="flags-row">
+                      <span class="flag-inactive">OF</span>
+                      <span class="flag-inactive">DF</span>
+                      <span class="flag-active">IF</span>
+                      <span class="flag-inactive">SF</span>
+                      <span class="flag-inactive">ZF</span>
+                      <span class="flag-inactive">AF</span>
+                      <span class="flag-inactive">PF</span>
+                      <span class="flag-inactive">CF</span>
+                    </div>
+                    <div class="flags-row" style="color: #666; font-size: 10px;">
+                      <span>0</span><span>0</span><span style="color:#55ff55">1</span><span>0</span><span>0</span><span>0</span><span>0</span><span>0</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CMD Box -->
+                <div class="dos-cmd-box font-mono">
+                  <span>CMD &gt;</span> t
+                </div>
+
+                <!-- Middle Split: Disassembly (Left) + Memory Pane 1 (Right) -->
+                <div class="dos-middle-split font-mono">
+                  <!-- Disassembly Pane -->
+                  <div class="dos-disasm">
+                    <div class="disasm-line"><span class="ins-addr">1000:0100</span> BA0C01   MOV DX,010C</div>
+                    <div class="disasm-line current-ins"><span class="ins-addr">1000:0103</span> B409     MOV AH,09</div>
+                    <div class="disasm-line"><span class="ins-addr">1000:0105</span> CD21     INT 21</div>
+                    <div class="disasm-line"><span class="ins-addr">1000:0107</span> BA2901   MOV DX,0129</div>
+                    <div class="disasm-line"><span class="ins-addr">1000:010A</span> B40A     MOV AH,0A</div>
+                    <div class="disasm-line"><span class="ins-addr">1000:010C</span> CD21     INT 21</div>
+                    <div class="disasm-line"><span class="ins-addr">1000:010E</span> B8004C   MOV AX,4C00</div>
+                    <div class="disasm-line"><span class="ins-addr">1000:0111</span> CD21     INT 21</div>
+                  </div>
+
+                  <!-- Memory Pane 1: DS:0000...0048, 8 bytes/row, hex header 0-7 -->
+                  <div class="dos-mem1">
+                    <div style="color: #666; border-bottom: 1px solid #222; margin-bottom: 4px;">ADDR      0  1  2  3  4  5  6  7</div>
+                    <div>1000:0000 CD 20 00 00 00 00 00 00</div>
+                    <div>1000:0008 00 00 00 00 00 00 00 00</div>
+                    <div>1000:0100 BA 0C 01 B4 09 CD 21 BA</div>
+                    <div>1000:0108 29 01 B4 0A CD 21 B8 00</div>
+                    <div>1000:0110 4C CD 21 65 6E 74 65 72</div>
+                    <div>1000:0118 20 74 65 78 74 20 28 6D</div>
+                  </div>
+                </div>
+
+                <!-- Memory Pane 2: DS:0000...0040, 16 bytes/row + ASCII column -->
+                <div class="dos-mem2 font-mono">
+                  <div style="color: #666; margin-bottom: 2px;">DS:0000  0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F   0123456789ABCDEF</div>
+                  <div>1000:0100 BA 0C 01 B4 09 CD 21 BA 29 01 B4 0A CD 21 B8 00  :......!)....!..</div>
+                  <div>1000:0110 4C CD 21 65 6E 74 65 72 20 74 65 78 74 20 28 6D  L.!enter text (m</div>
+                  <div>1000:0120 61 78 20 39 39 20 63 68 61 72 73 29 3A 20 24 64  ax 99 chars): $d</div>
+                </div>
+
+                <!-- Last Row: Function-Key Bar (10 clickable buttons) -->
+                <div class="dos-fn-bar font-mono">
+                  <button class="dos-fn-btn"><span class="fn-num">1</span> Step</button>
+                  <button class="dos-fn-btn"><span class="fn-num">2</span> ProcStep</button>
+                  <button class="dos-fn-btn"><span class="fn-num">3</span> Retrieve</button>
+                  <button class="dos-fn-btn"><span class="fn-num">4</span> Help ON</button>
+                  <button class="dos-fn-btn"><span class="fn-num">5</span> BRK Menu</button>
+                  <button class="dos-fn-btn" style="color: #666;"><span class="fn-num" style="color:#888;">6</span> (unused)</button>
+                  <button class="dos-fn-btn"><span class="fn-num">7</span> up</button>
+                  <button class="dos-fn-btn"><span class="fn-num">8</span> dn</button>
+                  <button class="dos-fn-btn"><span class="fn-num">9</span> le</button>
+                  <button class="dos-fn-btn"><span class="fn-num">10</span> ri</button>
+                </div>
+              </div>
+
+              <!-- Right Column: Visual Explanations & Inspector Cards -->
+              <div class="dos-visual-panel">
+                <!-- Next Instruction -->
+                <div class="vis-card">
+                  <div class="vis-card-title">Next Instruction</div>
+                  <div class="vis-card-content font-mono" style="font-size: 14px; font-weight: 700; color: #ffd166;">
+                    MOV AH, 09h
+                  </div>
+                  <div style="font-size: 12px; color: #9da7b3; margin-top: 4px;">
+                    Prepares DOS sub-function 09h: output string ending with '$' at address pointed by DS:DX.
+                  </div>
+                </div>
+
+                <!-- Register Change -->
+                <div class="vis-card">
+                  <div class="vis-card-title">Register Change</div>
+                  <div class="vis-card-content" style="display: flex; align-items: center; gap: 8px;">
+                    <span class="chip" style="font-size: 13px;">DX: 0000h → 010Ch</span>
+                    <span style="font-size: 12px; color: #9da7b3;">(&amp;prompt)</span>
+                  </div>
+                </div>
+
+                <!-- Flags as 8 Toggles -->
+                <div class="vis-card">
+                  <div class="vis-card-title">CPU Flags (FL 7202h)</div>
+                  <div class="flags-toggle-grid">
+                    <div class="flag-toggle-pill"><span>OF</span> <span>0</span></div>
+                    <div class="flag-toggle-pill"><span>DF</span> <span>0</span></div>
+                    <div class="flag-toggle-pill active"><span>IF</span> <span>1</span></div>
+                    <div class="flag-toggle-pill"><span>SF</span> <span>0</span></div>
+                    <div class="flag-toggle-pill"><span>ZF</span> <span>0</span></div>
+                    <div class="flag-toggle-pill"><span>AF</span> <span>0</span></div>
+                    <div class="flag-toggle-pill"><span>PF</span> <span>0</span></div>
+                    <div class="flag-toggle-pill"><span>CF</span> <span>0</span></div>
+                  </div>
+                </div>
+
+                <!-- Stack Boxes -->
+                <div class="vis-card">
+                  <div class="vis-card-title">Stack Memory</div>
+                  <div style="display: flex; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px;">
+                    <div style="flex: 1; background: #222; border: 1px solid #333; padding: 4px; border-radius: 4px; text-align: center;">
+                      <div style="color: #888;">[FFFE]</div>
+                      <div style="color: #55ff55;">0000h</div>
+                      <div style="color: #ffd166; font-size: 10px; font-weight: 700;">▲ SP</div>
+                    </div>
+                    <div style="flex: 1; background: #1a1a1a; border: 1px solid #282828; padding: 4px; border-radius: 4px; text-align: center; color: #555;">
+                      <div>[FFFC]</div>
+                      <div>0000h</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- DOS Screen Thumbnail -->
+                <div class="vis-card" style="margin-top: auto;">
+                  <div class="vis-card-title">Emulated Display Output</div>
+                  <div style="background: #000; border: 1px solid #333; padding: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #aaa; border-radius: 4px;">
+                    C:\&gt;main.com<br>
+                    _
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1.g) Status Bar (32px, Blue) -->
+          <footer class="status-bar">
+            <div class="status-left">
+              <span class="status-dot"></span>
+              <span>Paused at line 6 · IP 0102</span>
+            </div>
+            <div class="status-right font-mono">
+              <span>18 lines</span>
+              <span class="status-divider">|</span>
+              <span>Ln 6, Col 5</span>
+              <span class="status-divider">|</span>
+              <span>Assembly (NASM + DOSBox)</span>
+              <span class="status-divider">|</span>
+              <span>main.asm</span>
+            </div>
+          </footer>
+        </div>
+      </article>
+
+    </section>
+
+  </main>
+
+  <script>
+    // Master Zoom Controller
+    function setZoom(scale) {
+      const canvas = document.getElementById('canvas');
+      canvas.style.transform = `scale(${scale})`;
+      
+      document.querySelectorAll('.canvas-controls .btn-pill').forEach(btn => btn.classList.remove('active'));
+      if (scale === 0.5) document.getElementById('zoom-50').classList.add('active');
+      if (scale === 0.75) document.getElementById('zoom-75').classList.add('active');
+      if (scale === 1.0) document.getElementById('zoom-100').classList.add('active');
+    }
+
+    // Filter by Language
+    function filterArtboard(lang) {
+      const articles = document.querySelectorAll('.artboard-wrapper');
+      articles.forEach(art => {
+        if (lang === 'all' || art.getAttribute('data-lang') === lang) {
+          art.style.display = 'flex';
+        } else {
+          art.style.display = 'none';
+        }
+      });
+    }
+
+    // Interactive Trace Stepping Prototype
+    document.querySelectorAll('.trace-table tr').forEach(row => {
+      row.addEventListener('click', function() {
+        const table = this.closest('.trace-table');
+        table.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+        this.classList.add('selected');
+        
+        // Find step line
+        const lineCell = this.querySelector('td:nth-child(2)');
+        if (lineCell) {
+          const lineNum = parseInt(lineCell.textContent.replace('L', ''));
+          const shell = this.closest('.app-shell');
+          if (shell && lineNum) {
+            shell.querySelectorAll('.code-line').forEach((l, idx) => {
+              if (idx + 1 === lineNum) {
+                l.classList.add('active-step-line');
+              } else {
+                l.classList.remove('active-step-line');
+              }
+            });
+            shell.querySelectorAll('.gutter-line').forEach((g, idx) => {
+              if (idx + 1 === lineNum) {
+                g.classList.add('active-step');
+              } else {
+                g.classList.remove('active-step');
+              }
+            });
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>

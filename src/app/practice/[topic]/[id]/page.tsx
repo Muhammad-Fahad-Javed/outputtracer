@@ -43,7 +43,17 @@ export async function generateMetadata({
     openGraph: {
       title: `${question.title} – ${topic.title} C++ Question`,
       description: `Predict the output of this C++ program on ${topic.title}. Test and trace on OutputTracer.`,
+      siteName: "OutputTracer",
+      type: "website",
       url: `https://outputtracer.com/practice/${topic.id}/${question.id}`,
+      images: [
+        {
+          url: "/brand/logo-tile.svg",
+          width: 512,
+          height: 512,
+          alt: "OutputTracer C++ output prediction question",
+        },
+      ],
     },
   };
 }

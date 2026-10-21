@@ -30,7 +30,17 @@ export async function generateMetadata({
     openGraph: {
       title: `${topic.title} C++ Practice Questions | OutputTracer`,
       description: `Practice ${topic.title} output prediction questions online with OutputTracer.`,
+      siteName: "OutputTracer",
+      type: "website",
       url: `https://outputtracer.com/practice/${topic.id}`,
+      images: [
+        {
+          url: "/brand/logo-tile.svg",
+          width: 512,
+          height: 512,
+          alt: `OutputTracer ${topic.title} practice questions`,
+        },
+      ],
     },
   };
 }

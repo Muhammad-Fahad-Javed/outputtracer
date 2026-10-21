@@ -176,6 +176,7 @@ export async function POST(request: Request) {
         stderr: result.stderr || undefined,
         dryRun: traceSteps,
         traceTruncated: result.trace?.truncated ?? false,
+        traceNote: result.trace?.determinismWarning,
         meta: {
           exitCode: result.exitCode ?? null,
           compileTimeMs: result.compileTimeMs,

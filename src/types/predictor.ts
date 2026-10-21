@@ -34,6 +34,9 @@ export interface PredictionResult {
   stderr?: string;
   dryRun?: DryRunStep[];
   traceTruncated?: boolean;
+  // Present when the traced re-run may differ from the shown output
+  // (clock/rand/pointers). See lib/traceDeterminism.ts.
+  traceNote?: string;
   meta?: ExecutionMeta;
   error?: {
     kind?: PredictionErrorKind;

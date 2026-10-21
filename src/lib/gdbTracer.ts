@@ -14,7 +14,13 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import { execConfig } from "./execConfig";
-import { sanitizedChildEnv } from "./sandbox";
+import {
+  planSandboxedCommand,
+  selectIsolation,
+  sandboxDir,
+  unsandboxedTraceAllowed,
+  type IsolationLevel,
+} from "./sandbox";
 import { DryRunStep } from "@/types/predictor";
 
 const execFileAsync = promisify(execFile);
@@ -22,6 +28,24 @@ const execFileAsync = promisify(execFile);
 export interface TraceResult {
   steps: DryRunStep[];
   truncated: boolean;
+  // Set when the traced program may not reproduce the normal run's output
+  // (clock/rand/pointers) — see traceDeterminism.ts.
+  determinismWarning?: string;
+}
+
+// The trace re-executes the student's binary under GDB. That re-run MUST be
+// sandboxed just like the normal run, otherwise tracing would be a way to
+// execute untrusted code without isolation. If the only available mode is
+// "none" (no sandbox tooling), we skip tracing rather than run it unsandboxed.
+// TRACE_ALLOW_UNSANDBOXED=1 is a development-only escape hatch.
+export function shouldRunTrace(opts: {
+  isolation: IsolationLevel;
+  gdbAvailable: boolean;
+  allowUnsandboxed: boolean;
+}): boolean {
+  if (!opts.gdbAvailable) return false;
+  if (opts.isolation !== "none") return true;
+  return opts.allowUnsandboxed;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,53 +298,76 @@ export async function traceExecution(opts: {
   stdinContent?: string;
 }): Promise<TraceResult> {
   const gdbCheck = await checkGdbAvailable();
-  if (!gdbCheck.available) {
+  const isolation = await selectIsolation();
+  if (
+    !shouldRunTrace({
+      isolation,
+      gdbAvailable: gdbCheck.available,
+      allowUnsandboxed: unsandboxedTraceAllowed(),
+    })
+  ) {
     return { steps: [], truncated: false };
   }
 
-  const stdoutFile = path.join(opts.tempDir, "__stdout.txt");
-  const traceFile = path.join(opts.tempDir, "__trace.json");
-  const scriptFile = path.join(opts.tempDir, "__trace_script.py");
+  // Real files always live on the host under the submission directory.
+  const hostStdout = path.join(opts.tempDir, "__stdout.txt");
+  const hostTrace = path.join(opts.tempDir, "__trace.json");
+  const hostScript = path.join(opts.tempDir, "__trace_script.py");
+  const hostStdin = opts.stdinContent
+    ? path.join(opts.tempDir, "__stdin.txt")
+    : undefined;
 
-  // Write stdin if provided
-  let stdinFile: string | undefined;
-  if (opts.stdinContent) {
-    stdinFile = path.join(opts.tempDir, "__stdin.txt");
-    await fs.writeFile(stdinFile, opts.stdinContent, "utf8");
+  // Under bubblewrap the submission directory is mounted at /sandbox, so the
+  // paths embedded in the generated script and passed to GDB must use that
+  // prefix. For the weaker modes the host paths are used directly.
+  const useSandboxPaths = isolation === "bwrap";
+  const runDir = useSandboxPaths ? sandboxDir() : opts.tempDir;
+  const toRunPath = (host: string) =>
+    useSandboxPaths ? `${runDir}/${path.basename(host)}` : host;
+
+  // Create an empty stdout file so GDB's run redirect works.
+  await fs.writeFile(hostStdout, "", "utf8");
+  if (hostStdin && opts.stdinContent) {
+    await fs.writeFile(hostStdin, opts.stdinContent, "utf8");
   }
 
-  // Create an empty stdout file so GDB's run redirect works
-  await fs.writeFile(stdoutFile, "", "utf8");
-
-  // Generate and write the GDB Python script
   const script = generateGdbPythonScript({
     maxSteps: execConfig.maxTraceSteps,
-    stdoutFile,
-    traceFile,
-    tempDir: opts.tempDir,
-    stdinFile,
+    stdoutFile: toRunPath(hostStdout),
+    traceFile: toRunPath(hostTrace),
+    tempDir: runDir,
+    stdinFile: hostStdin ? toRunPath(hostStdin) : undefined,
   });
-  await fs.writeFile(scriptFile, script, "utf8");
+  await fs.writeFile(hostScript, script, "utf8");
+
+  // Run GDB inside the SAME sandbox as the normal execution. execFile (no
+  // shell) keeps the argv-array guarantee; resource limits bound GDB too.
+  const plan = await planSandboxedCommand({
+    tempDir: opts.tempDir,
+    command: execConfig.gdbPath,
+    args: [
+      "--batch",
+      "--quiet",
+      "-x",
+      toRunPath(hostScript),
+      toRunPath(opts.exePath),
+    ],
+    limits: {
+      maxMemoryMb: execConfig.traceMaxMemoryMb,
+      maxCpuSeconds: execConfig.traceMaxCpuSeconds,
+      maxProcesses: execConfig.traceMaxProcesses,
+    },
+    remapTempDirPaths: false,
+  });
 
   try {
-    // Run GDB in batch mode with the Python script.
-    // We use execFile (no shell) for the same security reasons as cppRunner.
-    await execFileAsync(
-      execConfig.gdbPath,
-      [
-        "--batch",
-        "--quiet",
-        "-x", scriptFile,
-        opts.exePath,
-      ],
-      {
-        cwd: opts.tempDir,
-        env: sanitizedChildEnv(opts.tempDir),
-        timeout: execConfig.traceTimeoutMs,
-        killSignal: "SIGKILL",
-        maxBuffer: 10 * 1024 * 1024, // 10 MB — GDB can be verbose
-      }
-    );
+    await execFileAsync(plan.command, plan.args, {
+      cwd: opts.tempDir,
+      env: plan.env,
+      timeout: execConfig.traceTimeoutMs,
+      killSignal: "SIGKILL",
+      maxBuffer: 10 * 1024 * 1024, // 10 MB — GDB can be verbose
+    });
   } catch {
     // GDB failed or timed out — return empty trace (caller uses fallback).
     return { steps: [], truncated: false };
@@ -328,7 +375,7 @@ export async function traceExecution(opts: {
 
   // Read the trace JSON
   try {
-    const raw = await fs.readFile(traceFile, "utf8");
+    const raw = await fs.readFile(hostTrace, "utf8");
     const data = JSON.parse(raw) as { steps: DryRunStep[]; truncated: boolean };
 
     if (!Array.isArray(data.steps)) {

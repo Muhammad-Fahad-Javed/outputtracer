@@ -1,17 +1,34 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "About OutputTracer – The C++ Code Tracer & Online Compiler",
+  title: "About OutputTracer â€“ The C++ Code Tracer & Online Compiler",
   description: "Learn about OutputTracer, a browser-based C++ development environment and execution visualizer built for computer science students and developers.",
   alternates: {
     canonical: "/about",
   },
   openGraph: {
-    title: "About OutputTracer – The C++ Code Tracer & Online Compiler",
+    title: "About OutputTracer â€“ The C++ Code Tracer & Online Compiler",
     description: "Learn about OutputTracer, built for computer science students and developers.",
+    siteName: "OutputTracer",
+    type: "website",
     url: "https://outputtracer.com/about",
+    images: [
+      {
+        url: "/brand/logo-tile.svg",
+        width: 512,
+        height: 512,
+        alt: "OutputTracer logo",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "About OutputTracer - The C++ Code Tracer & Online Compiler",
+    description:
+      "Learn about OutputTracer, a browser-based C++ development environment and execution visualizer built for computer science students and developers.",
+    images: ["/brand/logo-tile.svg"],
   },
 };
 
@@ -34,14 +51,16 @@ export default function AboutPage() {
             </p>
             <p>
               It&apos;s built for students and self-learners practicing output prediction
-              and dry-run questions — a skill that matters in coursework, exams, and
+              and dry-run questions â€” a skill that matters in coursework, exams, and
               everyday debugging, but that&apos;s easy to skip when you can just run the
               code and see what happens.
             </p>
             <p>
-              This is the first version of OutputTracer. Predictions and dry runs
-              currently use representative example logic rather than a full C++
-              execution engine, which is planned for a future release.
+              OutputTracer now goes further than prediction. Code is compiled and
+              executed with a real C++ toolchain, execution can be traced step by
+              step to show how variables change, and dedicated Python 3 and 8086
+              assembly labs sit alongside the original output-prediction practice
+              questions.
             </p>
           </div>
         </section>

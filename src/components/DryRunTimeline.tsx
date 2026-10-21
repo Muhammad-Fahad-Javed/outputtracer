@@ -4,9 +4,14 @@ import { DryRunStep } from "@/types/predictor";
 interface DryRunTimelineProps {
   steps: DryRunStep[];
   truncated?: boolean;
+  note?: string;
 }
 
-export default function DryRunTimeline({ steps, truncated }: DryRunTimelineProps) {
+export default function DryRunTimeline({
+  steps,
+  truncated,
+  note,
+}: DryRunTimelineProps) {
   if (steps.length === 0) {
     return (
       <p className="font-mono text-sm text-[#999999]">
@@ -48,6 +53,13 @@ export default function DryRunTimeline({ steps, truncated }: DryRunTimelineProps
           )}
         </div>
       ))}
+
+      {note && (
+        <div className="flex items-start gap-2 rounded-[4px] border border-[#E8D9B0] bg-[#FFFBF0] px-4 py-3">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-[#B7791F]" />
+          <p className="font-mono text-xs text-[#7A5B12]">{note}</p>
+        </div>
+      )}
 
       {truncated && (
         <div className="flex items-center gap-2 rounded-[4px] border border-dashed border-[#DCDCDC] bg-[#FAFAFA] px-4 py-3">

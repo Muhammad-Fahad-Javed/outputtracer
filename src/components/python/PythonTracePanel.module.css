@@ -1,0 +1,28 @@
+/* OutputTracer palette: #FAFAFA background, #EAEAEA borders, #007ACC accent. */
+.panel { background: #fafafa; border: 1px solid #eaeaea; border-radius: 8px; padding: 12px; color: #1f2328; font-size: 14px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.toolbar button { min-height: 36px; min-width: 36px; padding: 0 12px; background: #fff; border: 1px solid #eaeaea; border-radius: 6px; color: #1f2328; cursor: pointer; }
+.toolbar button:hover:not(:disabled) { border-color: #007acc; }
+.toolbar button:focus-visible, .link:focus-visible, .stdin textarea:focus-visible, .slider input:focus-visible { outline: 2px solid #007acc; outline-offset: 2px; }
+.toolbar button:disabled { opacity: 0.45; cursor: not-allowed; }
+.toolbar .primary { background: #007acc; border-color: #007acc; color: #fff; }
+.sep { width: 1px; height: 22px; background: #eaeaea; margin: 0 4px; }
+.slider, .stdin { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 12px; color: #57606a; }
+.slider input { width: 100%; accent-color: #007acc; }
+.stdin textarea { width: 100%; box-sizing: border-box; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid #eaeaea; border-radius: 6px; padding: 8px; background: #fff; resize: vertical; }
+.status { min-height: 20px; margin-top: 8px; display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; }
+.err { color: #b3261e; } .warn { color: #8a5a00; } .muted { color: #6e7781; }
+.outputs, .grid { margin-top: 10px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #57606a; margin: 0 0 6px; }
+.vars { margin: 0; } .vars div { display: flex; gap: 8px; padding: 3px 0; border-bottom: 1px solid #eaeaea; }
+.vars dt { font-family: ui-monospace, monospace; min-width: 72px; color: #007acc; }
+.vars dd { margin: 0; font-family: ui-monospace, monospace; overflow-wrap: anywhere; max-height: 6em; overflow: auto; }
+.stack { margin: 0 0 12px; padding-left: 18px; }
+.out { margin: 0 0 8px; padding: 8px; background: #fff; border: 1px solid #eaeaea; border-radius: 6px; font: 13px/1.4 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+.errOut { color: #b3261e; }
+.link { background: none; border: 0; color: #007acc; cursor: pointer; padding: 4px 0; font-size: 12px; }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } .toolbar button { flex: 1 1 auto; } }
+@media (prefers-reduced-motion: reduce) { .panel * { transition: none !important; } }
+
+

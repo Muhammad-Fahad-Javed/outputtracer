@@ -49,7 +49,16 @@ const DEFAULT_FLAGS: CpuFlags = {
 };
 
 export default function AssemblyLab() {
-  const [code, setCode] = useState(DEFAULT_ASM_CODE);
+  const [code, setCode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const pendingAsm = window.localStorage.getItem("pending_asm_code");
+      if (pendingAsm) {
+        window.localStorage.removeItem("pending_asm_code");
+        return pendingAsm;
+      }
+    }
+    return DEFAULT_ASM_CODE;
+  });
   const [selectedExampleId, setSelectedExampleId] = useState(ASM_EXAMPLES[0].id);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
@@ -71,16 +80,14 @@ export default function AssemblyLab() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Active bottom / side tabs
   const [activeTab, setActiveTab] = useState<"output" | "memory" | "stack" | "trace">("output");
   const [memSegment, setMemSegment] = useState<number>(0x1000);
   const [memOffset, setMemOffset] = useState<number>(0x0100);
   const [memWordMode, setMemWordMode] = useState(false);
-  const [memoryDump, setMemoryDump] = useState<number[]>([]);
 
   // Editor ref & decorations
-  const editorRef = useRef<any>(null);
-  const monacoRef = useRef<any>(null);
+  const editorRef = useRef<Parameters<NonNullable<OnMount>>[0] | null>(null);
+  const monacoRef = useRef<Parameters<NonNullable<OnMount>>[1] | null>(null);
   const decorationsRef = useRef<string[]>([]);
 
   // Highlight current instruction in Monaco editor
@@ -284,7 +291,13 @@ export default function AssemblyLab() {
 
   // Initial assembly on mount
   useEffect(() => {
-    handleAssemble();
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) void handleAssemble();
+    });
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -442,6 +455,13 @@ export default function AssemblyLab() {
           </button>
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="bg-rose-950/80 border-b border-rose-800 px-3 py-1 text-xs text-rose-200 flex items-center gap-2">
+          <AlertCircle size={13} />
+          <span>{errorMessage}</span>
+        </div>
+      )}
 
       {/* Main Workspace Grid */}
       <div className="flex flex-1 overflow-hidden">
@@ -649,7 +669,7 @@ export default function AssemblyLab() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id as "output" | "memory" | "stack" | "trace")}
                   className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium transition-colors ${
                     activeTab === tab.id
                       ? "border-b-2 border-[#007ACC] text-white bg-[#1E1E1E]"

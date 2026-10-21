@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { AuthProvider } from "@/components/AuthProvider";
 import "./globals.css";
 
@@ -7,9 +7,12 @@ export const metadata: Metadata = {
   title: "Online C++ Compiler | OutputTracer",
   description:
     "Write and run C++ code online with OutputTracer. Trace execution step by step, inspect variables, debug programs, and practice C++ in your browser.",
-  alternates: {
-    canonical: "/",
-  },
+  // NOTE: do not set `alternates.canonical` here. Next.js shallowly merges
+  // metadata, so a root canonical is inherited by every route that does not
+  // declare its own â€” and a relative canonical resolves against `metadataBase`
+  // (not the current route), which made /assembly, /python, /learn/courses/*,
+  // /login and others all claim to be duplicates of the homepage.
+  // Each indexable route now declares its own self-referencing canonical.
   openGraph: {
     title: "Online C++ Compiler | OutputTracer",
     description:
@@ -28,9 +31,6 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Online C++ Compiler | OutputTracer",
-    description:
-      "Write and run C++ code online with OutputTracer. Trace execution step by step, inspect variables, debug programs, and practice C++ in your browser.",
     images: ["/brand/logo-tile.svg"],
   },
   robots: {
@@ -88,22 +88,19 @@ export default function RootLayout({
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "WebApplication",
-              "name": "OutputTracer Online C++ Compiler",
+              "name": "OutputTracer - Online C++, Python 3 and 8086 Assembly IDE",
               "applicationCategory": "DeveloperApplication",
               "operatingSystem": "All modern browsers (Chrome, Firefox, Safari, Edge)",
-              "browserRequirements": "Requires JavaScript. Supports standard C++17.",
+              "browserRequirements": "Requires JavaScript.",
               "url": "https://outputtracer.com/",
-              "offers": {
-                "@type": "Offer",
-                "price": "0",
-                "priceCurrency": "USD"
-              },
               "featureList": [
-                "Write and run C++ code online",
-                "Step-by-step execution tracing and timeline",
+                "Write and run C++17 code online with step-by-step GDB execution tracing",
+                "Write and run Python 3 code online with standard input/output support",
+                "Assemble and run 8086 NASM DOS programs with CPU register, flags, memory, and stack inspection",
                 "Interactive terminal with standard input/output",
                 "Variable inspection and dry-run state tracking",
-                "Curated output prediction practice questions"
+                "Curated output-prediction practice questions",
+                "Classroom management for teachers and students"
               ]
             })
           }}

@@ -16,7 +16,17 @@ export const metadata: Metadata = {
     title: "C++ Output Prediction & Execution Practice Questions | OutputTracer",
     description:
       "Practice C++ output prediction with 200+ challenges. Test pointers, recursion, OOP, loops, and memory models.",
+    siteName: "OutputTracer",
+    type: "website",
     url: "https://outputtracer.com/practice",
+    images: [
+      {
+        url: "/brand/logo-tile.svg",
+        width: 512,
+        height: 512,
+        alt: "OutputTracer C++ practice questions",
+      },
+    ],
   },
 };
 
