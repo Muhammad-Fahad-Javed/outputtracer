@@ -24,20 +24,24 @@ const UNSAFE_PATH_CHARS = /[\\\u0000-\u001f\u007f]/;
 
 /**
  * Only allow same-origin relative paths through the `next` parameter.
- * Anything that could resolve to another origin falls back to /projects.
+ * Anything that could resolve to another origin falls back to the learner
+ * home, unless the caller passes a role-specific fallback.
  */
-export function safeNextPath(value: string | undefined): string {
+export function safeNextPath(
+  value: string | undefined,
+  fallback = "/classroom/student"
+): string {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/projects";
+    return fallback;
   }
   if (UNSAFE_PATH_CHARS.test(value)) {
-    return "/projects";
+    return fallback;
   }
   try {
     const parsed = new URL(value, SAFE_PATH_ORIGIN);
-    if (parsed.origin !== SAFE_PATH_ORIGIN) return "/projects";
+    if (parsed.origin !== SAFE_PATH_ORIGIN) return fallback;
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
-    return "/projects";
+    return fallback;
   }
 }

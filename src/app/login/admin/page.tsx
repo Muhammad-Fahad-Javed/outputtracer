@@ -21,7 +21,8 @@ export default async function AdminLoginPage({
   if (user) {
     const isAdmin = await checkIsAdmin(user.id);
     if (isAdmin) {
-      redirect("/admin");
+      const next = params.next ? `&next=${encodeURIComponent(params.next)}` : "";
+      redirect(`/auth/continue?role=admin${next}`);
     }
 
     // Authenticated user lacks admin role

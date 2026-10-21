@@ -18,7 +18,8 @@ export default async function LearnerLoginPage({
   const nextPath = params.next ? safeNextPath(params.next) : "/classroom/student";
 
   if (user) {
-    redirect(nextPath);
+    const next = params.next ? `&next=${encodeURIComponent(params.next)}` : "";
+    redirect(`/auth/continue?role=learner${next}`);
   }
 
   return (
