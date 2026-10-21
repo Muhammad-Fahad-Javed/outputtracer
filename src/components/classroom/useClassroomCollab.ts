@@ -11,6 +11,7 @@ import { colorForUser, type CollabPeer } from "@/components/collab/useProjectCol
 import { base64ToBytes, bytesToBase64 } from "@/lib/cloud/base64";
 import { readFiles, seedDoc } from "@/lib/cloud/collabDoc";
 import { canEdit, type ProjectRole } from "@/lib/cloud/roles";
+import { watchLocalAuthorship } from "@/lib/classroom/authorship";
 
 export interface ClassroomCollabState {
   status: "idle" | "connecting" | "live" | "offline" | "blocked";
@@ -163,7 +164,11 @@ export function useClassroomCollab(opts: {
       awareness.on("update", onAwareness);
       awareness.on("change", refreshPeers);
       doc.getMap("files").observe(() => refreshFiles(doc));
+      const stopAuthorship = watchLocalAuthorship(doc, () =>
+        canEdit(roleRef.current) ? identityRef.current.userId || null : null
+      );
       detach = () => {
+        stopAuthorship();
         doc.off("update", onUpdate);
         awareness.off("update", onAwareness);
         awareness.off("change", refreshPeers);

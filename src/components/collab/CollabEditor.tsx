@@ -6,6 +6,8 @@ import * as Y from "yjs";
 import { MonacoBinding } from "y-monaco";
 import type { Awareness } from "y-protocols/awareness";
 import type { CollabPeer } from "./useProjectCollab";
+import { colorForUser } from "./useProjectCollab";
+import { authorshipOfText } from "@/lib/classroom/authorship";
 
 interface CollabEditorProps {
   doc: Y.Doc;
@@ -15,6 +17,8 @@ interface CollabEditorProps {
   peers: CollabPeer[];
   onRunShortcut: () => void;
   onEditor?: (editor: Parameters<OnMount>[0]) => void;
+  /** Color the characters each student typed. Used on the teacher watch view. */
+  showAuthorship?: boolean;
 }
 
 export default function CollabEditor({
@@ -25,17 +29,21 @@ export default function CollabEditor({
   peers,
   onRunShortcut,
   onEditor,
+  showAuthorship = false,
 }: CollabEditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
   const runRef = useRef(onRunShortcut);
   const [mounted, setMounted] = useState(false);
+  const [authorCss, setAuthorCss] = useState("");
   useEffect(() => {
     runRef.current = onRunShortcut;
   });
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
     onEditor?.(editor);
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       runRef.current();
@@ -61,6 +69,55 @@ export default function CollabEditor({
       bindingRef.current = null;
     };
   }, [awareness, doc, filename, mounted]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!showAuthorship || !editor || !monaco || !mounted) return;
+    const model = editor.getModel();
+    const shared = doc.getMap("files").get(filename);
+    if (!(shared instanceof Y.Text) || !model) return;
+
+    const decorations = editor.createDecorationsCollection([]);
+    const paint = () => {
+      const current = doc.getMap("files").get(filename);
+      const currentModel = editor.getModel();
+      if (!(current instanceof Y.Text) || !currentModel) {
+        decorations.clear();
+        setAuthorCss("");
+        return;
+      }
+      const { spans } = authorshipOfText(current);
+      const colors = new Map<string, string>();
+      decorations.set(
+        spans.map((span) => {
+          const start = currentModel.getPositionAt(Math.min(span.start, currentModel.getValueLength()));
+          const end = currentModel.getPositionAt(Math.min(span.end, currentModel.getValueLength()));
+          const color = colorForUser(span.authorId);
+          colors.set(span.authorId, color);
+          return {
+            range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
+            options: {
+              inlineClassName: `ot-author-${safeClass(span.authorId)}`,
+              overviewRuler: { color, position: monaco.editor.OverviewRulerLane.Left },
+            },
+          };
+        })
+      );
+      setAuthorCss(
+        [...colors.entries()]
+          .map(([authorId, color]) => `.ot-author-${safeClass(authorId)}{background-color:${color}55;border-bottom:2px solid ${color}}`)
+          .join("\n")
+      );
+    };
+    paint();
+    const files = doc.getMap("files");
+    files.observeDeep(paint);
+    return () => {
+      files.unobserveDeep(paint);
+      decorations.clear();
+    };
+  }, [doc, filename, mounted, showAuthorship]);
 
   const cursorCss = peers
     .map((peer) => {
@@ -93,6 +150,7 @@ export default function CollabEditor({
           pointer-events: none;
         }
         ${cursorCss}
+        ${authorCss}
       `}</style>
       <div className="min-h-0 flex-1">
         <Editor
@@ -118,4 +176,9 @@ export default function CollabEditor({
       </div>
     </div>
   );
+}
+
+function safeClass(value: string): string {
+  const cleaned = value.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  return cleaned || "student";
 }

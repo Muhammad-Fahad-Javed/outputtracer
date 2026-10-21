@@ -1,8 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import * as Y from "yjs";
 import { Eye, Play } from "lucide-react";
-import CollabEditor from "@/components/collab/CollabEditor";
+
+const CollabEditor = dynamic(() => import("@/components/collab/CollabEditor"), { ssr: false });
+import { colorForUser } from "@/components/collab/useProjectCollab";
+import { authorshipOfDoc, type AuthorshipReport } from "@/lib/classroom/authorship";
 import { useClassroomCollab } from "./useClassroomCollab";
 
 interface WatchParticipant {
@@ -129,6 +134,13 @@ export default function TeacherWatch({
       setBusy(false);
     }
   };
+
+  const contribution = useContribution(selected ? collab.doc : null);
+  const authorNames: Record<string, string> = {};
+  if (selected?.members) {
+    for (const member of selected.members) authorNames[member.userId] = member.displayName;
+  }
+  if (selected?.kind === "student") authorNames[selected.id] = selected.name;
 
   const presence = collab.peers.length === 0
     ? "No other cursors in this document."
@@ -280,6 +292,7 @@ export default function TeacherWatch({
                     </button>
                   ))}
                 </div>
+                <ContributionLegend report={contribution} names={authorNames} />
                 <div className="h-[min(70vh,520px)] min-h-[280px] overflow-hidden rounded-lg border border-[#EAEAEA]">
                   <CollabEditor
                     doc={collab.doc}
@@ -288,6 +301,7 @@ export default function TeacherWatch({
                     readOnly
                     peers={collab.peers}
                     onRunShortcut={() => void run()}
+                    showAuthorship
                   />
                 </div>
                 {runNote && <p className="text-xs text-[#333333]">{runNote}</p>}
@@ -302,6 +316,56 @@ export default function TeacherWatch({
             )}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function useContribution(doc: Y.Doc | null): AuthorshipReport | null {
+  const [report, setReport] = useState<AuthorshipReport | null>(null);
+  useEffect(() => {
+    if (!doc) {
+      setReport(null);
+      return;
+    }
+    const update = () => setReport(authorshipOfDoc(doc));
+    update();
+    const files = doc.getMap("files");
+    files.observeDeep(update);
+    return () => files.unobserveDeep(update);
+  }, [doc]);
+  return report;
+}
+
+function ContributionLegend({
+  report,
+  names,
+}: {
+  report: AuthorshipReport | null;
+  names: Record<string, string>;
+}) {
+  if (!report) return null;
+  return (
+    <div className="rounded-lg border border-[#EAEAEA] bg-[#FAFAFA] px-3 py-2">
+      <p className="text-[11px] font-semibold text-black">Who wrote this code</p>
+      {report.shares.length === 0 ? (
+        <p className="mt-1 text-[11px] text-[#666666]">No student has typed yet. Starter code is not counted.</p>
+      ) : (
+        <ul className="mt-1.5 flex flex-wrap gap-2">
+          {report.shares.map((share) => (
+            <li key={share.authorId} className="inline-flex items-center gap-1.5 text-[11px] text-black">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: colorForUser(share.authorId) }}
+              />
+              <span>{names[share.authorId] || "Student"}</span>
+              <span className="font-semibold">{share.percent}%</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {report.starter > 0 && (
+        <p className="mt-1 text-[10px] text-[#888888]">Starter code is left uncolored and is not part of the percentage.</p>
       )}
     </div>
   );

@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { CheckCircle2, Play, Send } from "lucide-react";
-import CollabEditor from "@/components/collab/CollabEditor";
+
+const CollabEditor = dynamic(() => import("@/components/collab/CollabEditor"), { ssr: false });
 import { canEdit } from "@/lib/cloud/roles";
 import { useClassroomCollab } from "./useClassroomCollab";
 
