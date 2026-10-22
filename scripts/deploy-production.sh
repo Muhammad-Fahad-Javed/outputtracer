@@ -404,7 +404,7 @@ SMOKE_PID=$!
 info "waiting for the candidate to accept connections..."
 READY=0
 for _ in $(seq 1 60); do
-  if curl -fsS -o /dev/null --max-time 5 "http://127.0.0.1:$DEPLOY_PORT/robots.txt"; then
+  if curl -fs -o /dev/null --max-time 5 "http://127.0.0.1:$DEPLOY_PORT/robots.txt"; then
     READY=1
     break
   fi
@@ -461,11 +461,11 @@ SMOKE_PID=""
 # ==================================================== 6. PROMOTE THE RELEASE
 log "6. Promote the candidate to the live release"
 
-# A rollback needs the previous release to be present. If it is not there is
-# nothing to roll back to, so refuse to promote rather than leave the site
-# with no way back.
-if [ ! -d "$PREV_DIR" ] && [ -d .next ]; then
-  fail "there is no $PREV_DIR to roll back to; refusing to replace the live release"
+# A rollback needs something to roll back to. The live release is moved to
+# .next.prev during the promotion, so the only case with nothing to roll
+# back to is when neither directory exists at all.
+if [ ! -d .next ] && [ ! -d "$PREV_DIR" ]; then
+  fail "there is no live release and no $PREV_DIR to roll back to; refusing to promote"
 fi
 
 rm -rf "$PREV_DIR"
