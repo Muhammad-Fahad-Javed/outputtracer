@@ -152,11 +152,12 @@ PROTECTED_ROUTES=( /projects /groups /admin /learn/dashboard /classroom/teacher 
 #
 # The lock file records the owner so that a blocked deployment can say who
 # holds it. flock releases the lock when the owner dies, so a leftover file
-# on its own never blocks a deployment.
+# on its own never blocks a deployment. The owner is read BEFORE the file
+# is reopened for writing, because opening it truncates it.
+LOCK_OWNER="$(head -1 "$LOCK_FILE" 2>/dev/null || true)"
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
-  OWNER="$(cat "$LOCK_FILE" 2>/dev/null || echo unknown)"
-  fail "another deployment is already running (lock: $LOCK_FILE, owner: $OWNER)"
+  fail "another deployment is already running (lock: $LOCK_FILE, owner: ${LOCK_OWNER:-unknown})"
 fi
 printf 'pid=%s started=%s script=%s\n' "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$0" >&9
 
@@ -374,7 +375,7 @@ SMOKE_PID=""
 # "pkill node".
 kill_tree() {
   local pid="$1" child
-  for child in $(pgrep -P "$pid" 2>/dev/null); do
+  for child in $(pgrep -P "$pid" 2>/dev/null || ps -o pid= --ppid "$pid" 2>/dev/null); do
     kill_tree "$child"
   done
   kill "$pid" 2>/dev/null || true
