@@ -19,8 +19,15 @@
 # and smoke tested on a spare port while the live release keeps serving.
 #
 # Usage:
-#   scripts/deploy-production.sh              # full deploy
-#   scripts/deploy-production.sh --verify-only  # verify the live release only
+#   scripts/deploy-production.sh                       # build on this host, then deploy
+#   scripts/deploy-production.sh --artifact FILE       # deploy a prebuilt release
+#   scripts/deploy-production.sh --verify-only          # verify the live release only
+#
+# The artifact mode is the recommended path. A `next build` of this codebase
+# needs about 1.9 GB of resident memory and the production instance has
+# 913 MiB of RAM, so building there stalls or is killed. Build the release on
+# a development machine with scripts/package-release.mjs, copy the tarball
+# here, and promote it.
 #
 # Environment:
 #   PM2_APP       PM2 process name (default: outputtracer)
@@ -37,9 +44,41 @@ CANDIDATE_DIR=".next-candidate"
 PREV_DIR=".next.prev"
 LOCK_FILE="/tmp/outputtracer-deploy.lock"
 
+ARTIFACT=""
+BUILD_ON_HOST=1
+
 log()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
 fail() { printf '\n\033[1;31m!!! %s\033[0m\n' "$*" >&2; exit 1; }
+
+# Restore the previous release and put it back in front of traffic.
+#
+# This MUST actually put the old build back. The previous version of this
+# script only printed "rolling back" and exited, which left the broken new
+# release live while the working one sat unused in .next.prev - the exact
+# situation a rollback exists to prevent.
+rollback_release() {
+  local reason="$1"
+  printf '\n\033[1;31m!!! %s\033[0m\n' "$reason" >&2
+  printf '\033[1;33m==> rolling back to %s\033[0m\n' "$PREV_DIR" >&2
+  if [ -d "$PREV_DIR" ]; then
+    rm -rf .next
+    mv "$PREV_DIR" .next
+    unset NEXT_DIST_DIR
+    pm2 stop "$PM2_APP" || true
+    sleep 1
+    pm2 restart "$PM2_APP" --update-env || true
+    for _ in $(seq 1 30); do
+      code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/robots.txt" || echo 000)"
+      [ "$code" = "200" ] && break
+      sleep 2
+    done
+    printf '\033[1;32m==> rollback complete; the previous release is live again\033[0m\n' >&2
+  else
+    printf '\033[1;31m!!! no %s to roll back to - the site needs manual attention\033[0m\n' "$PREV_DIR" >&2
+  fi
+  exit 1
+}
 
 # Next.js rewrites tsconfig.json during a build when the include patterns do
 # not match the distDir in use. A candidate build therefore appends its own
@@ -53,6 +92,61 @@ restore_tsconfig() {
   fi
 }
 trap restore_tsconfig EXIT
+
+# ------------------------------------------------------------- arguments
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --artifact)
+      ARTIFACT="${2:-}"
+      [ -n "$ARTIFACT" ] || fail "--artifact needs a path to the release tarball"
+      BUILD_ON_HOST=0
+      shift 2
+      ;;
+    --verify-only)
+      cd "$APP_DIR"
+      exec scripts/verify-release.sh
+      ;;
+    --build-on-host)
+      BUILD_ON_HOST=1
+      shift
+      ;;
+    -h|--help)
+      sed -n '18,36p' "$0"
+      exit 0
+      ;;
+    *)
+      fail "unknown argument: $1"
+      ;;
+  esac
+done
+
+# The release archive is a build artefact that is copied into the working
+# tree before it is promoted. It is not a source change, so it must not be
+# reported as one. Without this the script would refuse to promote the very
+# archive it was asked to promote.
+is_release_artefact() {
+  [ "$BUILD_ON_HOST" -eq 0 ] || return 1
+  [ -n "$ARTIFACT" ] || return 1
+  local base
+  base="$(basename "$ARTIFACT")"
+  case "$1" in
+    "$base"|"$base.sha256"|*"/$base"|*"/$base.sha256") return 0 ;;
+  esac
+  return 1
+}
+
+# Lists the uncommitted changes, ignoring the release archive.
+working_tree_dirty() {
+  local line path
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    path="${line:3}"
+    is_release_artefact "$path" && continue
+    printf '%s\n' "$line"
+  done <<EOF
+$(git status --porcelain --untracked-files=all)
+EOF
+}
 
 # Routes that must answer 200 on a healthy release.
 PUBLIC_ROUTES=(
@@ -88,38 +182,63 @@ fi
 info "current commit  : $CURRENT_COMMIT"
 info "current BUILD_ID: $CURRENT_BUILD_ID"
 
-# Record the live release so a rollback can be targeted precisely.
+# Record the live release so a rollback can be targeted precisely. The
+# manifest uses the same shape as the one scripts/package-release.mjs writes,
+# so the live release and a promoted artefact are described identically.
 mkdir -p .next
-printf '%s\n' "$CURRENT_COMMIT" > .next/RELEASE
+cat > .next/RELEASE <<RELEASE_EOF
+{
+  "commit": "$CURRENT_COMMIT",
+  "buildId": "$CURRENT_BUILD_ID",
+  "promotedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+RELEASE_EOF
 
 DISK_FREE_MB="$(df -Pm / | awk 'NR==2 {print $4}')"
 info "disk free       : ${DISK_FREE_MB} MB"
-# The build needs roughly 1 GB of scratch space for .next-candidate plus the
-# Turbopack cache. Refuse to start rather than fill the root volume.
-if [ "$DISK_FREE_MB" -lt 1200 ]; then
-  fail "only ${DISK_FREE_MB} MB free on /; need at least 1200 MB to build"
+# Promoting a release needs room for the candidate plus the copy of the live
+# release that is kept for rollback. Refuse to start rather than fill the
+# root volume.
+REQUIRED_DISK_MB=1200
+if [ "$BUILD_ON_HOST" -eq 1 ]; then
+  # A build also needs the Turbopack cache and the TypeScript build info.
+  REQUIRED_DISK_MB=2000
+fi
+if [ "$DISK_FREE_MB" -lt "$REQUIRED_DISK_MB" ]; then
+  fail "only ${DISK_FREE_MB} MB free on /; need at least ${REQUIRED_DISK_MB} MB"
 fi
 
-# The build needs about 1.9 GB of resident memory (measured: ~1.4 GB held by
-# the Turbopack compiler in the parent process plus ~0.5 GB in the TypeScript
-# type-check worker). Report what is available so the operator can see
-# whether the instance is big enough before starting a long build.
 MEM_TOTAL_MB="$(free -m | awk 'NR==2 {print $2}')"
 MEM_AVAIL_MB="$(free -m | awk 'NR==2 {print $7}')"
 SWAP_TOTAL_MB="$(free -m | awk 'NR==3 {print $2}')"
 info "memory          : ${MEM_TOTAL_MB} MB total, ${MEM_AVAIL_MB} MB available"
 info "swap            : ${SWAP_TOTAL_MB} MB total"
-if [ $(( MEM_TOTAL_MB + SWAP_TOTAL_MB )) -lt 2200 ]; then
-  fail "this build needs ~1900 MB of memory but the instance offers $(( MEM_TOTAL_MB + SWAP_TOTAL_MB )) MB (RAM+swap). Resize the instance or add swap before deploying."
+
+if [ "$BUILD_ON_HOST" -eq 1 ]; then
+  # A `next build` of this codebase needs about 1.9 GB of resident memory:
+  # ~1.4 GB is held by the Turbopack compiler in the parent process and the
+  # TypeScript type-check worker adds ~0.5 GB on top while the compiler is
+  # still resident. On a host with 913 MiB of RAM the build is killed or
+  # thrashes at the type-check step. 1900 MB is the measured peak, so require
+  # real headroom above it rather than the bare minimum.
+  if [ $(( MEM_TOTAL_MB + SWAP_TOTAL_MB )) -lt 2600 ]; then
+    fail "building on this host needs ~1900 MB of memory plus headroom, but the instance offers $(( MEM_TOTAL_MB + SWAP_TOTAL_MB )) MB (RAM+swap). Build elsewhere with scripts/package-release.mjs and deploy with --artifact."
+  fi
+  if [ "$MEM_AVAIL_MB" -lt 1200 ]; then
+    fail "only ${MEM_AVAIL_MB} MB of memory is available; the build needs at least 1200 MB free."
+  fi
+  info "building on this host is possible, but --artifact is faster and safer"
+else
+  info "no build on this host: promoting a prebuilt release"
 fi
 
-if [ -n "$(git status --porcelain)" ]; then
+if [ -n "$(working_tree_dirty)" ]; then
   # A previous run that was killed mid-build can leave tsconfig.json rewritten
   # by Next.js. That is a generated change, not user work, so restore it and
   # re-check before refusing to continue.
   restore_tsconfig
 fi
-if [ -n "$(git status --porcelain)" ]; then
+if [ -n "$(working_tree_dirty)" ]; then
   fail "working tree is not clean; commit or stash the changes first"
 fi
 info "working tree    : clean"
@@ -138,27 +257,71 @@ if [ "$TARGET_COMMIT" = "$CURRENT_COMMIT" ]; then
   info "already up to date; the release will still be rebuilt and verified"
 fi
 
-# ================================================== 3. BUILD THE CANDIDATE
-log "3. Build the candidate release (live .next is not touched)"
+# ================================================== 3. PREPARE THE CANDIDATE
+log "3. Prepare the candidate release (live .next is not touched)"
 
 rm -rf "$CANDIDATE_DIR"
-export NEXT_DIST_DIR="$CANDIDATE_DIR"
-export NEXT_DEPLOYMENT_ID="$TARGET_SHORT"
-export NEXT_TELEMETRY_DISABLED=1
-# Unset so the running server does not inherit it; the live release must use
-# the default distDir.
-unset NEXT_DIST_DIR_BUILD
 
-BUILD_LOG="$(mktemp /tmp/outputtracer-build.XXXXXX.log)"
-info "build log       : $BUILD_LOG"
+if [ "$BUILD_ON_HOST" -eq 0 ]; then
+  # ---- prebuilt release -------------------------------------------------
+  ARTIFACT_PATH="$ARTIFACT"
+  [ -f "$ARTIFACT_PATH" ] || fail "artifact not found: $ARTIFACT_PATH"
 
-if ! npm run build >"$BUILD_LOG" 2>&1; then
-  info "---- last 40 lines of the build log ----"
-  tail -40 "$BUILD_LOG"
-  fail "build failed; the live release is untouched and still serving"
+  # Verify the checksum when the sidecar is present, so a truncated copy
+  # cannot be promoted.
+  if [ -f "${ARTIFACT_PATH}.sha256" ]; then
+    EXPECTED_SHA="$(awk '{print $1}' "${ARTIFACT_PATH}.sha256")"
+    ACTUAL_SHA="$(sha256sum "$ARTIFACT_PATH" | awk '{print $1}')"
+    if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
+      fail "checksum mismatch for $ARTIFACT_PATH (expected $EXPECTED_SHA, got $ACTUAL_SHA)"
+    fi
+    info "sha256 verified : $ACTUAL_SHA"
+  else
+    info "WARNING: no .sha256 sidecar next to the artifact; checksum not verified"
+  fi
+
+  mkdir -p "$CANDIDATE_DIR"
+  info "extracting      : $ARTIFACT_PATH -> $CANDIDATE_DIR"
+  if ! tar -xzf "$ARTIFACT_PATH" -C "$CANDIDATE_DIR"; then
+    rm -rf "$CANDIDATE_DIR"
+    fail "could not extract the release archive; the live release is untouched"
+  fi
+
+  # The manifest says which commit the artefact was built from. It must match
+  # the commit that was just pulled, otherwise the release on the site would
+  # not be the code that is in the repository.
+  if [ ! -f "$CANDIDATE_DIR/RELEASE" ]; then
+    rm -rf "$CANDIDATE_DIR"
+    fail "the artefact has no RELEASE manifest; refusing to promote an unidentifiable release"
+  fi
+  ARTIFACT_COMMIT="$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CANDIDATE_DIR/RELEASE" | head -1)"
+  ARTIFACT_RELEASE_ID="$(sed -n 's/.*"deploymentId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CANDIDATE_DIR/RELEASE" | head -1)"
+  info "artifact commit : ${ARTIFACT_COMMIT:-unknown}"
+  info "artifact release: ${ARTIFACT_RELEASE_ID:-unknown}"
+  if [ -n "$ARTIFACT_COMMIT" ] && [ "$ARTIFACT_COMMIT" != "$TARGET_COMMIT" ]; then
+    rm -rf "$CANDIDATE_DIR"
+    fail "the artefact was built from $ARTIFACT_COMMIT but the repository is at $TARGET_COMMIT; refusing to promote a release that does not match the code"
+  fi
+  if [ -n "$ARTIFACT_RELEASE_ID" ]; then
+    TARGET_SHORT="$ARTIFACT_RELEASE_ID"
+  fi
+else
+  # ---- build on this host ----------------------------------------------
+  export NEXT_DIST_DIR="$CANDIDATE_DIR"
+  export NEXT_DEPLOYMENT_ID="$TARGET_SHORT"
+  export NEXT_TELEMETRY_DISABLED=1
+
+  BUILD_LOG="$(mktemp /tmp/outputtracer-build.XXXXXX.log)"
+  info "build log       : $BUILD_LOG"
+
+  if ! npm run build >"$BUILD_LOG" 2>&1; then
+    info "---- last 40 lines of the build log ----"
+    tail -40 "$BUILD_LOG"
+    fail "build failed; the live release is untouched and still serving"
+  fi
+  info "build finished"
+  restore_tsconfig
 fi
-info "build finished"
-restore_tsconfig
 
 # ================================================= 4. VERIFY THE CANDIDATE
 log "4. Verify the candidate build artefacts"
@@ -242,13 +405,26 @@ SMOKE_PID=""
 # ==================================================== 6. PROMOTE THE RELEASE
 log "6. Promote the candidate to the live release"
 
+# A rollback needs the previous release to be present. If it is not there is
+# nothing to roll back to, so refuse to promote rather than leave the site
+# with no way back.
+if [ ! -d "$PREV_DIR" ] && [ -d .next ]; then
+  fail "there is no $PREV_DIR to roll back to; refusing to replace the live release"
+fi
+
 rm -rf "$PREV_DIR"
 if [ -d .next ]; then
   mv .next "$PREV_DIR"
   info "previous release kept as $PREV_DIR"
 fi
 mv "$CANDIDATE_DIR" .next
-printf '%s\n' "$TARGET_COMMIT" > .next/RELEASE
+cat > .next/RELEASE <<RELEASE_EOF
+{
+  "commit": "$TARGET_COMMIT",
+  "release": "$TARGET_SHORT",
+  "promotedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+RELEASE_EOF
 info "live release is now $TARGET_SHORT"
 
 # The live server must use the default distDir and the release id.
@@ -260,7 +436,7 @@ sleep 1
 if ! pm2 restart "$PM2_APP" --update-env; then
   info "---- pm2 logs ----"
   pm2 logs "$PM2_APP" --lines 40 --nostream || true
-  fail "PM2 could not start the new release"
+  rollback_release "PM2 could not start the new release"
 fi
 info "PM2 restarted"
 
@@ -278,19 +454,19 @@ for _ in $(seq 1 45); do
 done
 
 if [ "$HEALTHY" -ne 1 ]; then
-  fail "health check failed; rolling back to $PREV_DIR"
+  rollback_release "health check failed after promotion"
 fi
 
 # The live site must now be serving the new release id.
 if ! curl -s --max-time 30 "$BASE_URL/" | grep -q "data-dpl-id=\"$TARGET_SHORT\""; then
-  fail "the live site is not serving release $TARGET_SHORT; rolling back"
+  rollback_release "the live site is not serving release $TARGET_SHORT"
 fi
 info "live site is serving release $TARGET_SHORT"
 
 for route in "${PUBLIC_ROUTES[@]}"; do
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$BASE_URL$route" || echo 000)"
   if [ "$code" != "200" ]; then
-    fail "live site returned $code for $route; rolling back"
+    rollback_release "live site returned $code for $route"
   fi
 done
 info "all ${#PUBLIC_ROUTES[@]} public routes answered 200 on the live site"

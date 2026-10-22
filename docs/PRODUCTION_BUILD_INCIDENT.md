@@ -2,8 +2,9 @@
 
 Date: 2026-10-21
 Scope: `https://outputtracer.com` (AWS EC2, Amazon Linux 2023, PM2 + Nginx)
-Status: root cause confirmed, fix implemented and validated locally, deployment
-pending an infrastructure change on the host.
+Status: root cause confirmed. The release is built off the host and promoted
+as a verified artefact, so the instance does not have to change. The
+artefact path still has to be merged into `main` before it can be promoted.
 
 ---
 
@@ -202,6 +203,46 @@ carries the expected id, that the live site carries it after the swap, and
 that the id matches the deployed commit. No visible text was added to the
 homepage for verification.
 
+### 4.5 Building off the host (no instance change required)
+
+Section 4.1 makes a build on the host possible by growing the volume and
+restoring the swapfile. It is not required: the release can be built on a
+machine with enough memory and promoted as a finished artefact. That removes
+the memory requirement from the production host altogether.
+
+```bash
+# on a development machine, from the commit that is going to be released
+node scripts/package-release.mjs
+# -> release/outputtracer-release-<short-sha>.tar.gz  (+ .sha256)
+
+# on the host
+git fetch origin && git checkout main && git pull --ff-only origin main
+scripts/deploy-production.sh --artifact release/outputtracer-release-<short-sha>.tar.gz
+```
+
+`scripts/deploy-production.sh --artifact` never runs a build. It verifies the
+artefact's checksum, unpacks it into `.next-candidate`, checks the build
+artefacts and the release id, smoke tests the candidate on a spare port and
+only then promotes it. Every step before the promotion leaves the live
+release untouched.
+
+Two rules make this safe:
+
+* **The artefact must be built from the commit that `main` points at.** The
+  script compares the commit in the artefact's `RELEASE` manifest with the
+  commit it has just pulled and refuses to promote a mismatch. The custom
+  server (`server.ts`) and `src/lib` are executed from the checkout at
+  runtime, not from the artefact, so the two have to be the same code.
+* **The release id has to be baked in by the build.** Next renders
+  `data-dpl-id` into the HTML while it builds, so the id cannot be added
+  afterwards. `scripts/package-release.mjs` therefore puts
+  `NEXT_DEPLOYMENT_ID` in the environment of the build it runs and uses the
+  same value in the manifest. An artefact without the attribute cannot be
+  identified on the live site and is rejected.
+
+`scripts/package-release.mjs` uses `npm run build` when npm is installed and
+the local Next.js CLI otherwise; both produce the same build.
+
 ---
 
 ## 5. Deployment
@@ -215,13 +256,22 @@ git pull --ff-only origin main
 # Preflight only - reports disk, memory and the live release, changes nothing.
 bash scripts/deploy-production.sh --verify-only
 
-# Full deploy.
+# Promote a release that was built elsewhere (recommended).
+bash scripts/deploy-production.sh --artifact release/outputtracer-release-<short-sha>.tar.gz
+
+# Full deploy: builds on this host first. Needs ~1.9 GB of memory and will
+# refuse to start when the instance cannot offer that.
 bash scripts/deploy-production.sh
 ```
 
-The script refuses to start if the working tree is dirty, if fewer than
-1200 MB of disk are free, or if RAM + swap is below 2200 MB. It takes an
-exclusive lock so two deployments cannot overlap.
+The script refuses to start if the working tree is dirty, if there is not
+enough free disk, or - when it has to build - if RAM + swap is too small.
+It takes an exclusive lock so two deployments cannot overlap.
+
+Pull `main` before running it. The script pulls `main` itself, but a script
+that replaces itself while it is running keeps executing the version it
+started with, so the `--artifact` option only exists once `main` has been
+pulled.
 
 ### Rollback
 
@@ -247,7 +297,8 @@ pm2 restart outputtracer --update-env
    the key, login, signup and Google OAuth all return "Security verification
    is not configured on this server". `NEXT_PUBLIC_*` is inlined at build
    time, so the key must be in `.env` **when the build runs**; adding it later
-   requires a rebuild.
+   requires a rebuild. When the release is built off the host, the key has to
+   be in the `.env` of the build machine as well, not only on the host.
 2. `SITE_URL` must be `https://outputtracer.com` and `TRUST_PROXY` must be
    `1` in the environment PM2 actually uses.
 3. `www` needs a TLS certificate, otherwise the new apex redirect cannot

@@ -52,3 +52,11 @@ compile-error.txt
 *.zip
 *.backup
 
+# release artefacts: the tarball built off the host and the candidate
+# release it is unpacked into. These are build output, not source, and the
+# tarball is ~160 MB, so they must never be committed.
+# /release/ also keeps the deploy script's "clean working tree" check green
+# while the archive waits in the working tree to be promoted.
+/release/
+/releases/
+
