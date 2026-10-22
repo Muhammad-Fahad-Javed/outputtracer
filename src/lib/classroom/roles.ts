@@ -19,8 +19,16 @@ export function _setMemoryTeacherProfile(userId: string, profile: TeacherProfile
   memoryTeacherProfiles.set(userId, profile);
 }
 
+export function _getMemoryTeacherProfile(userId: string): TeacherProfile | undefined {
+  return memoryTeacherProfiles.get(userId);
+}
+
 export function _setMemoryTeacherAppStatus(userId: string, status: TeacherApplicationStatus): void {
   memoryTeacherAppStatus.set(userId, status);
+}
+
+export function _getMemoryTeacherAppStatus(userId: string): TeacherApplicationStatus | undefined {
+  return memoryTeacherAppStatus.get(userId);
 }
 
 /**

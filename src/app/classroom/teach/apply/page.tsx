@@ -7,7 +7,6 @@ import Footer from "@/components/Footer";
 import {
   GraduationCap,
   CheckCircle2,
-  Clock,
   AlertCircle,
   HelpCircle,
   ShieldCheck,
@@ -17,6 +16,7 @@ import {
   Mail,
   BookOpen,
   FileText,
+  Zap,
 } from "lucide-react";
 import { TeacherApplication, UserCapabilities } from "@/lib/classroom/types";
 
@@ -97,6 +97,36 @@ export default function TeacherApplicationPage() {
     };
   }, []);
 
+  const handleInstantActivate = async () => {
+    setError(null);
+    setSuccessMsg(null);
+    setSubmitting(true);
+
+    try {
+      const res = await fetch("/api/classroom/teacher/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "activate_instant",
+          institutionName: institutionName || "Independent Educator",
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.error || "Failed activating teacher account");
+      } else {
+        setSuccessMsg(data.message || "Teacher account activated successfully!");
+        setCapabilities(data.capabilities);
+        setApplication(data.application);
+      }
+    } catch {
+      setError("A network error occurred while activating.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent, isDraft = false) => {
     e.preventDefault();
     setError(null);
@@ -108,11 +138,11 @@ export default function TeacherApplicationPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          institutionName,
+          institutionName: institutionName || "Independent Educator",
           institutionEmail: institutionEmail || undefined,
           department: department || undefined,
           coursesIntended: coursesIntended || undefined,
-          evidenceNotes,
+          evidenceNotes: evidenceNotes || "Self-service verified educator profile activation.",
           isDraft,
         }),
       });
@@ -121,7 +151,7 @@ export default function TeacherApplicationPage() {
       if (!res.ok || !data.success) {
         setError(data.error || "Failed submitting application");
       } else {
-        setSuccessMsg(data.message || "Application submitted successfully!");
+        setSuccessMsg(data.message || "Account activated successfully!");
         setApplication(data.application);
         await loadStatus();
       }
@@ -147,7 +177,7 @@ export default function TeacherApplicationPage() {
 
           {loading ? (
             <div className="rounded-2xl border border-[#EAEAEA] bg-white p-12 text-center text-xs text-[#666666]">
-              Loading teacher verification status...
+              Loading educator profile status...
             </div>
           ) : !capabilities?.isAuthenticated ? (
             <div className="rounded-2xl border border-[#EAEAEA] bg-white p-8 text-center shadow-xs">
@@ -155,17 +185,17 @@ export default function TeacherApplicationPage() {
                 <GraduationCap size={28} />
               </div>
               <h1 className="text-xl font-bold tracking-tight text-black">
-                Teacher Verification Center
+                Educator Portal
               </h1>
               <p className="mt-2 text-xs text-[#666666] max-w-md mx-auto leading-relaxed">
-                Sign in to apply for verified educator status, create dedicated classrooms, assign programming tasks, and track student code execution.
+                Sign in to activate self-service educator status, create classrooms, assign programming tasks, and track student code execution.
               </p>
               <div className="mt-6">
                 <Link
                   href="/login?next=/classroom/teach/apply"
                   className="inline-flex items-center justify-center rounded-[4px] bg-black px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#333333]"
                 >
-                  Sign in to Apply
+                  Sign in to Continue
                 </Link>
               </div>
             </div>
@@ -179,22 +209,22 @@ export default function TeacherApplicationPage() {
                   <h1 className="text-lg font-bold text-black flex items-center gap-2">
                     Verified Educator
                     <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
-                      Approved
+                      Active
                     </span>
                   </h1>
                   <p className="text-xs text-[#666666]">
-                    Your educator account is verified. You have full access to create and manage classrooms.
+                    Your educator account is active. You have full access to create classrooms, assign work, and inspect student code.
                   </p>
                 </div>
               </div>
 
               <div className="mt-6 rounded-lg border border-[#EAEAEA] bg-[#FBFBFB] p-4 text-xs text-[#666666] space-y-1">
-                <p><strong>Institution:</strong> {application?.institutionName || "Verified Institution"}</p>
+                <p><strong>Institution:</strong> {application?.institutionName || "Active Educator"}</p>
                 {application?.department && <p><strong>Department:</strong> {application.department}</p>}
                 <p><strong>Status:</strong> Active Teacher Profile</p>
               </div>
 
-              <div className="mt-6 flex gap-3">
+              <div className="mt-6 flex flex-wrap gap-3">
                 <Link
                   href="/classroom"
                   className="inline-flex items-center justify-center rounded-[4px] bg-black px-4 py-2 text-xs font-semibold text-white hover:bg-[#333333]"
@@ -203,65 +233,67 @@ export default function TeacherApplicationPage() {
                 </Link>
               </div>
             </div>
-          ) : application?.status === "pending_review" ? (
-            <div className="rounded-2xl border border-[#EAEAEA] bg-white p-8 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600">
-                  <Clock size={24} />
-                </div>
-                <div>
-                  <h1 className="text-lg font-bold text-black flex items-center gap-2">
-                    Application Under Review
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                      Pending Review
-                    </span>
-                  </h1>
-                  <p className="text-xs text-[#666666]">
-                    Your teacher verification application has been submitted and is currently being reviewed by an administrator.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-6 rounded-lg border border-[#EAEAEA] bg-[#FBFBFB] p-4 text-xs text-[#666666] space-y-1.5">
-                <p><strong>Institution:</strong> {application.institutionName}</p>
-                {application.department && <p><strong>Department:</strong> {application.department}</p>}
-                <p><strong>Submitted:</strong> {new Date(application.submittedAt).toLocaleDateString()}</p>
-                <p className="text-[11px] text-[#888888]">
-                  Reviews typically take 1–2 business days. You will be notified once a decision has been recorded.
-                </p>
-              </div>
-            </div>
           ) : (
             <div className="rounded-2xl border border-[#EAEAEA] bg-white p-8 shadow-xs">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black text-white">
-                  <GraduationCap size={24} />
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black text-white">
+                    <GraduationCap size={24} />
+                  </div>
+                  <div>
+                    <h1 className="text-lg font-bold text-black">
+                      Activate Educator Account
+                    </h1>
+                    <p className="text-xs text-[#666666]">
+                      Instant self-service activation — no waiting for manual admin approval.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h1 className="text-lg font-bold text-black">
-                    Teacher Verification Application
-                  </h1>
-                  <p className="text-xs text-[#666666]">
-                    Submit your teaching credentials to enable classroom creation, assignment grading, and student group workspaces.
-                  </p>
-                </div>
+
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={handleInstantActivate}
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-[4px] bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <Zap size={13} /> {submitting ? "Activating..." : "Quick Activate"}
+                </button>
               </div>
+
+              {application?.status === "pending_review" && (
+                <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="font-semibold">Ready for Instant Activation</p>
+                    <p className="text-amber-800 text-[11px] mt-0.5">
+                      Teacher verification is now self-service. You can activate your account immediately.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={handleInstantActivate}
+                    className="shrink-0 rounded-[4px] bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
+                  >
+                    Activate Now
+                  </button>
+                </div>
+              )}
 
               {application?.status === "info_requested" && (
                 <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900">
                   <div className="flex items-center gap-1.5 font-semibold mb-1">
-                    <HelpCircle size={14} /> Additional Information Requested
+                    <HelpCircle size={14} /> Note from Admin
                   </div>
-                  <p className="text-blue-800">{application.reviewerNotes || "Please update your evidence notes and resubmit."}</p>
+                  <p className="text-blue-800">{application.reviewerNotes || "Please update your details."}</p>
                 </div>
               )}
 
               {application?.status === "rejected" && (
                 <div className="mb-6 rounded-lg border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900">
                   <div className="flex items-center gap-1.5 font-semibold mb-1">
-                    <AlertCircle size={14} /> Previous Application Rejected
+                    <AlertCircle size={14} /> Previous Application Closed
                   </div>
-                  <p className="text-rose-800">{application.reviewerNotes || "You may submit updated institutional evidence below."}</p>
+                  <p className="text-rose-800">{application.reviewerNotes || "You may submit updated information below."}</p>
                 </div>
               )}
 
@@ -280,12 +312,12 @@ export default function TeacherApplicationPage() {
               <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-black mb-1">
-                    <Building size={12} className="inline mr-1" /> Institution / School / University *
+                    <Building size={12} className="inline mr-1" /> Institution / Organization / School *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. University of California, Berkeley"
+                    placeholder="e.g. UC Berkeley, Self-Taught Academy, or Independent Educator"
                     value={institutionName}
                     onChange={(e) => setInstitutionName(e.target.value)}
                     className="w-full rounded-md border border-[#DCDCDC] px-3 py-2 text-xs outline-none focus:border-black"
@@ -295,11 +327,11 @@ export default function TeacherApplicationPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-black mb-1">
-                      <BookOpen size={12} className="inline mr-1" /> Department / Subject Area
+                      <BookOpen size={12} className="inline mr-1" /> Department / Subject Area (Optional)
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Computer Science & Engineering"
+                      placeholder="e.g. Computer Science, Engineering"
                       value={department}
                       onChange={(e) => setDepartment(e.target.value)}
                       className="w-full rounded-md border border-[#DCDCDC] px-3 py-2 text-xs outline-none focus:border-black"
@@ -321,11 +353,11 @@ export default function TeacherApplicationPage() {
 
                 <div>
                   <label className="block text-xs font-semibold text-black mb-1">
-                    <FileText size={12} className="inline mr-1" /> Planned Courses / Topics
+                    <FileText size={12} className="inline mr-1" /> Planned Courses / Topics (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. CS101 Intro to C++, 8086 Assembly Lab, Data Structures"
+                    placeholder="e.g. CS101 Intro to C++, 8086 Assembly Lab, Python DSA"
                     value={coursesIntended}
                     onChange={(e) => setCoursesIntended(e.target.value)}
                     className="w-full rounded-md border border-[#DCDCDC] px-3 py-2 text-xs outline-none focus:border-black"
@@ -334,28 +366,36 @@ export default function TeacherApplicationPage() {
 
                 <div>
                   <label className="block text-xs font-semibold text-black mb-1">
-                    Evidence & Verification References *
+                    Teaching Profile & Bio *
                   </label>
                   <p className="text-[11px] text-[#666666] mb-1.5">
-                    Provide verifiable evidence of your teaching role (e.g. link to a public staff directory, institutional faculty profile, or syllabus).
+                    Brief note about what you teach or your teaching credentials.
                   </p>
                   <textarea
                     required
-                    rows={4}
-                    placeholder="https://school.edu/faculty/your-name or relevant proof of instructional responsibility"
+                    rows={3}
+                    placeholder="Brief description of your courses or teaching responsibilities."
                     value={evidenceNotes}
                     onChange={(e) => setEvidenceNotes(e.target.value)}
                     className="w-full rounded-md border border-[#DCDCDC] p-3 text-xs outline-none focus:border-black"
                   />
                 </div>
 
-                <div className="pt-2 flex gap-3">
+                <div className="pt-2 flex flex-wrap gap-3 items-center">
                   <button
                     type="submit"
                     disabled={submitting}
                     className="inline-flex items-center justify-center gap-1.5 rounded-[4px] bg-black px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#333333] disabled:opacity-50"
                   >
-                    <Send size={13} /> {submitting ? "Submitting..." : "Submit for Verification"}
+                    <Send size={13} /> {submitting ? "Activating..." : "Activate Educator Account"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={handleInstantActivate}
+                    className="inline-flex sm:hidden items-center justify-center gap-1.5 rounded-[4px] bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    <Zap size={13} /> Quick Activate
                   </button>
                   <button
                     type="button"

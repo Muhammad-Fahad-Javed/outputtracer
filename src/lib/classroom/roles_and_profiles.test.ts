@@ -134,7 +134,7 @@ describe("Unified Profiles, Roles & Administrative Control System", () => {
   });
 
   describe("3. Teacher Application & Notification Workflow", () => {
-    it("submits a teacher application and stores it with pending_review status", async () => {
+    it("submits a teacher application and activates self-service teacher status with approved status", async () => {
       const res = await submitTeacherApplication("teacher-applicant-1", {
         institutionName: "MIT Department of EECS",
         institutionEmail: "faculty@mit.edu",
@@ -145,7 +145,7 @@ describe("Unified Profiles, Roles & Administrative Control System", () => {
       });
 
       expect(res.success).toBe(true);
-      expect(res.application?.status).toBe("pending_review");
+      expect(res.application?.status).toBe("approved");
       expect(res.application?.institutionName).toBe("MIT Department of EECS");
     });
 

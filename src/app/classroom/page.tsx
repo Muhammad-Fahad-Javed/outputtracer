@@ -215,7 +215,7 @@ export default function ClassroomHubPage() {
                   href="/classroom/teach/apply"
                   className="inline-flex items-center gap-1.5 rounded-[4px] border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-900 transition-colors hover:bg-blue-100"
                 >
-                  <ShieldCheck size={13} /> Apply as Educator
+                  <ShieldCheck size={13} /> Activate Teacher Account
                 </Link>
               )}
             </div>
