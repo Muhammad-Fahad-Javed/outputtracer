@@ -10,6 +10,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     ".next-candidate/**",
     ".next.prev/**",
+    ".next.failed.*/**",
     "out/**",
     "build/**",
     "next-env.d.ts",

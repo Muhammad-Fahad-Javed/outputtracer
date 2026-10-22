@@ -17,6 +17,13 @@
 /.next/
 /out/
 
+# release directories used by scripts/deploy-production.sh. They are build
+# output, not source: without this the working tree is dirty after a
+# deployment and the next deployment refuses to start.
+/.next-candidate/
+/.next.prev/
+/.next.failed.*/
+
 # production
 /build
 
