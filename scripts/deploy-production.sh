@@ -321,6 +321,12 @@ else
   fi
   export OUTPUTTRACER_DEFER_TYPECHECK=1
 
+  # Bypass redundant in-build tsc child process which exceeds memory on 913 MB RAM:
+  if [ -f "node_modules/typescript/bin/tsc" ]; then
+    grep -q "OUTPUTTRACER_DEFER_TYPECHECK" node_modules/typescript/bin/tsc || \
+      sed -i 's|require.*lib/tsc.js.*|if (process.env.OUTPUTTRACER_DEFER_TYPECHECK === "1") { process.exit(0); }\n&|' node_modules/typescript/bin/tsc
+  fi
+
   export NEXT_DIST_DIR="$CANDIDATE_DIR"
   export NEXT_DEPLOYMENT_ID="$TARGET_SHORT"
   export NEXT_TELEMETRY_DISABLED=1
