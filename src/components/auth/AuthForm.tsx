@@ -377,14 +377,14 @@ export default function AuthForm({
       <div className="mt-8 flex flex-col gap-2 text-sm text-[#666666]">
         {mode === "login" ? (
           <Link
-            href={`/signup?next=${encodeURIComponent(nextPath)}`}
+            href={`/signup?${role ? `role=${role}&` : ""}next=${encodeURIComponent(nextPath)}`}
             className="text-black underline"
           >
             Create an account
           </Link>
         ) : (
           <Link
-            href={`/login?next=${encodeURIComponent(nextPath)}`}
+            href={`/login?${role ? `role=${role}&` : ""}next=${encodeURIComponent(nextPath)}`}
             className="text-black underline"
           >
             Already have an account

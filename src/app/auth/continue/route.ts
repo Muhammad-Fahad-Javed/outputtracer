@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { destinationAfterLogin, parseSessionRole, SESSION_ROLE_COOKIE, type SessionRole } from "@/lib/sessionRole";
 import { getUserCapabilities } from "@/lib/classroom/roles";
+import { activateSelfServiceTeacher } from "@/lib/classroom/teacherService";
 import { ensureLocalPreviewTeacher } from "@/lib/classroom/localTeacherPreview";
 import { isAuthConfigured } from "@/lib/supabase/env";
 import { requestOrigin } from "@/lib/supabase/requestOrigin";
@@ -36,7 +37,11 @@ export async function GET(request: Request) {
     const user = supabase ? (await supabase.auth.getUser()).data.user : null;
     if (user) {
       signedIn = true;
-      const caps = await getUserCapabilities(user.id);
+      let caps = await getUserCapabilities(user.id);
+      if (role === "teacher" && !caps.isVerifiedTeacher) {
+        await activateSelfServiceTeacher(user.id, "Independent Educator");
+        caps = await getUserCapabilities(user.id);
+      }
       isAdmin = caps.isAdmin;
       isVerifiedTeacher = caps.isVerifiedTeacher;
     }

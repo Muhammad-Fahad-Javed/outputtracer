@@ -24,7 +24,12 @@ export default async function SignupPage({
 }) {
   const params = await searchParams;
   const role = params.role as "learner" | "teacher" | "admin" | undefined;
-  const defaultNext = role === "admin" ? "/admin" : "/classroom/student";
+  const defaultNext =
+    role === "admin"
+      ? "/admin"
+      : role === "teacher"
+      ? "/classroom/teacher"
+      : "/classroom/student";
 
   const nextPath = params.next ? safeNextPath(params.next) : defaultNext;
   if (!isAuthConfigured()) return <SetupRequired />;
