@@ -6,24 +6,17 @@ import { usePathname } from "next/navigation";
 import {
   Menu,
   X,
-  User,
-  ShieldCheck,
-  GraduationCap,
-  BookOpen,
   LogOut,
   ChevronDown,
 } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import NotificationBell from "@/components/NotificationBell";
-
-const NAV_LINKS = [
-  { label: "8086 Assembly", href: "/assembly" },
-  { label: "Python 3", href: "/python" },
-  { label: "Projects", href: "/projects" },
-  { label: "Practice", href: "/practice" },
-  { label: "Learn", href: "/learn" },
-  { label: "Classroom", href: "/classroom" },
-];
+import {
+  accountMenuFor,
+  navLinksFor,
+  roleBadge,
+  type SessionRole,
+} from "@/lib/sessionRole";
 
 export default function Header() {
   const pathname = usePathname();
@@ -35,27 +28,44 @@ export default function Header() {
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [isTeacher, setIsTeacher] = useState(false);
+  const [sessionRole, setSessionRole] = useState<SessionRole | null>(null);
+  const [sessionSignedIn, setSessionSignedIn] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
-
     let active = true;
-    fetch("/api/profile")
+    fetch("/api/session-role")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (active && data?.profile) {
-          setIsAdmin(Boolean(data.profile.isAdmin));
-          setIsTeacher(Boolean(data.profile.isVerifiedTeacher));
-        }
+        if (!active || !data) return;
+        setSessionSignedIn(Boolean(data.signedIn));
+        setSessionRole(data.role === "learner" || data.role === "teacher" || data.role === "admin" ? data.role : null);
+        setIsAdmin(Boolean(data.isAdmin));
+        setIsTeacher(Boolean(data.isVerifiedTeacher));
       })
       .catch(() => {});
 
     return () => {
       active = false;
-      setIsAdmin(false);
-      setIsTeacher(false);
     };
   }, [user]);
+
+  const signedIn = Boolean(user) || sessionSignedIn;
+  const navLinks = navLinksFor({
+    signedIn,
+    role: sessionRole,
+    isVerifiedTeacher: isTeacher,
+    isAdmin,
+  });
+  const accountLinks = accountMenuFor({
+    role: sessionRole,
+    isVerifiedTeacher: isTeacher,
+    isAdmin,
+  });
+  const badge = roleBadge({
+    role: sessionRole,
+    isVerifiedTeacher: isTeacher,
+    isAdmin,
+  });
 
   // Close account dropdown on outside click
   useEffect(() => {
@@ -83,7 +93,7 @@ export default function Header() {
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex" aria-label="Primary">
-          {NAV_LINKS.map((link) => (
+          {navLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -108,7 +118,7 @@ export default function Header() {
           )}
 
           {!isLoading && (
-            user ? (
+            signedIn ? (
               <div className="flex items-center gap-2.5">
                 <NotificationBell />
 
@@ -117,6 +127,8 @@ export default function Header() {
                   <button
                     type="button"
                     onClick={() => setAccountMenuOpen((v) => !v)}
+                    aria-expanded={accountMenuOpen}
+                    aria-haspopup="menu"
                     className="flex items-center gap-1.5 rounded-[4px] border border-[#DCDCDC] bg-white px-2 py-1 text-xs font-medium text-black hover:bg-[#F8F8F8] transition-colors"
                   >
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-black text-[10px] font-bold text-white shrink-0">
@@ -130,55 +142,33 @@ export default function Header() {
                     <div className="absolute right-0 mt-1.5 w-52 rounded-xl border border-[#EAEAEA] bg-white py-1.5 shadow-lg text-xs z-50">
                       <div className="px-3 py-2 border-b border-[#F2F2F2]">
                         <p className="font-semibold text-black truncate">{displayName}</p>
-                        <p className="text-[11px] text-[#888888] truncate">{user.email}</p>
+                        <p className="text-[11px] text-[#888888] truncate">{user?.email}</p>
                         <div className="mt-1 flex flex-wrap gap-1">
-                          {isAdmin && (
-                            <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[9px] font-bold text-amber-800">
-                              Admin
-                            </span>
-                          )}
-                          {isTeacher && (
-                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.2 text-[9px] font-bold text-emerald-800">
-                              Teacher
-                            </span>
-                          )}
-                          <span className="rounded-full bg-blue-100 px-1.5 py-0.2 text-[9px] font-bold text-blue-800">
-                            Learner
+                          <span
+                            className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
+                              badge === "Admin"
+                                ? "bg-amber-100 text-amber-800"
+                                : badge === "Teacher"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-blue-100 text-blue-800"
+                            }`}
+                          >
+                            {badge}
                           </span>
                         </div>
                       </div>
 
                       <div className="py-1">
-                        <Link
-                          href="/profile"
-                          onClick={() => setAccountMenuOpen(false)}
-                          className="flex items-center gap-2 px-3 py-1.5 text-black hover:bg-[#F8F8F8]"
-                        >
-                          <User size={13} className="text-[#666666]" /> My Profile
-                        </Link>
-                        <Link
-                          href="/classroom/student"
-                          onClick={() => setAccountMenuOpen(false)}
-                          className="flex items-center gap-2 px-3 py-1.5 text-black hover:bg-[#F8F8F8]"
-                        >
-                          <BookOpen size={13} className="text-[#666666]" /> Student Dashboard
-                        </Link>
-                        <Link
-                          href="/classroom"
-                          onClick={() => setAccountMenuOpen(false)}
-                          className="flex items-center gap-2 px-3 py-1.5 text-black hover:bg-[#F8F8F8]"
-                        >
-                          <GraduationCap size={13} className="text-[#666666]" /> Teacher Studio
-                        </Link>
-                        {isAdmin && (
+                        {accountLinks.map((item) => (
                           <Link
-                            href="/admin"
+                            key={item.href}
+                            href={item.href}
                             onClick={() => setAccountMenuOpen(false)}
-                            className="flex items-center gap-2 px-3 py-1.5 text-black hover:bg-[#F8F8F8] font-semibold text-amber-900"
+                            className="flex items-center gap-2 px-3 py-1.5 text-black hover:bg-[#F8F8F8]"
                           >
-                            <ShieldCheck size={13} className="text-amber-700" /> Admin Center
+                            {item.label}
                           </Link>
-                        )}
+                        ))}
                       </div>
 
                       <div className="border-t border-[#F2F2F2] pt-1">
@@ -222,7 +212,7 @@ export default function Header() {
       {menuOpen && (
         <div className="border-t border-[#DCDCDC] bg-white px-5 py-3 md:hidden">
           <nav className="flex flex-col gap-0.5" aria-label="Mobile">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -235,44 +225,25 @@ export default function Header() {
 
             {!isLoading && (
               <div className="mt-3 border-t border-[#DCDCDC] pt-3">
-                {user ? (
+                {signedIn ? (
                   <div className="space-y-2">
                     <div className="px-2 py-1">
                       <p className="text-xs font-semibold text-black">{displayName}</p>
-                      <p className="text-[11px] text-[#666666]">{user.email}</p>
+                      <p className="text-[11px] text-[#666666]">{user?.email}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#666666]">{badge}</p>
                     </div>
 
                     <div className="flex flex-col gap-1 text-xs">
-                      <Link
-                        href="/profile"
-                        onClick={() => setMenuOpen(false)}
-                        className="rounded px-2 py-1.5 hover:bg-[#F2F2F2]"
-                      >
-                        My Profile
-                      </Link>
-                      <Link
-                        href="/classroom/student"
-                        onClick={() => setMenuOpen(false)}
-                        className="rounded px-2 py-1.5 hover:bg-[#F2F2F2]"
-                      >
-                        Student Dashboard
-                      </Link>
-                      <Link
-                        href="/classroom"
-                        onClick={() => setMenuOpen(false)}
-                        className="rounded px-2 py-1.5 hover:bg-[#F2F2F2]"
-                      >
-                        Teacher Studio
-                      </Link>
-                      {isAdmin && (
+                      {accountLinks.map((item) => (
                         <Link
-                          href="/admin"
+                          key={item.href}
+                          href={item.href}
                           onClick={() => setMenuOpen(false)}
-                          className="rounded px-2 py-1.5 font-semibold text-amber-900 hover:bg-amber-50"
+                          className="rounded px-2 py-1.5 hover:bg-[#F2F2F2]"
                         >
-                          Admin Center
+                          {item.label}
                         </Link>
-                      )}
+                      ))}
                     </div>
 
                     <button

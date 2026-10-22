@@ -88,3 +88,37 @@ export async function getQuestion(topicId: string, questionId: string): Promise<
   const questions = await getQuestionsByTopic(topicId);
   return questions.find((q) => q.id === questionId) || null;
 }
+
+/** Fields safe to serialize into the browser. The answer key stays on the server. */
+export type PublicPracticeQuestion = Omit<PracticeQuestion, "answer" | "explanation">;
+
+export function toPublicPracticeQuestion(question: PracticeQuestion): PublicPracticeQuestion {
+  return {
+    id: question.id,
+    topicId: question.topicId,
+    title: question.title,
+    code: question.code,
+    difficulty: question.difficulty,
+  };
+}
+
+function normalizePracticeAnswer(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Compare a learner's prediction with the server-side answer.
+ * The explanation is returned only after a correct attempt, because several
+ * explanations restate the expected output.
+ */
+export function gradePracticeAnswer(
+  question: PracticeQuestion,
+  submitted: string
+): { isCorrect: boolean; explanation: string } {
+  const isCorrect =
+    normalizePracticeAnswer(submitted) === normalizePracticeAnswer(question.answer);
+  return {
+    isCorrect,
+    explanation: isCorrect ? question.explanation : "",
+  };
+}

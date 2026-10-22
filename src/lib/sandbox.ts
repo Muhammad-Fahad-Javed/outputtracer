@@ -33,6 +33,8 @@ export interface ResourceLimits {
   maxMemoryMb: number;
   maxCpuSeconds: number;
   maxProcesses: number;
+  /** RLIMIT_FSIZE in bytes. Caps files the compiler or program can create. */
+  maxFileBytes?: number;
 }
 
 export interface RunPlan {
@@ -71,6 +73,7 @@ export function defaultResourceLimits(): ResourceLimits {
     maxMemoryMb: execConfig.maxMemoryMb,
     maxCpuSeconds: execConfig.maxCpuSeconds,
     maxProcesses: execConfig.maxProcesses,
+    maxFileBytes: execConfig.maxOutputFileBytes,
   };
 }
 
@@ -98,21 +101,32 @@ export async function hasBubblewrap(): Promise<boolean> {
     return false;
   }
   try {
-    await execFileAsync(
-      "bwrap",
-      [
-        "--die-with-parent",
-        "--unshare-net",
-        "--ro-bind",
-        "/usr",
-        "/usr",
-        "--dev",
-        "/dev",
-        "--",
-        "true",
-      ],
-      { timeout: 3000 }
-    );
+    // `true` is not on PATH inside the sandbox, and a dynamic g++ needs /lib.
+    // Probe with the same mounts the real plan uses, or bubblewrap is treated
+    // as missing and the host falls back to a filesystem-visible sandbox.
+    const args = [
+      "--die-with-parent",
+      "--unshare-net",
+      "--ro-bind",
+      "/usr",
+      "/usr",
+      "--symlink",
+      "usr/bin",
+      "/bin",
+      "--symlink",
+      "usr/lib",
+      "/lib",
+      "--dev",
+      "/dev",
+      "--setenv",
+      "PATH",
+      "/usr/bin:/bin",
+    ];
+    if (await pathExists("/lib64")) {
+      args.push("--ro-bind", "/lib64", "/lib64");
+    }
+    args.push("--", "/usr/bin/true");
+    await execFileAsync("bwrap", args, { timeout: 3000 });
     bwrapAvailable = true;
   } catch {
     bwrapAvailable = false;
@@ -165,16 +179,20 @@ export async function describeIsolation(): Promise<IsolationLevel> {
 
 function prlimitPrefix(
   exePath: string,
+  exeArgs: string[],
   limits: ResourceLimits
 ): { command: string; args: string[] } {
+  const fileBytes = limits.maxFileBytes ?? execConfig.maxOutputFileBytes;
   return {
     command: "prlimit",
     args: [
       `--nproc=${limits.maxProcesses}`,
       `--as=${limits.maxMemoryMb * 1024 * 1024}`,
       `--cpu=${limits.maxCpuSeconds}`,
+      `--fsize=${fileBytes}`,
       "--",
       exePath,
+      ...exeArgs,
     ],
   };
 }
@@ -297,10 +315,10 @@ export async function planSandboxedCommand(
   const isolation = await selectIsolation();
 
   const hostInner = usePrlimit
-    ? prlimitPrefix(hostCommand, limits)
+    ? prlimitPrefix(hostCommand, hostArgs, limits)
     : { command: hostCommand, args: hostArgs };
   const sandboxInner = usePrlimit
-    ? prlimitPrefix(sandboxCommand, limits)
+    ? prlimitPrefix(sandboxCommand, sandboxArgs, limits)
     : { command: sandboxCommand, args: sandboxArgs };
 
   if (isolation === "bwrap") {
@@ -385,4 +403,18 @@ export function unsandboxedExecutionAllowed(): boolean {
 export function unsandboxedTraceAllowed(): boolean {
   if (process.env.NODE_ENV === "production") return false;
   return envFlag("ALLOW_UNSANDBOXED_EXECUTION") || envFlag("TRACE_ALLOW_UNSANDBOXED");
+}
+
+// unshare --net and prlimit do not hide the host filesystem. In production
+// that is not an acceptable place to compile or run untrusted code.
+// Bubblewrap is the only mode here that mounts a private filesystem.
+// Operators who have reviewed the risk can set ALLOW_FILESYSTEM_VISIBLE_SANDBOX=1.
+export function isolationPermitsUntrustedExecution(isolation: IsolationLevel): boolean {
+  if (isolation === "bwrap") return true;
+  if (process.env.NODE_ENV !== "production") {
+    if (isolation === "none") return unsandboxedExecutionAllowed();
+    return true;
+  }
+  if (isolation === "none") return false;
+  return envFlag("ALLOW_FILESYSTEM_VISIBLE_SANDBOX");
 }

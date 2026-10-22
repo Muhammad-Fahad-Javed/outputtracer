@@ -1,57 +1,15 @@
 #!/bin/bash
-# Exit on any error
-set -e
+# Retired.
+#
+# This script used to build a Docker image and point Nginx at
+# outputtracer.devs.surf. That is not the production site.
+#
+# The canonical deploy path is scripts/deploy-production.sh, which targets
+# https://outputtracer.com, builds a candidate release, and rolls back to
+# .next.prev if promotion fails.
+#
+# This file intentionally exits before it changes a host, a container, or DNS.
 
-echo "Starting Deployment Script for OutputTracer..."
-
-# 1. Update packages and install prerequisites
-echo "Installing Nginx, Docker, and Certbot..."
-sudo apt update
-sudo apt install -y nginx docker.io certbot python3-certbot-nginx
-
-# Start and enable docker
-sudo systemctl enable docker
-sudo systemctl start docker
-
-# 2. Configure Nginx
-echo "Configuring Nginx for outputtracer.devs.surf..."
-cat << 'EOF' | sudo tee /etc/nginx/sites-available/outputtracer
-server {
-    listen 80;
-    server_name outputtracer.devs.surf;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-EOF
-
-sudo ln -sf /etc/nginx/sites-available/outputtracer /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
-
-# 3. Docker Build and Run
-echo "Building and running OutputTracer Docker container..."
-sudo docker rm -f outputtracer-app || true
-sudo docker build -t outputtracer .
-if [ -f .env ]; then
-  sudo docker run -d --restart always -p 3000:3000 --env-file .env --name outputtracer-app outputtracer
-else
-  echo "No .env file found. Starting without Supabase. Accounts and shared projects stay off."
-  sudo docker run -d --restart always -p 3000:3000 --name outputtracer-app outputtracer
-fi
-
-echo "--------------------------------------------------------"
-echo "Deployment almost complete!"
-echo "Make sure your code is uploaded to this directory before running."
-echo "For accounts and shared projects, put Supabase keys in .env and run supabase/migrations/0001_cloud_ide.sql once."
-echo "If DNS has propagated, run the following command to get your SSL certificate:"
-echo "sudo certbot --nginx -d outputtracer.devs.surf"
-echo "--------------------------------------------------------"
+echo "deploy.sh is retired and did not change anything." >&2
+echo "Use scripts/deploy-production.sh for https://outputtracer.com." >&2
+exit 1

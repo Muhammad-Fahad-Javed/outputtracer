@@ -61,6 +61,7 @@ export default function AssemblyLab() {
   });
   const [selectedExampleId, setSelectedExampleId] = useState(ASM_EXAMPLES[0].id);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   // CPU and execution state
   const [status, setStatus] = useState<AsmExecutionStatus>({
@@ -125,6 +126,7 @@ export default function AssemblyLab() {
         body: JSON.stringify({
           action: "assemble",
           sessionId: sessionId ?? undefined,
+          sessionToken: sessionToken ?? undefined,
           source: code,
         }),
       });
@@ -138,16 +140,19 @@ export default function AssemblyLab() {
       }
 
       setSessionId(data.sessionId);
+      if (data.sessionToken) setSessionToken(data.sessionToken);
       setDiagnostics(data.assembleResult.diagnostics || []);
       setEngineUsed(data.assembleResult.engineUsed);
       setStatus(data.status);
       setTraceHistory([]);
       updateLineHighlight(data.status.currentInstruction?.sourceLine);
+      return { sessionId: data.sessionId as string, sessionToken: (data.sessionToken as string) || sessionToken };
     } catch {
       setErrorMessage("Network error while assembling.");
     } finally {
       setIsLoading(false);
     }
+    return null;
   };
 
   // Step one instruction forward
@@ -165,6 +170,7 @@ export default function AssemblyLab() {
         body: JSON.stringify({
           action: "step",
           sessionId,
+          sessionToken,
         }),
       });
 
@@ -199,6 +205,7 @@ export default function AssemblyLab() {
         body: JSON.stringify({
           action: "stepBack",
           sessionId,
+          sessionToken,
         }),
       });
 
@@ -217,8 +224,13 @@ export default function AssemblyLab() {
 
   // Run to completion or halt
   const handleRun = async () => {
-    if (!sessionId) {
-      await handleAssemble();
+    let activeId = sessionId;
+    let activeToken = sessionToken;
+    if (!activeId) {
+      const created = await handleAssemble();
+      if (!created) return;
+      activeId = created.sessionId;
+      activeToken = created.sessionToken;
     }
 
     setIsLoading(true);
@@ -228,7 +240,8 @@ export default function AssemblyLab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "run",
-          sessionId,
+          sessionId: activeId,
+          sessionToken: activeToken,
           limit: 2000,
         }),
       });
@@ -260,6 +273,7 @@ export default function AssemblyLab() {
         body: JSON.stringify({
           action: "reset",
           sessionId,
+          sessionToken,
         }),
       });
 

@@ -11,6 +11,7 @@
 
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { runProcessGroup } from "./processGroup";
 import fs from "fs/promises";
 import path from "path";
 import { execConfig } from "./execConfig";
@@ -31,6 +32,43 @@ export interface TraceResult {
   // Set when the traced program may not reproduce the normal run's output
   // (clock/rand/pointers) — see traceDeterminism.ts.
   determinismWarning?: string;
+}
+
+const TRACE_NOISE_NAMES = new Set(["argc", "argv"]);
+
+/**
+ * Keep student variables. GDB's `info args` on main always includes argc/argv,
+ * and a step into the runtime adds unwind and standard-library symbols.
+ * Values may contain commas, so assignments are split only at the next name.
+ */
+export function readableTraceVariables(raw: string | undefined): string {
+  if (!raw) return "—";
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "—" || trimmed === "\\u2014") return "—";
+
+  const parts: string[] = [];
+  // A new assignment can be `name =` or `qualified type name =`, including a pointer star.
+  const boundary = /,\s+(?=(?:[A-Za-z_][\w:<>]*\s*\*?\s+)*[A-Za-z_][\w]*\s*=)/g;
+  let start = 0;
+  for (const match of trimmed.matchAll(boundary)) {
+    const index = match.index ?? 0;
+    parts.push(trimmed.slice(start, index));
+    start = index + match[0].length;
+  }
+  parts.push(trimmed.slice(start));
+
+  const kept = parts
+    .map((part) => part.trim())
+    .filter((part) => {
+      const name = part.split("=")[0]?.trim() ?? "";
+      if (!/^[A-Za-z_][\w:]*$/.test(name)) return false;
+      if (TRACE_NOISE_NAMES.has(name)) return false;
+      if (name.startsWith("_") || name.includes("::")) return false;
+      if (/unwind|__gnu_cxx|std::/i.test(part)) return false;
+      return true;
+    });
+
+  return kept.length > 0 ? kept.join(", ") : "—";
 }
 
 // The trace re-executes the student's binary under GDB. That re-run MUST be
@@ -356,20 +394,26 @@ export async function traceExecution(opts: {
       maxMemoryMb: execConfig.traceMaxMemoryMb,
       maxCpuSeconds: execConfig.traceMaxCpuSeconds,
       maxProcesses: execConfig.traceMaxProcesses,
+      maxFileBytes: execConfig.compileMaxFileBytes,
     },
     remapTempDirPaths: false,
   });
 
   try {
-    await execFileAsync(plan.command, plan.args, {
+    const traced = await runProcessGroup({
+      command: plan.command,
+      args: plan.args,
       cwd: opts.tempDir,
       env: plan.env,
-      timeout: execConfig.traceTimeoutMs,
-      killSignal: "SIGKILL",
-      maxBuffer: 10 * 1024 * 1024, // 10 MB — GDB can be verbose
+      timeoutMs: execConfig.traceTimeoutMs,
+      maxBuffer: 1024 * 1024,
     });
+    if (traced.timedOut || traced.code !== 0) {
+      // GDB failed or timed out — the process group has been reaped.
+      // The caller uses the program output without a detailed trace.
+      return { steps: [], truncated: traced.timedOut };
+    }
   } catch {
-    // GDB failed or timed out — return empty trace (caller uses fallback).
     return { steps: [], truncated: false };
   }
 
@@ -383,7 +427,10 @@ export async function traceExecution(opts: {
     }
 
     return {
-      steps: data.steps,
+      steps: data.steps.map((step) => ({
+        ...step,
+        variables: readableTraceVariables(step.variables),
+      })),
       truncated: !!data.truncated,
     };
   } catch {

@@ -1,30 +1,23 @@
 /**
  * POST /api/classroom/[classId]/assignments/[assignmentId]/execute
  *
- * Executes student code through the isolated sandbox.
- * Runs public test cases and returns results.
- * Hidden test cases are NEVER run here — only in auto-grade.
- *
- * SECURITY:
- * - Student must be enrolled in the classroom.
- * - Code runs via executionClient (sandboxed, never in-process eval).
- * - Hidden test definitions are never fetched or sent to the client.
- * - Rate-limited at the classroom assignment level.
+ * Runs the shared classroom document through the isolated sandbox.
+ * Public tests only. Hidden tests are never loaded or returned.
+ * Students cannot run when the assignment is frozen or allow_run is false.
+ * Teachers can run the current document without becoming editors.
+ * Trace is not started from this route.
  */
 
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
 import { globalRateLimiter, clientIpFromForwarded } from "@/lib/rateLimit";
-import { getClassroom } from "@/lib/classroom/classroomService";
-import { runInSandboxSafe } from "@/lib/classroom/executionClient";
-import { runTestCase } from "@/lib/classroom/executionClient";
+import { actorForClassroomRequest } from "@/lib/classroom/classroomActor";
+import { executeResolvedClassroom } from "@/lib/classroom/classroomRun";
+import { LOCAL_PREVIEW_STUDENT_ID } from "@/lib/classroom/localTeacherPreview";
+import { isLocalPreviewActor, classroomRequestUser } from "@/lib/classroom/requestUser";
 import {
-  saveCodeVersion,
-  recordActivityEvent,
-  recordExecutionLog,
-} from "@/lib/classroom/versioningService";
-import { createAdminClient } from "@/lib/supabase/admin";
-import type { AssignmentTestCase } from "@/lib/classroom/types";
+  assignmentBelongsToClassroom,
+  getClassroom,
+} from "@/lib/classroom/classroomService";
 
 export async function POST(
   request: Request,
@@ -32,11 +25,10 @@ export async function POST(
 ) {
   const { classId, assignmentId } = await params;
 
-  // Rate limit: 30 runs per minute per IP
   const ip = clientIpFromForwarded(
     request.headers.get("x-forwarded-for") ?? undefined,
     undefined,
-    process.env.TRUST_PROXY === "1"
+    process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true"
   );
   const limited = globalRateLimiter.check(`classroom-exec:${ip}`, 30, 60_000);
   if (!limited.ok) {
@@ -46,104 +38,49 @@ export async function POST(
     );
   }
 
-  const supabase = await createServerClient();
-  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  const user = await classroomRequestUser();
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
-  const access = await getClassroom(classId, user.id);
+  const access = await getClassroom(user.id, classId);
   if (!access.success) return NextResponse.json({ success: false, error: access.error }, { status: 403 });
 
-  let body: { codeFiles?: unknown; stdin?: string; language?: string; runTests?: boolean; groupId?: string };
-  try { body = await request.json(); } catch {
+  if (!(await assignmentBelongsToClassroom(classId, assignmentId))) {
+    return NextResponse.json({ success: false, error: "Assignment not found." }, { status: 404 });
+  }
+
+  let body: {
+    stdin?: string;
+    runTests?: boolean;
+    groupId?: string;
+    studentId?: string;
+    previewStudent?: boolean;
+  };
+  try {
+    body = await request.json();
+  } catch {
     return NextResponse.json({ success: false, error: "Invalid JSON." }, { status: 400 });
   }
 
-  if (!body.codeFiles || typeof body.codeFiles !== "object") {
-    return NextResponse.json({ success: false, error: "codeFiles is required." }, { status: 400 });
+  const actor = actorForClassroomRequest({
+    userId: user.id,
+    isTeacher: Boolean(access.isTeacher),
+    previewStudent: body.previewStudent === true,
+    previewAllowed: isLocalPreviewActor(user),
+    previewStudentId: LOCAL_PREVIEW_STUDENT_ID,
+  });
+  if (actor.error) {
+    return NextResponse.json({ success: false, error: actor.error }, { status: 403 });
   }
 
-  const files = body.codeFiles as Record<string, string>;
-  const language = typeof body.language === "string" ? body.language : "cpp";
-  const stdin = typeof body.stdin === "string" ? body.stdin : "";
-
-  // Save a version for this run
-  const version = await saveCodeVersion({
+  const outcome = await executeResolvedClassroom({
+    actorId: actor.actorId,
+    isTeacher: actor.isTeacher,
+    classroomId: classId,
     assignmentId,
-    codeFiles: files,
-    language,
-    studentId: body.groupId ? undefined : user.id,
     groupId: typeof body.groupId === "string" ? body.groupId : undefined,
+    studentId: typeof body.studentId === "string" ? body.studentId : undefined,
+    runTests: body.runTests === true,
+    stdin: typeof body.stdin === "string" ? body.stdin : "",
   });
-
-  // Execute code in sandbox
-  let sandboxResult;
-  try {
-    sandboxResult = await runInSandboxSafe({ files, stdin, language });
-  } catch (err: unknown) {
-    const error = err as Error;
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-  }
-
-  // Optionally run public test cases
-  const testResults: Array<{ id: string; name: string; passed: boolean; actualOutput: string; durationMs: number }> = [];
-  let publicPassed = 0;
-
-  if (body.runTests) {
-    // Fetch ONLY public test cases — hidden test cases never fetched here
-    const admin = createAdminClient();
-    if (admin) {
-      try {
-        const { data } = await admin
-          .from("classroom_assignments")
-          .select("public_test_cases")
-          .eq("id", assignmentId)
-          .single();
-
-        if (data?.public_test_cases) {
-          const publicTests = data.public_test_cases as AssignmentTestCase[];
-          for (const tc of publicTests) {
-            const result = await runTestCase(files, language, tc.stdin, tc.expectedOutput);
-            if (result.passed) publicPassed++;
-            testResults.push({ id: tc.id, name: tc.name, passed: result.passed, actualOutput: result.actualOutput, durationMs: result.durationMs });
-          }
-        }
-      } catch {
-        // Non-fatal — return run result without test results
-      }
-    }
-  }
-
-  // Record execution log
-  await recordExecutionLog({
-    versionId: version.id,
-    assignmentId,
-    actorId: user.id,
-    language,
-    stdin,
-    result: sandboxResult,
-    publicTestsPassed: body.runTests ? publicPassed : undefined,
-    publicTestsTotal: body.runTests ? testResults.length : undefined,
-    runMode: "manual",
-  });
-
-  // Record run activity
-  void recordActivityEvent({
-    assignmentId,
-    actorId: user.id,
-    eventType: "run",
-    versionId: version.id,
-    metadata: { exitCode: sandboxResult.exitCode, durationMs: sandboxResult.durationMs },
-  });
-
-  return NextResponse.json({
-    success: true,
-    output: sandboxResult.stdout,
-    stderr: sandboxResult.stderr,
-    exitCode: sandboxResult.exitCode,
-    durationMs: sandboxResult.durationMs,
-    timedOut: sandboxResult.timedOut,
-    compilationError: sandboxResult.compilationError,
-    testResults: body.runTests ? testResults : undefined,
-    versionId: version.id,
-  });
+  return NextResponse.json(outcome.body, { status: outcome.status });
 }

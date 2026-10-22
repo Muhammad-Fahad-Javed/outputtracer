@@ -11,7 +11,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAuthConfigured } from "@/lib/supabase/env";
-import { runTestCase } from "./executionClient";
+import { ExecutionError, runTestCase } from "./executionClient";
 import {
   createSubmissionSnapshot,
   recordActivityEvent,
@@ -151,24 +151,31 @@ export async function autoGradeSubmission(input: {
   let publicPassed = 0;
   let hiddenPassed = 0;
 
+  // A program that fails a test counts as a miss. A sandbox outage or a
+  // wall-clock timeout is not a wrong answer and must not be stored as one.
+  const countTest = async (stdin: string, expectedOutput: string): Promise<boolean> => {
+    try {
+      const result = await runTestCase(files, language, stdin, expectedOutput);
+      return result.passed;
+    } catch (err) {
+      if (
+        err instanceof ExecutionError &&
+        (err.kind === "sandbox_unavailable" || err.kind === "timeout")
+      ) {
+        throw err;
+      }
+      return false;
+    }
+  };
+
   // 2. Run public test cases
   for (const tc of input.publicTests) {
-    try {
-      const result = await runTestCase(files, language, tc.stdin, tc.expectedOutput);
-      if (result.passed) publicPassed++;
-    } catch {
-      // Execution error = fail
-    }
+    if (await countTest(tc.stdin, tc.expectedOutput)) publicPassed++;
   }
 
   // 3. Run hidden test cases (server-side only; definitions never leave this function)
   for (const tc of input.hiddenTests) {
-    try {
-      const result = await runTestCase(files, language, tc.stdin, tc.expectedOutput);
-      if (result.passed) hiddenPassed++;
-    } catch {
-      // Execution error = fail
-    }
+    if (await countTest(tc.stdin, tc.expectedOutput)) hiddenPassed++;
   }
 
   // 4. Compute points

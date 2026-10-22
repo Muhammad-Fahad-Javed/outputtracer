@@ -60,6 +60,23 @@ export default function ClassroomManagePage({
   const [asgPoints, setAsgPoints] = useState(100);
   const [asgGroupMode, setAsgGroupMode] = useState(false);
   const [asgPublish, setAsgPublish] = useState(true);
+  const [asgAllowLate, setAsgAllowLate] = useState(true);
+  const [asgAllowRun, setAsgAllowRun] = useState(true);
+  const [asgAllowTrace, setAsgAllowTrace] = useState(false);
+  const [asgTimeLimit, setAsgTimeLimit] = useState(10000);
+  const [asgStarter, setAsgStarter] = useState(
+    "#include <iostream>\n\nint main() {\n    // Write your solution here.\n    return 0;\n}\n"
+  );
+  const [asgExtraName, setAsgExtraName] = useState("");
+  const [asgExtraBody, setAsgExtraBody] = useState("");
+  const [asgPublicName, setAsgPublicName] = useState("Sample");
+  const [asgPublicStdin, setAsgPublicStdin] = useState("");
+  const [asgPublicExpected, setAsgPublicExpected] = useState("");
+  const [asgPublicPoints, setAsgPublicPoints] = useState(50);
+  const [asgHiddenName, setAsgHiddenName] = useState("Hidden");
+  const [asgHiddenStdin, setAsgHiddenStdin] = useState("");
+  const [asgHiddenExpected, setAsgHiddenExpected] = useState("");
+  const [asgHiddenPoints, setAsgHiddenPoints] = useState(50);
   const [asgSubmitting, setAsgSubmitting] = useState(false);
 
   // Progress modal & state
@@ -175,6 +192,25 @@ export default function ClassroomManagePage({
     }
   };
 
+  const handleRemoveFromGroup = async (groupId: string, userId: string, name: string) => {
+    if (!confirm(`Remove ${name} from this group? They stay enrolled in the class.`)) return;
+    try {
+      const res = await fetch(
+        `/api/classroom/${classId}/groups?groupId=${encodeURIComponent(groupId)}&studentUserId=${encodeURIComponent(userId)}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setFeedback({ type: "error", message: data.error || "Failed to remove the student from the group." });
+      } else {
+        setFeedback({ type: "success", message: `Removed ${name} from the group.` });
+        loadAll();
+      }
+    } catch {
+      setFeedback({ type: "error", message: "Network error." });
+    }
+  };
+
   const handleAssignStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     setAssignSubmitting(true);
@@ -203,6 +239,29 @@ export default function ClassroomManagePage({
     e.preventDefault();
     setAsgSubmitting(true);
     try {
+      const starterCode: Record<string, string> = {};
+      if (asgStarter.trim()) starterCode["main.cpp"] = asgStarter;
+      const extraName = asgExtraName.trim();
+      if (extraName && asgExtraBody.trim()) starterCode[extraName] = asgExtraBody;
+      const publicTestCases = asgPublicExpected.trim()
+        ? [{
+            id: "public-1",
+            name: asgPublicName.trim() || "Public test",
+            stdin: asgPublicStdin,
+            expectedOutput: asgPublicExpected,
+            points: Number(asgPublicPoints) || 0,
+          }]
+        : [];
+      const hiddenTestCases = asgHiddenExpected.trim()
+        ? [{
+            id: "hidden-1",
+            name: asgHiddenName.trim() || "Hidden test",
+            stdin: asgHiddenStdin,
+            expectedOutput: asgHiddenExpected,
+            points: Number(asgHiddenPoints) || 0,
+            isHidden: true,
+          }]
+        : [];
       const res = await fetch(`/api/classroom/${classId}/assignments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,6 +272,13 @@ export default function ClassroomManagePage({
           maxPoints: Number(asgPoints) || 100,
           groupMode: asgGroupMode,
           isPublished: asgPublish,
+          allowLate: asgAllowLate,
+          allowRun: asgAllowRun,
+          allowTrace: asgAllowTrace,
+          timeLimitMs: Number(asgTimeLimit) || 10000,
+          starterCode: Object.keys(starterCode).length > 0 ? starterCode : undefined,
+          publicTestCases,
+          hiddenTestCases,
         }),
       });
       const data = await res.json();
@@ -504,13 +570,42 @@ export default function ClassroomManagePage({
                     No collaborative groups created yet. Create groups for multi-student coding projects.
                   </div>
                 ) : (
-                  <div className="divide-y divide-[#F0F0F0]">
-                    {groups.map((g) => (
-                      <div key={g.id} className="p-4 flex items-center justify-between text-xs">
-                        <span className="font-semibold text-black">{g.name}</span>
-                        <span className="text-[#888888]">Group ID: {g.id.slice(0, 8)}</span>
-                      </div>
-                    ))}
+                  <div className="max-h-[32rem] overflow-y-auto divide-y divide-[#F0F0F0]">
+                    {groups.map((g) => {
+                      const members = g.members || [];
+                      return (
+                        <div key={g.id} className="p-4 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-semibold text-black">{g.name}</span>
+                            <span className="text-[#888888]">
+                              {members.length} {members.length === 1 ? "member" : "members"}
+                            </span>
+                          </div>
+                          {members.length === 0 ? (
+                            <p className="mt-2 text-[11px] text-[#888888]">No students in this group.</p>
+                          ) : (
+                            <ul className="mt-2 space-y-1">
+                              {members.map((member) => {
+                                const label = member.displayName || member.email || member.userId;
+                                return (
+                                  <li key={member.userId} className="flex items-center justify-between gap-3">
+                                    <span className="truncate text-[#333333]">{label}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveFromGroup(g.id, member.userId, label)}
+                                      className="shrink-0 text-[11px] font-medium text-rose-600 hover:text-rose-800"
+                                      aria-label={`Remove ${label} from ${g.name}`}
+                                    >
+                                      Remove
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -526,8 +621,9 @@ export default function ClassroomManagePage({
             <h2 className="text-base font-bold text-black mb-1">Create Student Group</h2>
             <form onSubmit={handleCreateGroup} className="space-y-3.5 mt-3">
               <div>
-                <label className="block text-xs font-semibold text-black mb-1">Group Name</label>
+                <label htmlFor="group-name" className="block text-xs font-semibold text-black mb-1">Group Name</label>
                 <input
+                  id="group-name"
                   type="text"
                   required
                   placeholder="e.g. Group Alpha (Project Team 1)"
@@ -564,8 +660,9 @@ export default function ClassroomManagePage({
             <h2 className="text-base font-bold text-black mb-1">Assign Student to Group</h2>
             <form onSubmit={handleAssignStudent} className="space-y-3.5 mt-3">
               <div>
-                <label className="block text-xs font-semibold text-black mb-1">Select Group</label>
+                <label htmlFor="assign-group" className="block text-xs font-semibold text-black mb-1">Select Group</label>
                 <select
+                  id="assign-group"
                   required
                   value={selectedGroupId}
                   onChange={(e) => setSelectedGroupId(e.target.value)}
@@ -579,8 +676,9 @@ export default function ClassroomManagePage({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-black mb-1">Select Student</label>
+                <label htmlFor="assign-student" className="block text-xs font-semibold text-black mb-1">Select Student</label>
                 <select
+                  id="assign-student"
                   required
                   value={selectedStudentId}
                   onChange={(e) => setSelectedStudentId(e.target.value)}
@@ -617,12 +715,13 @@ export default function ClassroomManagePage({
       {/* Create Assignment Modal */}
       {assignmentModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl border border-[#EAEAEA] bg-white p-6 shadow-xl">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[#EAEAEA] bg-white p-6 shadow-xl">
             <h2 className="text-base font-bold text-black mb-1">Create Coding Assignment</h2>
             <form onSubmit={handleCreateAssignment} className="space-y-3 mt-3">
               <div>
-                <label className="block text-xs font-semibold text-black mb-1">Assignment Title *</label>
+                <label htmlFor="assignment-title" className="block text-xs font-semibold text-black mb-1">Assignment Title *</label>
                 <input
+                  id="assignment-title"
                   type="text"
                   required
                   placeholder="e.g. Project 1: Binary Search Tree Tracer"
@@ -633,8 +732,9 @@ export default function ClassroomManagePage({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-black mb-1">Instructions / Description</label>
+                <label htmlFor="assignment-description" className="block text-xs font-semibold text-black mb-1">Instructions / Description</label>
                 <textarea
+                  id="assignment-description"
                   rows={3}
                   placeholder="Detailed task instructions for your students..."
                   value={asgDescription}
@@ -645,8 +745,9 @@ export default function ClassroomManagePage({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-black mb-1">Due Date</label>
+                  <label htmlFor="assignment-due" className="block text-xs font-semibold text-black mb-1">Due Date</label>
                   <input
+                    id="assignment-due"
                     type="date"
                     value={asgDueDate}
                     onChange={(e) => setAsgDueDate(e.target.value)}
@@ -654,8 +755,9 @@ export default function ClassroomManagePage({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-black mb-1">Max Points</label>
+                  <label htmlFor="assignment-points" className="block text-xs font-semibold text-black mb-1">Max Points</label>
                   <input
+                    id="assignment-points"
                     type="number"
                     min="0"
                     value={asgPoints}
@@ -665,7 +767,64 @@ export default function ClassroomManagePage({
                 </div>
               </div>
 
-              <div className="flex items-center gap-6 pt-1 text-xs">
+              <div>
+                <label htmlFor="asg-starter" className="block text-xs font-semibold text-black mb-1">
+                  Starter code (main.cpp)
+                </label>
+                <textarea
+                  id="asg-starter"
+                  rows={6}
+                  value={asgStarter}
+                  onChange={(e) => setAsgStarter(e.target.value)}
+                  className="w-full rounded-md border border-[#DCDCDC] p-2.5 font-mono text-xs outline-none focus:border-black"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="asg-extra-name" className="block text-xs font-semibold text-black mb-1">
+                    Extra file name
+                  </label>
+                  <input
+                    id="asg-extra-name"
+                    type="text"
+                    placeholder="helper.h"
+                    value={asgExtraName}
+                    onChange={(e) => setAsgExtraName(e.target.value)}
+                    className="w-full rounded-md border border-[#DCDCDC] px-3 py-2 text-xs outline-none focus:border-black"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="asg-extra-body" className="block text-xs font-semibold text-black mb-1">
+                    Extra file contents
+                  </label>
+                  <textarea
+                    id="asg-extra-body"
+                    rows={2}
+                    value={asgExtraBody}
+                    onChange={(e) => setAsgExtraBody(e.target.value)}
+                    className="w-full rounded-md border border-[#DCDCDC] p-2 text-xs font-mono outline-none focus:border-black"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-[#666666]">Language: C++. Hidden tests are stored for grading and are not returned to students.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-black">Public test</p>
+                  <input aria-label="Public test name" value={asgPublicName} onChange={(e) => setAsgPublicName(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] px-2 py-1.5 text-xs" />
+                  <textarea aria-label="Public test input" rows={2} placeholder="stdin" value={asgPublicStdin} onChange={(e) => setAsgPublicStdin(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] p-2 font-mono text-xs" />
+                  <textarea aria-label="Public expected output" rows={2} placeholder="expected output" value={asgPublicExpected} onChange={(e) => setAsgPublicExpected(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] p-2 font-mono text-xs" />
+                  <input aria-label="Public test points" type="number" min="0" value={asgPublicPoints} onChange={(e) => setAsgPublicPoints(Number(e.target.value))} className="w-full rounded-md border border-[#DCDCDC] px-2 py-1.5 text-xs" />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-black">Hidden test</p>
+                  <input aria-label="Hidden test name" value={asgHiddenName} onChange={(e) => setAsgHiddenName(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] px-2 py-1.5 text-xs" />
+                  <textarea aria-label="Hidden test input" rows={2} placeholder="stdin" value={asgHiddenStdin} onChange={(e) => setAsgHiddenStdin(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] p-2 font-mono text-xs" />
+                  <textarea aria-label="Hidden expected output" rows={2} placeholder="expected output" value={asgHiddenExpected} onChange={(e) => setAsgHiddenExpected(e.target.value)} className="w-full rounded-md border border-[#DCDCDC] p-2 font-mono text-xs" />
+                  <input aria-label="Hidden test points" type="number" min="0" value={asgHiddenPoints} onChange={(e) => setAsgHiddenPoints(Number(e.target.value))} className="w-full rounded-md border border-[#DCDCDC] px-2 py-1.5 text-xs" />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1 text-xs">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -674,6 +833,45 @@ export default function ClassroomManagePage({
                     className="rounded border-[#DCDCDC]"
                   />
                   <span>Group Project Mode</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={asgAllowLate}
+                    onChange={(e) => setAsgAllowLate(e.target.checked)}
+                    className="rounded border-[#DCDCDC]"
+                  />
+                  <span>Allow late submissions</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={asgAllowRun}
+                    onChange={(e) => setAsgAllowRun(e.target.checked)}
+                    className="rounded border-[#DCDCDC]"
+                  />
+                  <span>Students can run</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={asgAllowTrace}
+                    onChange={(e) => setAsgAllowTrace(e.target.checked)}
+                    className="rounded border-[#DCDCDC]"
+                  />
+                  <span>Allow trace</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  Time limit (ms)
+                  <input
+                    aria-label="Assignment time limit"
+                    type="number"
+                    min={1000}
+                    max={10000}
+                    value={asgTimeLimit}
+                    onChange={(e) => setAsgTimeLimit(Number(e.target.value))}
+                    className="w-24 rounded-md border border-[#DCDCDC] px-2 py-1 text-xs"
+                  />
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -686,6 +884,9 @@ export default function ClassroomManagePage({
                   <span>Publish Immediately</span>
                 </label>
               </div>
+              <p className="text-[11px] text-[#777777]">
+                Classroom runs stay in C++ and do not start a trace. The time limit cannot exceed 10 seconds.
+              </p>
 
               <div className="flex justify-end gap-2 pt-3">
                 <button

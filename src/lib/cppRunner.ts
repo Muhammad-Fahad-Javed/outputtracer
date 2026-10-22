@@ -42,9 +42,10 @@ import {
   planUntrustedRun,
   planSandboxedCommand,
   selectIsolation,
-  unsandboxedExecutionAllowed,
+  isolationPermitsUntrustedExecution,
   type ResourceLimits,
 } from "./sandbox";
+import { runProcessGroup } from "./processGroup";
 import { tryAcquireRun, releaseRun } from "./runGate";
 import { traceExecution, TraceResult } from "./gdbTracer";
 import { detectNondeterminism, buildDeterminismNote } from "./traceDeterminism";
@@ -56,6 +57,7 @@ function compileLimits(): ResourceLimits {
     maxMemoryMb: execConfig.compileMaxMemoryMb,
     maxCpuSeconds: execConfig.compileMaxCpuSeconds,
     maxProcesses: execConfig.compileMaxProcesses,
+    maxFileBytes: execConfig.compileMaxFileBytes,
   };
 }
 
@@ -92,6 +94,8 @@ export interface RunOptions {
   stdin?: string;
   standard?: string;
   ownerKey?: string;
+  /** When false, skip the second GDB execution. The program output is unchanged. */
+  trace?: boolean;
 }
 
 // --- Compiler availability (checked lazily, cached for process lifetime) --
@@ -150,13 +154,15 @@ export async function compileAndRun(opts: RunOptions): Promise<RunResult> {
   // host. Refuse rather than fall back to an unsandboxed run. Production can
   // never opt into this; non-production requires an explicit opt-in flag.
   const isolation = await selectIsolation();
-  if (isolation === "none" && !unsandboxedExecutionAllowed()) {
+  if (!isolationPermitsUntrustedExecution(isolation)) {
     log(execId, "execution_refused_no_isolation", { isolation });
     return {
       status: "server_error",
       title: "Execution unavailable",
       message:
-        "Code execution is unavailable because this server has no sandbox available. Please try again later.",
+        isolation === "none"
+          ? "Code execution is unavailable because this server has no sandbox available. Please try again later."
+          : "Code execution is unavailable until this server can isolate programs from the host filesystem (bubblewrap). Please try again later.",
     };
   }
 
@@ -256,19 +262,17 @@ async function runAcquired(
     log(execId, "compile_isolation", { isolation: compilePlan.isolation });
 
     try {
-      await execFileAsync(compilePlan.command, compilePlan.args, {
+      const compiled = await runProcessGroup({
+        command: compilePlan.command,
+        args: compilePlan.args,
         cwd: tempDir,
         env: compilePlan.env,
-        timeout: execConfig.compileTimeoutMs,
-        killSignal: "SIGKILL",
+        timeoutMs: execConfig.compileTimeoutMs,
         maxBuffer: execConfig.maxDiagnosticBytes * 4,
       });
       compileTimeMs = Date.now() - compileStart;
-    } catch (error) {
-      const err = error as Error & { killed?: boolean; signal?: string; stderr?: string; stdout?: string };
-      compileTimeMs = Date.now() - compileStart;
 
-      if (err.killed && err.signal) {
+      if (compiled.timedOut || compiled.signal === "SIGXCPU") {
         log(execId, "compile_timeout", { compileTimeMs });
         return {
           status: "compile_timeout",
@@ -278,15 +282,26 @@ async function runAcquired(
         };
       }
 
-      const rawStderr =
-        err.stderr || err.stdout || err.message || "Compilation failed.";
-      const { text: stderr } = truncateBytes(rawStderr, execConfig.maxDiagnosticBytes);
-      log(execId, "compile_error", { compileTimeMs });
+      if (compiled.code !== 0 || compiled.signal) {
+        const rawStderr = compiled.stderr || compiled.stdout || "Compilation failed.";
+        const { text: stderr } = truncateBytes(rawStderr, execConfig.maxDiagnosticBytes);
+        log(execId, "compile_error", { compileTimeMs });
+        return {
+          status: "compile_error",
+          title: "Compilation failed",
+          message: stderr,
+          stderr,
+          compileTimeMs,
+        };
+      }
+    } catch (error) {
+      const err = error as Error;
+      compileTimeMs = Date.now() - compileStart;
+      log(execId, "compile_error", { compileTimeMs, error: err.message });
       return {
         status: "compile_error",
         title: "Compilation failed",
-        message: stderr,
-        stderr,
+        message: err.message || "Compilation failed.",
         compileTimeMs,
       };
     }
@@ -452,7 +467,7 @@ async function runAcquired(
     // Only trace on successful execution — there's nothing useful to trace
     // for compile errors, timeouts, etc.
     let trace: TraceResult = { steps: [], truncated: false };
-    if (runResult.status === "success" && execConfig.traceEnabled) {
+    if (runResult.status === "success" && execConfig.traceEnabled && opts.trace !== false) {
       try {
         log(execId, "trace_started");
         trace = await traceExecution({
@@ -490,7 +505,7 @@ async function runAcquired(
     };
   } finally {
     if (tempDir) {
-      fs.rm(tempDir, { recursive: true, force: true }).catch(() => {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {
         // Best-effort cleanup — nothing actionable if this fails.
       });
     }

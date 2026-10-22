@@ -4,7 +4,7 @@ import SetupRequired from "@/components/cloud/SetupRequired";
 import { safeNextPath } from "@/lib/cloud/roles";
 import { isAuthConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
-import { checkIsVerifiedTeacher } from "@/lib/classroom/roles";
+import { ensureLocalPreviewTeacher } from "@/lib/classroom/localTeacherPreview";
 
 export default async function TeacherLoginPage({
   searchParams,
@@ -12,21 +12,21 @@ export default async function TeacherLoginPage({
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
   const params = await searchParams;
-  if (!isAuthConfigured()) return <SetupRequired />;
+  if (!isAuthConfigured()) {
+    const preview = await ensureLocalPreviewTeacher();
+    if (preview) redirect("/auth/continue?role=teacher");
+    return <SetupRequired />;
+  }
 
   const supabase = await createClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
 
   if (user) {
-    const isTeacher = await checkIsVerifiedTeacher(user.id);
-    if (isTeacher) {
-      redirect(params.next ? safeNextPath(params.next) : "/classroom");
-    } else {
-      redirect("/classroom/teach/apply");
-    }
+    const next = params.next ? `&next=${encodeURIComponent(params.next)}` : "";
+    redirect(`/auth/continue?role=teacher${next}`);
   }
 
-  const nextPath = params.next ? safeNextPath(params.next) : "/classroom";
+  const nextPath = params.next ? safeNextPath(params.next) : "/classroom/teacher";
 
   return (
     <AuthForm

@@ -14,7 +14,8 @@ import path from "path";
 import os from "os";
 import { assemble8086 } from "./assembler";
 import { AssembleResult, AsmDiagnostic } from "./types";
-import { planSandboxedCommand, selectIsolation, unsandboxedExecutionAllowed } from "../sandbox";
+import { planSandboxedCommand, selectIsolation, isolationPermitsUntrustedExecution } from "../sandbox";
+import { runProcessGroup } from "../processGroup";
 
 const execFileAsync = promisify(execFile);
 
@@ -64,13 +65,24 @@ export async function assembleWithNasmOrFallback(source: string): Promise<Assemb
   // Never run the native assembler on untrusted source without isolation.
   // With no sandbox available we use the pure-JS builtin assembler instead
   // (production can never opt into an unsandboxed run).
-  const sandboxed = (await selectIsolation()) !== "none" || unsandboxedExecutionAllowed();
+  const isolation = await selectIsolation();
+  const sandboxed = isolationPermitsUntrustedExecution(isolation);
 
   if (nasmInfo.available && sandboxed && nasmPath) {
     try {
       return await runNativeNasm(source, nasmPath);
-    } catch {
-      // If native NASM fails with an execution error, fall back to builtin assembler
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "The assembler crashed.";
+      return {
+        success: false,
+        binary: new Uint8Array(),
+        loadAddress: { segment: 0x1000, offset: 0x0100 },
+        entryPoint: { segment: 0x1000, offset: 0x0100 },
+        sourceMap: new Map(),
+        lineToOffset: new Map(),
+        diagnostics: [{ type: "error", message: `Assembler failed: ${message}` }],
+        engineUsed: "native-nasm",
+      };
     }
   }
 
@@ -94,12 +106,24 @@ async function runNativeNasm(source: string, nasmPath: string): Promise<Assemble
       args: ["-f", "bin", "-o", binFile, "-l", lstFile, srcFile],
       remapTempDirPaths: true,
     });
-    await execFileAsync(plan.command, plan.args, {
+    const assembled = await runProcessGroup({
+      command: plan.command,
+      args: plan.args,
       cwd: tmpDir,
       env: plan.env,
-      timeout: 5000,
-      killSignal: "SIGKILL",
+      timeoutMs: 5000,
+      maxBuffer: 256 * 1024,
     });
+    if (assembled.timedOut) {
+      throw new Error("nasm timed out");
+    }
+    if (assembled.code !== 0 || assembled.signal) {
+      const error = new Error(assembled.stderr || assembled.stdout || "Native NASM compilation failed") as Error & {
+        stderr?: string;
+      };
+      error.stderr = assembled.stderr || assembled.stdout;
+      throw error;
+    }
 
     const binary = await fs.readFile(binFile);
     const listing = await fs.readFile(lstFile, "utf8");

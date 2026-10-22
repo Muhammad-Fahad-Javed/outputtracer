@@ -55,6 +55,10 @@ export const execConfig = {
   maxMemoryMb: envInt("MAX_MEMORY_MB", 256),
   maxCpuSeconds: envInt("MAX_CPU_SECONDS", 5),
   maxProcesses: envInt("MAX_PROCESSES", 32),
+  // Largest file a student program may create (RLIMIT_FSIZE).
+  maxOutputFileBytes: envInt("MAX_OUTPUT_FILE_BYTES", 8 * 1024 * 1024),
+  // g++ writes object files and the binary. Larger than the student cap.
+  compileMaxFileBytes: envInt("COMPILE_MAX_FILE_BYTES", 64 * 1024 * 1024),
 
   // Resource limits for the *compiler* (g++). These are deliberately larger
   // than the runtime limits: g++ legitimately needs more memory than a

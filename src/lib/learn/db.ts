@@ -99,7 +99,9 @@ export function normalizeQuestion(q: any, maskAnswer = true): LearnQuestion {
     codeSnippet: q.code_snippet || q.codeSnippet,
     answer: maskAnswer ? "" : q.answer,
     hint: q.hint,
-    explanation: q.explanation || "",
+    // Explanations in the seed data restate the answer. Students receive one
+    // only after the grading API checks their submission.
+    explanation: maskAnswer ? "" : q.explanation || "",
     points: q.points || 10,
     isPublished: q.is_published ?? true,
     is_published: q.is_published ?? true,
@@ -276,7 +278,7 @@ export async function getLessonsForModule(moduleId: string, includeDrafts = fals
     if (supabase) {
       let query = supabase
         .from("learn_lessons")
-        .select("*")
+        .select("id,module_id,course_id,title,notes,code_snippet,display_order,is_published,created_at,updated_at")
         .eq("module_id", moduleId)
         .order("display_order", { ascending: true });
       if (!includeDrafts) {
@@ -303,7 +305,7 @@ export async function getLessonBySlug(
     if (supabase) {
       let query = supabase
         .from("learn_lessons")
-        .select("*")
+        .select("id,module_id,course_id,title,notes,code_snippet,display_order,is_published,created_at,updated_at")
         .eq("id", lessonId);
       if (!includeDrafts) {
         query = query.eq("is_published", true);
@@ -344,7 +346,7 @@ export async function getQuestionsForLesson(
         .select(
           (includeAnswers
             ? "*"
-            : "id,lesson_id,course_id,type,title,question_text,code_snippet,options,explanation,hint,points,difficulty,display_order,is_published,created_at,updated_at") as string,
+            : "id,lesson_id,course_id,type,title,question_text,code_snippet,options,hint,points,difficulty,display_order,is_published,created_at,updated_at") as string,
         )
         .eq("lesson_id", lessonId)
         .order("display_order", { ascending: true });
@@ -499,11 +501,72 @@ export async function recordStudentAttempt(params: {
   return false;
 }
 
+/**
+ * A lesson that has published questions is complete only after this student
+ * has a correct attempt for every one of them. Lessons with no questions are
+ * reading lessons; marking them complete is the activity.
+ */
+export async function lessonActivitySatisfied(params: {
+  userId: string;
+  lessonId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  let questions: Array<{ id: string }> = [];
+  try {
+    questions = await getQuestionsForLesson(params.lessonId, false, false);
+  } catch {
+    questions = fallbackQuestions.filter((q) => (q.lesson_id || q.lessonId) === params.lessonId);
+  }
+  if (questions.length === 0) return { ok: true };
+
+  const needed = new Set(questions.map((q) => q.id));
+  const correct = new Set<string>();
+  const adminSupabase = createAdminClient();
+
+  if (adminSupabase) {
+    try {
+      const { data, error } = await adminSupabase
+        .from("learn_question_attempts")
+        .select("question_id, is_correct")
+        .eq("user_id", params.userId)
+        .eq("is_correct", true);
+      if (error) throw error;
+      for (const row of data || []) {
+        const id = row.question_id as string;
+        if (needed.has(id)) correct.add(id);
+      }
+    } catch {
+      return {
+        ok: false,
+        error: "Lesson questions must be answered correctly before this lesson can be completed.",
+      };
+    }
+  } else if (!isAuthConfigured()) {
+    for (const attempt of fallbackAttempts) {
+      if (attempt.userId === params.userId && attempt.isCorrect && needed.has(attempt.questionId)) {
+        correct.add(attempt.questionId);
+      }
+    }
+  } else {
+    return { ok: false, error: "Lesson progress cannot be verified right now." };
+  }
+
+  if (correct.size < needed.size) {
+    return {
+      ok: false,
+      error: "Answer every question in this lesson correctly before marking it complete.",
+    };
+  }
+  return { ok: true };
+}
+
 export async function markLessonCompleted(params: {
   userId: string;
   courseId: string;
   lessonId: string;
 }): Promise<boolean> {
+  const ready = await lessonActivitySatisfied({ userId: params.userId, lessonId: params.lessonId });
+  if (!ready.ok) return false;
+
   const adminSupabase = createAdminClient();
   if (adminSupabase) {
     try {

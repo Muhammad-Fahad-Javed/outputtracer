@@ -375,9 +375,11 @@ export default function ProfilePage() {
                         <GraduationCap size={12} /> Verified Educator
                       </span>
                     )}
-                    <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-800">
-                      <BookOpen size={12} /> Student / Learner
-                    </span>
+                    {!profile?.isAdmin && !profile?.isVerifiedTeacher && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-800">
+                        <BookOpen size={12} /> Student / Learner
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -394,7 +396,7 @@ export default function ProfilePage() {
                 )}
                 {profile?.isVerifiedTeacher && (
                   <Link
-                    href="/classroom"
+                    href="/auth/continue?role=teacher"
                     className="inline-flex items-center justify-center gap-1.5 rounded-[4px] bg-black px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#333333]"
                   >
                     Teacher Studio <ArrowRight size={13} />

@@ -19,6 +19,7 @@ import {
 export const metadata: Metadata = {
   title: "Student Learning Dashboard | OutputTracer Learn",
   description: "Track your learning progress, enrolled courses, and practice question accuracy on OutputTracer Learn.",
+  robots: { index: false, follow: false },
 };
 
 export default async function StudentDashboardPage() {

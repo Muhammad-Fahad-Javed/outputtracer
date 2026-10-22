@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { consumePendingExample } from "@/lib/examples";
 import Link from "next/link";
 import Image from "next/image";
 import { saveAs } from "file-saver";
@@ -26,7 +27,6 @@ import {
   BookOpen,
   Search,
   ArrowRight,
-  X,
   Plus,
   Save,
   Zap,
@@ -316,6 +316,9 @@ const EXAMPLE_CATEGORIES: ExampleCategory[] = [
 
 export default function UnifiedShell() {
   const { user, signOut } = useAuth();
+  const [pendingExample] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : consumePendingExample()
+  );
   const [lang, setLang] = useState<SupportedLanguage>("cpp");
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>("output");
   const [panelHeight, setPanelHeight] = useState(280);
@@ -330,11 +333,11 @@ export default function UnifiedShell() {
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   // Per-language code buffers
-  const [codeBuffers, setCodeBuffers] = useState<Record<SupportedLanguage, string>>({
-    cpp: CPP_SAMPLE,
+  const [codeBuffers, setCodeBuffers] = useState<Record<SupportedLanguage, string>>(() => ({
+    cpp: pendingExample ?? CPP_SAMPLE,
     python: PYTHON_SAMPLE,
     assembly: ASM_SAMPLE,
-  });
+  }));
 
   // Stdin & interactive output state
   const [stdinInput, setStdinInput] = useState("");
@@ -344,6 +347,7 @@ export default function UnifiedShell() {
 
   // Assembly Execution State
   const [asmSessionId, setAsmSessionId] = useState<string | null>(null);
+  const [asmSessionToken, setAsmSessionToken] = useState<string | null>(null);
   const [asmStatus, setAsmStatus] = useState<AsmExecutionStatus>({
     state: "ready",
     currentStep: 0,
@@ -527,6 +531,7 @@ export default function UnifiedShell() {
       }
 
       setAsmSessionId(data.sessionId);
+      if (data.sessionToken) setAsmSessionToken(data.sessionToken);
       setAsmDiagnostics(data.assembleResult?.diagnostics || []);
       setAsmEngineUsed(data.assembleResult?.engineUsed || "native-nasm");
       setAsmStatus(data.status);
@@ -546,6 +551,7 @@ export default function UnifiedShell() {
 
     try {
       let currentSession = asmSessionId;
+      let currentToken = asmSessionToken;
       if (!currentSession) {
         const resAsm = await fetch("/api/asm", {
           method: "POST",
@@ -565,7 +571,9 @@ export default function UnifiedShell() {
           return;
         }
         currentSession = dataAsm.sessionId;
+        currentToken = dataAsm.sessionToken || currentToken;
         setAsmSessionId(currentSession);
+        if (dataAsm.sessionToken) setAsmSessionToken(dataAsm.sessionToken);
         setAsmDiagnostics(dataAsm.assembleResult?.diagnostics || []);
         setAsmEngineUsed(dataAsm.assembleResult?.engineUsed || "native-nasm");
       }
@@ -576,6 +584,7 @@ export default function UnifiedShell() {
         body: JSON.stringify({
           action: "run",
           sessionId: currentSession,
+          sessionToken: currentToken,
           stdin: typedInput ? `${typedInput}\n` : "",
           limit: 2000,
         }),
@@ -614,6 +623,7 @@ export default function UnifiedShell() {
         body: JSON.stringify({
           action: "step",
           sessionId: asmSessionId,
+          sessionToken: asmSessionToken,
         }),
       });
 
@@ -645,6 +655,7 @@ export default function UnifiedShell() {
         body: JSON.stringify({
           action: "reset",
           sessionId: asmSessionId,
+          sessionToken: asmSessionToken,
         }),
       });
 
@@ -1219,15 +1230,6 @@ export default function UnifiedShell() {
           <div className="flex h-full items-center gap-1.5 border-r border-[#2E2E2E] border-t-2 border-t-white bg-[#121212] px-3 font-mono text-[12px] font-medium text-white">
             <FileCode size={13} className="text-[#CCCCCC]" />
             <span>{fileMeta.name}</span>
-            <button
-              type="button"
-              onClick={() => {}}
-              className="ml-1 rounded p-0.5 text-[#858585] hover:bg-[#252526] hover:text-white transition-colors"
-              title="Close tab"
-              aria-label="Close tab"
-            >
-              <X size={11} />
-            </button>
           </div>
           <button
             type="button"

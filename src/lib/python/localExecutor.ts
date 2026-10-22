@@ -1,6 +1,8 @@
 import { spawn } from "child_process";
+import os from "os";
 import path from "path";
 import fs from "fs";
+import { sanitizedChildEnv } from "../sandbox";
 import { PYTHON_LIMITS } from "./pythonTypes";
 
 export interface LocalExecuteOptions {
@@ -89,6 +91,22 @@ export function findPythonPath(): string | null {
   return candidates[0] ?? null;
 }
 
+function killProcessTree(proc: ReturnType<typeof spawn>): void {
+  if (proc.pid && process.platform !== "win32") {
+    try {
+      process.kill(-proc.pid, "SIGKILL");
+      return;
+    } catch {
+      // The process may already have exited.
+    }
+  }
+  try {
+    proc.kill("SIGKILL");
+  } catch {
+    // ignore
+  }
+}
+
 export async function executePythonLocally(
   options: LocalExecuteOptions
 ): Promise<LocalExecuteResult> {
@@ -117,6 +135,8 @@ export async function executePythonLocally(
       proc = spawn(/*turbopackIgnore: true*/ pyPath, [scriptPath], {
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
+        detached: process.platform !== "win32",
+        env: sanitizedChildEnv(os.tmpdir()),
       });
     } catch (err) {
       return reject(err);
@@ -128,11 +148,7 @@ export async function executePythonLocally(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      try {
-        proc.kill("SIGKILL");
-      } catch {
-        // ignore
-      }
+      killProcessTree(proc);
       resolve({
         status: "timeout",
         stdout,

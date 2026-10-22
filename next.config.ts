@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { securityHeaders } from "./src/lib/securityHeaders";
 
 // Version-skew protection.
 //
@@ -34,9 +35,36 @@ if (
   );
 }
 
+// Dev-only. The IDE and classroom dashboard load as separate browser chunks.
+// Next.js rejects those /_next assets unless the browser host is allowed.
+// 127.0.0.1 is not covered by the built-in localhost allowlist. The cloud
+// preview host is covered by the wildcard. Override with ALLOWED_DEV_ORIGINS.
+const allowedDevOrigins = [
+  "127.0.0.1",
+  "**.agent.cvm.dev",
+  ...(process.env.ALLOWED_DEV_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+];
+
+// Next.js 16 shuts the Turbopack compiler down only after static generation,
+// and the in-build `tsc` runs in that window. On the production host
+// (913 MB RAM, 1.4 GB swap) compile finished and the log then stopped in
+// "Running TypeScript" with no diagnostic and no surviving process.
+// The deploy script typechecks in its own process, then sets this so the
+// production compile does not start a second tsc on top of the compiler.
+const deferTypecheck = process.env.OUTPUTTRACER_DEFER_TYPECHECK === "1";
+
 const nextConfig: NextConfig = {
   deploymentId,
   distDir: rawDistDir,
+  allowedDevOrigins,
+  poweredByHeader: false,
+  ...(deferTypecheck ? { typescript: { ignoreBuildErrors: true } } : {}),
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders() }];
+  },
   turbopack: {
     resolveAlias: {
       "monaco-editor/esm/vs/editor/editor.api.js": "monaco-editor/editor/editor.api.js",

@@ -143,6 +143,14 @@ export interface ClassroomAssignment {
   hiddenTestCases?: AssignmentTestCase[]; // Stripped for students
   dueDate?: string;
   allowLate: boolean;
+  /** Explicit teacher lock. Due date with late work off also freezes students. */
+  locked: boolean;
+  /** Students may compile and run. Teachers can run even when this is false. */
+  allowRun: boolean;
+  /** Stored per assignment. Classroom execution does not start a trace. */
+  allowTrace: boolean;
+  /** Wall-clock limit for a student or teacher run. Cannot exceed the global cap. */
+  timeLimitMs: number;
   maxPoints: number;
   groupMode: boolean;
   isPublished: boolean;
@@ -184,6 +192,10 @@ export interface CreateAssignmentInput {
   hiddenTestCases?: AssignmentTestCase[];
   dueDate?: string;
   allowLate?: boolean;
+  locked?: boolean;
+  allowRun?: boolean;
+  allowTrace?: boolean;
+  timeLimitMs?: number;
   maxPoints?: number;
   groupMode?: boolean;
   isPublished?: boolean;

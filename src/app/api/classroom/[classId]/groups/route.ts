@@ -1,24 +1,17 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
   listClassroomGroups,
   createClassroomGroup,
   assignStudentToGroup,
+  removeStudentFromGroup,
 } from "@/lib/classroom/classroomService";
+import { classroomRequestUser } from "@/lib/classroom/requestUser";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ classId: string }> }
 ) {
-  let user = null;
-  try {
-    const supabase = await createServerClient();
-    if (supabase) {
-      user = (await supabase.auth.getUser()).data.user;
-    }
-  } catch {
-    // Unauthenticated
-  }
+  const user = await classroomRequestUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized. Sign in required." }, { status: 401 });
@@ -41,15 +34,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ classId: string }> }
 ) {
-  let user = null;
-  try {
-    const supabase = await createServerClient();
-    if (supabase) {
-      user = (await supabase.auth.getUser()).data.user;
-    }
-  } catch {
-    // Unauthenticated
-  }
+  const user = await classroomRequestUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized. Sign in required." }, { status: 401 });
@@ -80,15 +65,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ classId: string }> }
 ) {
-  let user = null;
-  try {
-    const supabase = await createServerClient();
-    if (supabase) {
-      user = (await supabase.auth.getUser()).data.user;
-    }
-  } catch {
-    // Unauthenticated
-  }
+  const user = await classroomRequestUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized. Sign in required." }, { status: 401 });
@@ -116,4 +93,30 @@ export async function PUT(
     success: true,
     message: "Student assigned to group successfully.",
   });
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ classId: string }> }
+) {
+  const user = await classroomRequestUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized. Sign in required." }, { status: 401 });
+  }
+
+  const { classId } = await params;
+  const { searchParams } = new URL(request.url);
+  const groupId = searchParams.get("groupId");
+  const studentUserId = searchParams.get("studentUserId");
+  if (!groupId || !studentUserId) {
+    return NextResponse.json({ error: "Missing groupId or studentUserId" }, { status: 400 });
+  }
+
+  const result = await removeStudentFromGroup(user.id, classId, groupId, studentUserId);
+  if (!result.success) {
+    return NextResponse.json({ error: result.error || "Failed removing student from group" }, { status: 403 });
+  }
+
+  return NextResponse.json({ success: true, message: "Student removed from group." });
 }

@@ -278,6 +278,35 @@ describe("Grading references exact submitted version", () => {
     expect(result.hiddenPassed).toBe(1);
   });
 
+  it("does not store a grade when the sandbox is unavailable", async () => {
+    _setSandboxStub(async () => {
+      throw new ExecutionError("sandbox down", "sandbox_unavailable");
+    });
+
+    const files = makeFiles("int main() { return 0; }");
+    const version = await saveCodeVersion({ assignmentId: ASSIGNMENT_ID, codeFiles: files, studentId: STUDENT_A });
+    await createSubmissionSnapshot({
+      submissionId: "sub-infra-001",
+      versionId: version.id,
+      assignmentId: ASSIGNMENT_ID,
+      studentId: STUDENT_A,
+      codeFiles: files,
+      isLate: false,
+    });
+
+    await expect(
+      autoGradeSubmission({
+        submissionId: "sub-infra-001",
+        assignmentId: ASSIGNMENT_ID,
+        teacherId: TEACHER_ID,
+        publicTests: [{ id: "tc1", name: "Test 1", stdin: "", expectedOutput: "42\n", points: 100, isHidden: false }],
+        hiddenTests: [],
+        maxPoints: 100,
+      })
+    ).rejects.toBeInstanceOf(ExecutionError);
+    expect(await getGrade("sub-infra-001")).toBeNull();
+  });
+
   it("rubric total points matches sum of item scores", async () => {
     await upsertRubric(ASSIGNMENT_ID, {
       items: [

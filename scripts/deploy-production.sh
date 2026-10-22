@@ -24,10 +24,10 @@
 #   scripts/deploy-production.sh --verify-only          # verify the live release only
 #
 # The artifact mode is the recommended path. A `next build` of this codebase
-# needs about 1.9 GB of resident memory and the production instance has
-# 913 MiB of RAM, so building there stalls or is killed. Build the release on
-# a development machine with scripts/package-release.mjs, copy the tarball
-# here, and promote it.
+# needs about 1.4 GB of resident memory for the Turbopack compiler, and the
+# production instance has 913 MiB of RAM, so building there stalls or is
+# killed. Build the release on a development machine with
+# scripts/package-release.mjs, copy the tarball here, and promote it.
 #
 # Environment:
 #   PM2_APP       PM2 process name (default: outputtracer)
@@ -51,33 +51,23 @@ log()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
 fail() { printf '\n\033[1;31m!!! %s\033[0m\n' "$*" >&2; exit 1; }
 
-# Restore the previous release and put it back in front of traffic.
-#
-# This MUST actually put the old build back. The previous version of this
-# script only printed "rolling back" and exited, which left the broken new
-# release live while the working one sat unused in .next.prev - the exact
-# situation a rollback exists to prevent.
-rollback_release() {
+# The candidate is already the live directory. Put the previous release back
+# before exiting so a failed health check does not leave the new build serving.
+rollback_promoted() {
   local reason="$1"
-  printf '\n\033[1;31m!!! %s\033[0m\n' "$reason" >&2
-  printf '\033[1;33m==> rolling back to %s\033[0m\n' "$PREV_DIR" >&2
-  if [ -d "$PREV_DIR" ]; then
-    rm -rf .next
+  if [ -d .next ] && [ -d "$PREV_DIR" ]; then
+    local failed_dir=".next.failed.$(date +%Y%m%d%H%M%S)"
+    mv .next "$failed_dir"
     mv "$PREV_DIR" .next
+    info "restored the previous release; failed release kept in $failed_dir"
     unset NEXT_DIST_DIR
-    pm2 stop "$PM2_APP" || true
-    sleep 1
-    pm2 restart "$PM2_APP" --update-env || true
-    for _ in $(seq 1 30); do
-      code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/robots.txt" || echo 000)"
-      [ "$code" = "200" ] && break
-      sleep 2
-    done
-    printf '\033[1;32m==> rollback complete; the previous release is live again\033[0m\n' >&2
+    if ! pm2 restart "$PM2_APP" --update-env; then
+      info "PM2 did not restart the restored release; check: pm2 logs $PM2_APP --lines 50 --nostream"
+    fi
   else
-    printf '\033[1;31m!!! no %s to roll back to - the site needs manual attention\033[0m\n' "$PREV_DIR" >&2
+    info "could not roll back automatically (.next or $PREV_DIR is missing)"
   fi
-  exit 1
+  fail "$reason"
 }
 
 # Next.js rewrites tsconfig.json during a build when the include patterns do
@@ -111,7 +101,7 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     -h|--help)
-      sed -n '18,36p' "$0"
+      sed -n '20,40p' "$0"
       exit 0
       ;;
     *)
@@ -159,10 +149,16 @@ PROTECTED_ROUTES=( /projects /groups /admin /learn/dashboard /classroom/teacher 
 
 # --------------------------------------------------------------------- lock
 # Only one deployment may run at a time.
+#
+# The lock file records the owner so that a blocked deployment can say who
+# holds it. flock releases the lock when the owner dies, so a leftover file
+# on its own never blocks a deployment.
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
-  fail "another deployment is already running (lock: $LOCK_FILE)"
+  OWNER="$(cat "$LOCK_FILE" 2>/dev/null || echo unknown)"
+  fail "another deployment is already running (lock: $LOCK_FILE, owner: $OWNER)"
 fi
+printf 'pid=%s started=%s script=%s\n' "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$0" >&9
 
 cd "$APP_DIR"
 
@@ -182,9 +178,11 @@ fi
 info "current commit  : $CURRENT_COMMIT"
 info "current BUILD_ID: $CURRENT_BUILD_ID"
 
-# Record the live release so a rollback can be targeted precisely. The
-# manifest uses the same shape as the one scripts/package-release.mjs writes,
-# so the live release and a promoted artefact are described identically.
+# Record the live release so a rollback can be targeted precisely, and so
+# the commit and build id that are live can always be read back. The
+# manifest uses the same shape as the one scripts/package-release.mjs
+# writes, so the live release and a promoted artefact are described
+# identically.
 mkdir -p .next
 cat > .next/RELEASE <<RELEASE_EOF
 {
@@ -197,37 +195,38 @@ RELEASE_EOF
 DISK_FREE_MB="$(df -Pm / | awk 'NR==2 {print $4}')"
 info "disk free       : ${DISK_FREE_MB} MB"
 # Promoting a release needs room for the candidate plus the copy of the live
-# release that is kept for rollback. Refuse to start rather than fill the
-# root volume.
+# release that is kept for rollback. A build also needs the Turbopack cache
+# and the TypeScript build info. Refuse to start rather than fill the root
+# volume.
 REQUIRED_DISK_MB=1200
 if [ "$BUILD_ON_HOST" -eq 1 ]; then
-  # A build also needs the Turbopack cache and the TypeScript build info.
   REQUIRED_DISK_MB=2000
 fi
 if [ "$DISK_FREE_MB" -lt "$REQUIRED_DISK_MB" ]; then
   fail "only ${DISK_FREE_MB} MB free on /; need at least ${REQUIRED_DISK_MB} MB"
 fi
 
+# Turbopack compile for this app holds about 1.4 GB and, on the production
+# host, completed (outputtracer-build.9K7gao.log: "Compiled successfully in
+# 3.4min"). The in-build typecheck runs before that compiler is released, and
+# that is where the same log stops, with no tsc diagnostic and no process
+# left. Gating on total RAM + total swap called 913 MB + 1.4 GB "enough"
+# while only ~1.45 GB was free. Require free memory instead.
+#
+# Promoting a prebuilt release does not build anything, so it needs no
+# memory headroom at all.
 MEM_TOTAL_MB="$(free -m | awk 'NR==2 {print $2}')"
 MEM_AVAIL_MB="$(free -m | awk 'NR==2 {print $7}')"
 SWAP_TOTAL_MB="$(free -m | awk 'NR==3 {print $2}')"
+SWAP_FREE_MB="$(free -m | awk 'NR==3 {print $4}')"
+HEADROOM_MB=$(( MEM_AVAIL_MB + SWAP_FREE_MB ))
 info "memory          : ${MEM_TOTAL_MB} MB total, ${MEM_AVAIL_MB} MB available"
-info "swap            : ${SWAP_TOTAL_MB} MB total"
-
+info "swap            : ${SWAP_TOTAL_MB} MB total, ${SWAP_FREE_MB} MB free"
+info "build headroom  : ${HEADROOM_MB} MB (available RAM + free swap)"
 if [ "$BUILD_ON_HOST" -eq 1 ]; then
-  # A `next build` of this codebase needs about 1.9 GB of resident memory:
-  # ~1.4 GB is held by the Turbopack compiler in the parent process and the
-  # TypeScript type-check worker adds ~0.5 GB on top while the compiler is
-  # still resident. On a host with 913 MiB of RAM the build is killed or
-  # thrashes at the type-check step. 1900 MB is the measured peak, so require
-  # real headroom above it rather than the bare minimum.
-  if [ $(( MEM_TOTAL_MB + SWAP_TOTAL_MB )) -lt 2600 ]; then
-    fail "building on this host needs ~1900 MB of memory plus headroom, but the instance offers $(( MEM_TOTAL_MB + SWAP_TOTAL_MB )) MB (RAM+swap). Build elsewhere with scripts/package-release.mjs and deploy with --artifact."
+  if [ "$HEADROOM_MB" -lt 1400 ]; then
+    fail "this build needs about 1400 MB free (available RAM + free swap) but only ${HEADROOM_MB} MB is free. Free memory or resize the instance before deploying."
   fi
-  if [ "$MEM_AVAIL_MB" -lt 1200 ]; then
-    fail "only ${MEM_AVAIL_MB} MB of memory is available; the build needs at least 1200 MB free."
-  fi
-  info "building on this host is possible, but --artifact is faster and safer"
 else
   info "no build on this host: promoting a prebuilt release"
 fi
@@ -289,7 +288,9 @@ if [ "$BUILD_ON_HOST" -eq 0 ]; then
 
   # The manifest says which commit the artefact was built from. It must match
   # the commit that was just pulled, otherwise the release on the site would
-  # not be the code that is in the repository.
+  # not be the code that is in the repository. server.ts and src/lib are
+  # executed from the checkout at runtime, not from the artefact, so the two
+  # have to be the same code.
   if [ ! -f "$CANDIDATE_DIR/RELEASE" ]; then
     rm -rf "$CANDIDATE_DIR"
     fail "the artefact has no RELEASE manifest; refusing to promote an unidentifiable release"
@@ -307,9 +308,24 @@ if [ "$BUILD_ON_HOST" -eq 0 ]; then
   fi
 else
   # ---- build on this host ----------------------------------------------
+  # tsc by itself fits on this host. Inside `next build` it is started while
+  # Turbopack is still resident, which is the step that died in
+  # outputtracer-build.9K7gao.log. Typecheck first, then tell Next to skip
+  # its own tsc (see OUTPUTTRACER_DEFER_TYPECHECK in next.config.ts).
+  log "3a. Typecheck, then build the candidate (live .next is not touched)"
+
+  info "typecheck       : tsc --noEmit, before the compiler starts"
+  if ! ./node_modules/.bin/tsc --noEmit --pretty false --incremental false; then
+    fail "typecheck failed; the live release is untouched and still serving"
+  fi
+  export OUTPUTTRACER_DEFER_TYPECHECK=1
+
   export NEXT_DIST_DIR="$CANDIDATE_DIR"
   export NEXT_DEPLOYMENT_ID="$TARGET_SHORT"
   export NEXT_TELEMETRY_DISABLED=1
+  # Unset so the running server does not inherit it; the live release must
+  # use the default distDir.
+  unset NEXT_DIST_DIR_BUILD
 
   BUILD_LOG="$(mktemp /tmp/outputtracer-build.XXXXXX.log)"
   info "build log       : $BUILD_LOG"
@@ -320,6 +336,7 @@ else
     fail "build failed; the live release is untouched and still serving"
   fi
   info "build finished"
+  unset OUTPUTTRACER_DEFER_TYPECHECK
   restore_tsconfig
 fi
 
@@ -347,11 +364,35 @@ info "homepage carries data-dpl-id=\"$TARGET_SHORT\""
 log "5. Smoke test the candidate on port $DEPLOY_PORT (live site keeps serving)"
 
 SMOKE_PID=""
+# Kill a process and its children, deepest first.
+#
+# tsx runs the server in a CHILD process, so killing only the wrapper leaves
+# the server alive, still holding the smoke test port. The next deployment
+# then finds the port taken and smoke tests the PREVIOUS release, which is
+# how a candidate can report the wrong release id. Children are killed
+# first, and only the children of this specific pid - never a broad
+# "pkill node".
+kill_tree() {
+  local pid="$1" child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do
+    kill_tree "$child"
+  done
+  kill "$pid" 2>/dev/null || true
+}
+
 cleanup_smoke() {
   if [ -n "$SMOKE_PID" ] && kill -0 "$SMOKE_PID" 2>/dev/null; then
-    kill "$SMOKE_PID" 2>/dev/null || true
+    kill_tree "$SMOKE_PID"
     wait "$SMOKE_PID" 2>/dev/null || true
   fi
+  # The port must be free again before the next deployment starts.
+  for _ in $(seq 1 15); do
+    if ! (exec 3<>"/dev/tcp/127.0.0.1/$DEPLOY_PORT") 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  info "WARNING: port $DEPLOY_PORT is still in use after the smoke test; a stale server may still be running"
 }
 trap cleanup_smoke EXIT
 
@@ -394,7 +435,22 @@ for route in "${PROTECTED_ROUTES[@]}"; do
 done
 info "all ${#PROTECTED_ROUTES[@]} protected routes redirected to login"
 
-if ! curl -s --max-time 30 "http://127.0.0.1:$DEPLOY_PORT/" | grep -q "data-dpl-id=\"$TARGET_SHORT\""; then
+# The release id is checked against the body, not against a pipe.
+#
+# `curl ... | grep -q` makes grep close the pipe as soon as it matches, so
+# curl is killed with SIGPIPE and exits non-zero. Under `set -o pipefail`
+# that turns a successful match into a failed check, and the check below
+# would roll back a perfectly good release.
+release_id_served() {
+  local url="$1" body
+  body="$(curl -s --max-time 30 "$url")" || return 1
+  case "$body" in
+    *"data-dpl-id=\"$TARGET_SHORT\""*) return 0 ;;
+  esac
+  return 1
+}
+
+if ! release_id_served "http://127.0.0.1:$DEPLOY_PORT/"; then
   fail "candidate is not serving the expected release id"
 fi
 info "candidate is serving the expected release"
@@ -422,6 +478,7 @@ cat > .next/RELEASE <<RELEASE_EOF
 {
   "commit": "$TARGET_COMMIT",
   "release": "$TARGET_SHORT",
+  "buildId": "$CANDIDATE_BUILD_ID",
   "promotedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 RELEASE_EOF
@@ -436,7 +493,7 @@ sleep 1
 if ! pm2 restart "$PM2_APP" --update-env; then
   info "---- pm2 logs ----"
   pm2 logs "$PM2_APP" --lines 40 --nostream || true
-  rollback_release "PM2 could not start the new release"
+  rollback_promoted "PM2 could not start the new release"
 fi
 info "PM2 restarted"
 
@@ -454,19 +511,19 @@ for _ in $(seq 1 45); do
 done
 
 if [ "$HEALTHY" -ne 1 ]; then
-  rollback_release "health check failed after promotion"
+  rollback_promoted "health check failed; rolled back to the previous release"
 fi
 
 # The live site must now be serving the new release id.
-if ! curl -s --max-time 30 "$BASE_URL/" | grep -q "data-dpl-id=\"$TARGET_SHORT\""; then
-  rollback_release "the live site is not serving release $TARGET_SHORT"
+if ! release_id_served "$BASE_URL/"; then
+  rollback_promoted "the live site is not serving release $TARGET_SHORT; rolled back"
 fi
 info "live site is serving release $TARGET_SHORT"
 
 for route in "${PUBLIC_ROUTES[@]}"; do
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$BASE_URL$route" || echo 000)"
   if [ "$code" != "200" ]; then
-    rollback_release "live site returned $code for $route"
+    rollback_promoted "live site returned $code for $route; rolled back"
   fi
 done
 info "all ${#PUBLIC_ROUTES[@]} public routes answered 200 on the live site"

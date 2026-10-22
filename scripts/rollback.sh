@@ -24,7 +24,8 @@ cd "$APP_DIR"
 
 log "Current release"
 if [ -f .next/RELEASE ]; then
-  printf '    commit    : %s\n' "$(cat .next/RELEASE)"
+  printf '    commit    : %s\n' "$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .next/RELEASE | head -1)"
+  printf '    release   : %s\n' "$(sed -n 's/.*"release"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .next/RELEASE | head -1)"
 fi
 if [ -f .next/BUILD_ID ]; then
   printf '    BUILD_ID  : %s\n' "$(cat .next/BUILD_ID)"
@@ -32,7 +33,8 @@ fi
 
 log "Previous release"
 if [ -f "$PREV_DIR/RELEASE" ]; then
-  printf '    commit    : %s\n' "$(cat "$PREV_DIR/RELEASE")"
+  printf '    commit    : %s\n' "$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PREV_DIR/RELEASE" | head -1)"
+  printf '    release   : %s\n' "$(sed -n 's/.*"release"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PREV_DIR/RELEASE" | head -1)"
 fi
 if [ -f "$PREV_DIR/BUILD_ID" ]; then
   printf '    BUILD_ID  : %s\n' "$(cat "$PREV_DIR/BUILD_ID")"

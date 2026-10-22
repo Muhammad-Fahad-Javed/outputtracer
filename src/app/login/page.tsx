@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import AuthForm from "@/components/auth/AuthForm";
@@ -6,6 +7,7 @@ import { safeNextPath } from "@/lib/cloud/roles";
 import { isAuthConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { getUserCapabilities } from "@/lib/classroom/roles";
+import { parseSessionRole, SESSION_ROLE_COOKIE } from "@/lib/sessionRole";
 import { BookOpen, GraduationCap, ShieldCheck, ArrowRight, ShieldAlert, ArrowLeft } from "lucide-react";
 
 export default async function LoginPage({
@@ -30,7 +32,8 @@ export default async function LoginPage({
   if (user && capabilities) {
     if (role === "admin") {
       if (capabilities.isAdmin) {
-        redirect("/admin");
+        const next = params.next ? `&next=${encodeURIComponent(params.next)}` : "";
+        redirect(`/auth/continue?role=admin${next}`);
       }
       // Authenticated but NOT admin -> Show Access Restricted state
       return (
@@ -67,26 +70,19 @@ export default async function LoginPage({
       );
     }
 
-    if (role === "teacher") {
-      if (capabilities.isVerifiedTeacher) {
-        redirect("/classroom");
-      } else {
-        redirect("/classroom/teach/apply");
-      }
+    if (role === "teacher" || role === "learner") {
+      const next = params.next ? `&next=${encodeURIComponent(params.next)}` : "";
+      redirect(`/auth/continue?role=${role}${next}`);
     }
 
-    if (role === "learner") {
-      redirect("/classroom/student");
-    }
-
-    // Default authenticated redirect when no role specified
-    if (params.next && params.next !== "/projects") {
-      redirect(safeNextPath(params.next));
-    }
-    if (capabilities.isAdmin) redirect("/admin");
-    if (capabilities.isVerifiedTeacher) redirect("/classroom");
-    if (capabilities.teacherApplicationStatus === "pending_review") redirect("/classroom/teach/apply");
-    redirect("/classroom/student");
+    // No role on this visit: keep the role they already chose. An approved
+    // teacher profile does not take over a learner session. Admins with no
+    // saved role still open the admin home.
+    const cookieStore = await cookies();
+    const saved = parseSessionRole(cookieStore.get(SESSION_ROLE_COOKIE)?.value);
+    const chosen = saved ?? (capabilities.isAdmin ? "admin" : "learner");
+    const next = params.next ? `&next=${encodeURIComponent(params.next)}` : "";
+    redirect(`/auth/continue?role=${chosen}${next}`);
   }
 
   // 2. If a specific role was selected, show the role-specific sign-in form
@@ -95,7 +91,7 @@ export default async function LoginPage({
       role === "admin"
         ? "/admin"
         : role === "teacher"
-        ? "/classroom"
+        ? "/classroom/teacher"
         : "/classroom/student";
 
     const nextPath = params.next ? safeNextPath(params.next) : defaultNext;

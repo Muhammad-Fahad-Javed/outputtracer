@@ -39,6 +39,7 @@ export default function LessonActions({
   const [copied, setCopied] = useState(false);
   const [isCompleted, setIsCompleted] = useState(initialCompleted);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
 
   const isAssembly = languageSlug === "8086-assembly";
 
@@ -74,9 +75,13 @@ export default function LessonActions({
           courseId,
         }),
       });
+      const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
         setIsCompleted(true);
+        setCompleteError(null);
+      } else {
+        setCompleteError(data.error || "This lesson is not complete yet.");
       }
     } catch (err) {
       console.error("Failed to mark lesson complete", err);
@@ -159,6 +164,9 @@ export default function LessonActions({
             <CheckCircle2 size={14} className={isCompleted ? "text-emerald-600" : "text-white"} />
             {isCompleted ? "Lesson Completed" : isSubmitting ? "Saving…" : "Mark as Completed"}
           </button>
+          {completeError && (
+            <p className="text-[11px] text-rose-700" role="alert">{completeError}</p>
+          )}
 
           {nextLesson && (
             <Link

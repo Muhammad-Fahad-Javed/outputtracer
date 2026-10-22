@@ -1,9 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+
+vi.mock("./localExecutor", () => ({
+  executePythonLocally: vi.fn(async () => ({ status: "ok", stdout: "local\n" })),
+  findPythonPath: () => "python3",
+}));
 import {
   PYTHON_LIMITS, PythonSystemError, validateRunInput, validateTraceInput, systemErrorBody,
 } from "./pythonTypes";
 import { callWorker, loadSandboxConfig, type SandboxConfig } from "./pythonSandboxClient";
+import { executePythonLocally } from "./localExecutor";
 import { runPythonCode } from "./pythonRunner";
 import { sanitizeTraceResult, sanitizeValue, tracePythonCode } from "./pythonTracer";
 import { configurePythonApi } from "./pythonApiDeps";
@@ -73,6 +79,52 @@ describe("sandbox client fails closed", () => {
     expect(await run(fetchReturning(200, { status: "sandbox_unavailable" }))).toBe("sandbox_unavailable");
     expect(await run(vi.fn(async () => new Response("not json", { status: 200 })))).toBe("internal_error");
   });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(executePythonLocally).mockClear();
+  });
+
+  it("does not run on the host in production, even when the dev flag is set", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("ALLOW_UNSANDBOXED_EXECUTION", "true");
+    expect(await code(callWorker({
+      path: "/v1/run",
+      body: { code: "print(1)" },
+      timeoutMs: 100,
+      config: { ...cfg, url: "" },
+    }))).toBe("sandbox_unavailable");
+    expect(executePythonLocally).not.toHaveBeenCalled();
+  });
+
+  it("does not replace a configured worker outage with a host process", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("ALLOW_UNSANDBOXED_EXECUTION", "1");
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    expect(await code(callWorker({
+      path: "/v1/run",
+      body: { code: "print(1)" },
+      timeoutMs: 100,
+      config: cfg,
+      fetchImpl,
+    }))).toBe("sandbox_unavailable");
+    expect(executePythonLocally).not.toHaveBeenCalled();
+  });
+
+  it("uses the local interpreter only outside production when the worker is unconfigured and the flag is set", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("ALLOW_UNSANDBOXED_EXECUTION", "1");
+    const result = await callWorker({
+      path: "/v1/run",
+      body: { code: "print(1)", stdin: "" },
+      timeoutMs: 100,
+      config: { ...cfg, url: "", token: "" },
+    });
+    expect(result.status).toBe("ok");
+    expect(executePythonLocally).toHaveBeenCalledOnce();
+  });
+
   it("sends the bearer token and never the user's identity beyond clientId", async () => {
     const f = fetchReturning(200, { status: "ok", stdout: "", stderr: "", exitCode: 0, executionTimeMs: 1 });
     await runPythonCode("print(1)", "", {}, { config: cfg, fetchImpl: f as any, clientId: "u1" });

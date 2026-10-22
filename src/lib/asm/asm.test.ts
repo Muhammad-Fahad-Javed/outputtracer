@@ -347,7 +347,7 @@ describe("8086 NASM Assembly Engine - Required Test Suite", () => {
     forever:
       jmp forever
     `;
-    const session = new AsmSession("test-loop", src, 100);
+    const session = new AsmSession("test-loop", "token", src, 100);
     session.assembleSync();
 
     // Run with limit of 50 steps
@@ -366,7 +366,7 @@ mov bx, 2      ; line 4
 add ax, bx     ; line 5
 hlt            ; line 6
 `;
-    const session = new AsmSession("test-src", src);
+    const session = new AsmSession("test-src", "token", src);
     session.assembleSync();
 
     const step1 = session.step();
@@ -389,7 +389,7 @@ hlt            ; line 6
       add ax, 30
       hlt
     `;
-    const session = new AsmSession("test-replay", src);
+    const session = new AsmSession("test-replay", "token", src);
     session.assembleSync();
 
     session.step(); // mov ax, 10
@@ -433,6 +433,20 @@ hlt            ; line 6
 
     sessionManager.deleteSession(sessionA.id);
     sessionManager.deleteSession(sessionB.id);
+  });
+
+  it("requires the session token and caps sessions per caller", () => {
+    const first = sessionManager.createSession({ source: "org 100h\nhlt", ownerKey: "caller-a" });
+    expect(sessionManager.authorize(first.id, "wrong")).toBeUndefined();
+    expect(sessionManager.authorize(first.id, first.token)?.id).toBe(first.id);
+
+    const ids = [first.id];
+    for (let i = 0; i < 4; i++) {
+      ids.push(sessionManager.createSession({ source: "org 100h\nhlt", ownerKey: "caller-a" }).id);
+    }
+    const live = ids.filter((id) => sessionManager.getSession(id));
+    expect(live.length).toBeLessThanOrEqual(4);
+    for (const id of ids) sessionManager.deleteSession(id);
   });
 
   // Test 17: Full ASM_SAMPLE with non-colon labels, times directive, and INT 21h AH=0Ah

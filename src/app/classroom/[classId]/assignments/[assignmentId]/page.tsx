@@ -13,6 +13,8 @@ import {
   Users,
 } from "lucide-react";
 import { ClassroomAssignment } from "@/lib/classroom/types";
+import AssignmentWorkspace from "@/components/classroom/AssignmentWorkspace";
+import TeacherWatch from "@/components/classroom/TeacherWatch";
 
 export default function AssignmentDetailPage({
   params,
@@ -24,6 +26,7 @@ export default function AssignmentDetailPage({
 
   const [assignment, setAssignment] = useState<ClassroomAssignment | null>(null);
   const [isTeacher, setIsTeacher] = useState(false);
+  const [localPreview, setLocalPreview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +42,7 @@ export default function AssignmentDetailPage({
         } else {
           setAssignment(data.assignment);
           setIsTeacher(Boolean(data.isTeacher));
+          setLocalPreview(Boolean(data.localPreview));
         }
       })
       .catch(() => {
@@ -58,13 +62,24 @@ export default function AssignmentDetailPage({
       <Header />
 
       <main className="flex-1 py-10 px-4 sm:px-6">
-        <div className="mx-auto max-w-4xl">
-          <Link
-            href={`/classroom/${classId}`}
-            className="inline-flex items-center gap-1.5 text-xs text-[#666666] hover:text-black mb-6"
-          >
-            <ArrowLeft size={13} /> Back to Classroom
-          </Link>
+        <div className="mx-auto max-w-6xl">
+          <nav className="mb-6 flex flex-wrap items-center gap-2 text-xs text-[#666666]">
+            {isTeacher && (
+              <>
+                <Link href="/classroom/teacher" className="hover:text-black">Teacher Studio</Link>
+                <span aria-hidden="true">/</span>
+              </>
+            )}
+            <Link href={`/classroom/${classId}`} className="inline-flex items-center gap-1.5 hover:text-black">
+              <ArrowLeft size={13} /> Class
+            </Link>
+            {isTeacher && (
+              <>
+                <span aria-hidden="true">/</span>
+                <Link href={`/classroom/${classId}/manage`} className="hover:text-black">Manage</Link>
+              </>
+            )}
+          </nav>
 
           {loading ? (
             <div className="rounded-2xl border border-[#EAEAEA] bg-white p-12 text-center text-xs text-[#666666]">
@@ -119,12 +134,14 @@ export default function AssignmentDetailPage({
                     </div>
                   </div>
 
-                  <Link
-                    href="/"
-                    className="inline-flex items-center justify-center gap-1.5 rounded-[4px] bg-black px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#333333] shrink-0"
-                  >
-                    <Play size={12} fill="white" /> Open in OutputTracer IDE
-                  </Link>
+                  {!isTeacher && (
+                    <Link
+                      href="/"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-[4px] bg-black px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#333333] shrink-0"
+                    >
+                      <Play size={12} fill="white" /> Open in OutputTracer IDE
+                    </Link>
+                  )}
                 </div>
 
                 {assignment.description && (
@@ -139,8 +156,14 @@ export default function AssignmentDetailPage({
                 )}
               </div>
 
+              {isTeacher && (
+                <TeacherWatch classId={classId} assignmentId={assignmentId} />
+              )}
+
               {/* Starter Code Preview */}
-              <div className="rounded-2xl border border-[#EAEAEA] bg-white p-6 shadow-xs">
+              <details className="rounded-2xl border border-[#EAEAEA] bg-white p-6 shadow-xs" open={!isTeacher}>
+              <summary className="cursor-pointer text-sm font-bold text-black">Starter code and tests</summary>
+              <div className="pt-4">
                 <h2 className="text-sm font-bold text-black flex items-center gap-2 mb-3">
                   <Code2 size={16} /> Starter Code
                 </h2>
@@ -192,6 +215,29 @@ export default function AssignmentDetailPage({
                   </div>
                 )}
               </div>
+              </details>
+
+              {isTeacher && localPreview ? (
+                <details className="rounded-2xl border border-[#EAEAEA] bg-white p-5 shadow-xs">
+                  <summary className="cursor-pointer text-sm font-semibold text-black">
+                    Preview as the sample student
+                  </summary>
+                  <div className="pt-4">
+                    <AssignmentWorkspace
+                      classId={classId}
+                      assignmentId={assignmentId}
+                      allowLate={assignment.allowLate}
+                      previewStudent
+                    />
+                  </div>
+                </details>
+              ) : !isTeacher ? (
+                <AssignmentWorkspace
+                  classId={classId}
+                  assignmentId={assignmentId}
+                  allowLate={assignment.allowLate}
+                />
+              ) : null}
             </div>
           )}
         </div>

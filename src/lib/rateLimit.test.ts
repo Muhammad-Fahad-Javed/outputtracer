@@ -62,12 +62,27 @@ describe("rate limiter eviction", () => {
 });
 
 describe("clientIpFromForwarded", () => {
-  it("uses the first X-Forwarded-For hop only when the proxy is trusted", () => {
+  const savedHops = process.env.TRUSTED_PROXY_HOPS;
+
+  afterEach(() => {
+    if (savedHops === undefined) delete process.env.TRUSTED_PROXY_HOPS;
+    else process.env.TRUSTED_PROXY_HOPS = savedHops;
+  });
+
+  it("uses the proxy-appended hop and ignores a spoofed left-most address", () => {
+    delete process.env.TRUSTED_PROXY_HOPS;
     expect(clientIpFromForwarded("1.1.1.1, 2.2.2.2", "10.0.0.1", true)).toBe(
-      "1.1.1.1"
+      "2.2.2.2"
     );
     expect(clientIpFromForwarded("1.1.1.1, 2.2.2.2", "10.0.0.1", false)).toBe(
       "10.0.0.1"
+    );
+  });
+
+  it("walks back TRUSTED_PROXY_HOPS when more than one proxy appends", () => {
+    process.env.TRUSTED_PROXY_HOPS = "2";
+    expect(clientIpFromForwarded("9.9.9.9, 1.1.1.1, 2.2.2.2", "10.0.0.1", true)).toBe(
+      "1.1.1.1"
     );
   });
 });

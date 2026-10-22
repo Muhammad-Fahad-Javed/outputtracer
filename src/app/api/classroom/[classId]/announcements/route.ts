@@ -7,17 +7,16 @@
  */
 
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createAnnouncement, listAnnouncements } from "@/lib/classroom/communicationService";
 import type { CreateAnnouncementInput } from "@/lib/classroom/communicationTypes";
+import { classroomRequestUser } from "@/lib/classroom/requestUser";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ classId: string }> }
 ) {
   const { classId } = await params;
-  const supabase = await createServerClient();
-  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  const user = await classroomRequestUser();
   if (!user) {
     return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
   }
@@ -35,8 +34,7 @@ export async function POST(
   { params }: { params: Promise<{ classId: string }> }
 ) {
   const { classId } = await params;
-  const supabase = await createServerClient();
-  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  const user = await classroomRequestUser();
   if (!user) {
     return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
   }

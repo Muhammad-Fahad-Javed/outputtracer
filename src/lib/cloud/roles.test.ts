@@ -11,20 +11,24 @@ describe("safeNextPath", () => {
   });
 
   it("rejects absolute and protocol-relative URLs", () => {
-    expect(safeNextPath("https://evil.example")).toBe("/projects");
-    expect(safeNextPath("//evil.example")).toBe("/projects");
-    expect(safeNextPath("///evil.example")).toBe("/projects");
+    expect(safeNextPath("https://evil.example")).toBe("/classroom/student");
+    expect(safeNextPath("//evil.example")).toBe("/classroom/student");
+    expect(safeNextPath("///evil.example")).toBe("/classroom/student");
   });
 
   it("rejects paths that browsers normalise into another origin", () => {
-    expect(safeNextPath("/\\evil.example")).toBe("/projects");
-    expect(safeNextPath("/\t/evil.example")).toBe("/projects");
-    expect(safeNextPath("/\n/evil.example")).toBe("/projects");
+    expect(safeNextPath("/\\evil.example")).toBe("/classroom/student");
+    expect(safeNextPath("/\t/evil.example")).toBe("/classroom/student");
+    expect(safeNextPath("/\n/evil.example")).toBe("/classroom/student");
   });
 
   it("falls back for empty or missing values", () => {
-    expect(safeNextPath(undefined)).toBe("/projects");
-    expect(safeNextPath("")).toBe("/projects");
-    expect(safeNextPath("projects")).toBe("/projects");
+    expect(safeNextPath(undefined)).toBe("/classroom/student");
+    expect(safeNextPath("")).toBe("/classroom/student");
+    expect(safeNextPath("projects")).toBe("/classroom/student");
+  });
+
+  it("uses a caller-supplied fallback", () => {
+    expect(safeNextPath(undefined, "/classroom/teacher")).toBe("/classroom/teacher");
   });
 });

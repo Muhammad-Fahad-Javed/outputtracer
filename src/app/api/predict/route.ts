@@ -87,13 +87,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const { source, files, stdin, standard, projectId } =
+  const { source, files, stdin, standard, projectId, trace } =
     (body as {
       source?: unknown;
       files?: unknown;
       stdin?: unknown;
       standard?: unknown;
       projectId?: unknown;
+      trace?: unknown;
     }) ?? {};
 
   const isValidFiles =
@@ -152,6 +153,7 @@ export async function POST(request: Request) {
     stdin: typeof stdin === "string" ? stdin : undefined,
     standard: runStandard,
     ownerKey,
+    trace: trace === false ? false : undefined,
   });
 
   if (result.status === "success") {

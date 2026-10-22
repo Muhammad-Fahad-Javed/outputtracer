@@ -2,7 +2,6 @@
 
 import { FormEvent, useState, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 
@@ -20,6 +19,13 @@ import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
  */
 function siteOrigin(): string {
   return window.location.origin;
+}
+
+function continueHref(role: string | undefined, nextPath: string): string {
+  const params = new URLSearchParams();
+  params.set("role", role || "learner");
+  if (nextPath) params.set("next", nextPath);
+  return `/auth/continue?${params.toString()}`;
 }
 
 /** Minimal Google "G" SVG mark — matches the official brand guidelines. */
@@ -65,7 +71,6 @@ export default function AuthForm({
   initialError?: string | null;
   role?: "learner" | "teacher" | "admin";
 }) {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -121,14 +126,14 @@ export default function AuthForm({
         password,
         options: {
           data: { display_name: displayName.trim() },
-          emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+          emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(continueHref(role, nextPath))}`,
           captchaToken: tokenToUse,
         },
       });
       if (signUpError) {
         setError(signUpError.message);
       } else if (data.session) {
-        router.push(nextPath);
+        window.location.assign(continueHref(role, nextPath));
       } else {
         setMessage(
           "Check your email and click the confirmation link, then sign in here."
@@ -145,7 +150,7 @@ export default function AuthForm({
       if (signInError) {
         setError(signInError.message);
       } else {
-        router.push(nextPath);
+        window.location.assign(continueHref(role, nextPath));
       }
     }
     setPending(false);
@@ -165,7 +170,7 @@ export default function AuthForm({
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${siteOrigin()}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+        redirectTo: `${siteOrigin()}/auth/callback?next=${encodeURIComponent(continueHref(role, nextPath))}`,
       },
     });
     if (oauthError) {
@@ -205,7 +210,7 @@ export default function AuthForm({
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(
       email.trim(),
       {
-        redirectTo: `${siteOrigin()}/auth/callback?next=/projects`,
+        redirectTo: `${siteOrigin()}/auth/callback?next=${encodeURIComponent(continueHref(role, ""))}`,
         captchaToken: tokenToUse,
       }
     );

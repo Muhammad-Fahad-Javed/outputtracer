@@ -25,6 +25,7 @@ export async function POST(request: Request) {
   let body: {
     action?: string;
     sessionId?: string;
+    sessionToken?: string;
     source?: string;
     code?: string;
     stdin?: string;
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { action = "assemble", sessionId, stdin, limit } = body;
+  const { action = "assemble", sessionId, sessionToken, stdin, limit } = body;
   const source = body.source ?? body.code;
 
   if (source && typeof source === "string" && Buffer.byteLength(source, "utf8") > MAX_ASM_SOURCE_BYTES) {
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    let session = sessionId ? sessionManager.getSession(sessionId) : undefined;
+    let session = sessionId ? sessionManager.authorize(sessionId, sessionToken) : undefined;
 
     if (action === "create" || (action === "assemble" && !session)) {
       if (typeof source !== "string") {
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
       session = sessionManager.createSession({
         source,
         stdin: stdin || "",
+        ownerKey: ip,
       });
       const assembleResult = await session.assemble();
       const status = session.getStatus();
@@ -70,6 +72,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: assembleResult.success,
         sessionId: session.id,
+        sessionToken: session.token,
         assembleResult: {
           success: assembleResult.success,
           diagnostics: assembleResult.diagnostics,
@@ -103,6 +106,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
           success: assembleResult.success,
           sessionId: session.id,
+          sessionToken: session.token,
           assembleResult: {
             success: assembleResult.success,
             diagnostics: assembleResult.diagnostics,
@@ -141,7 +145,8 @@ export async function POST(request: Request) {
           session.stdin = stdin;
           session.cpu.stdinBuffer = stdin;
         }
-        const steps = session.run(limit || 2000);
+        const requested = typeof limit === "number" && Number.isFinite(limit) ? limit : 2000;
+        const steps = session.run(Math.min(Math.max(1, requested), 5000));
         const status = session.getStatus();
         return NextResponse.json({
           success: true,

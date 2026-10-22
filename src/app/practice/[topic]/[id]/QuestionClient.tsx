@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PracticeQuestion } from "@/lib/practice";
+import { PublicPracticeQuestion } from "@/lib/practice";
+import { setPendingExample } from "@/lib/examples";
 import Editor from "@monaco-editor/react";
 import { CheckCircle2, XCircle, ChevronRight, Play, Check } from "lucide-react";
 import Link from "next/link";
@@ -12,12 +13,14 @@ export default function QuestionClient({
   question,
   nextQuestionId,
 }: {
-  question: PracticeQuestion;
+  question: PublicPracticeQuestion;
   nextQuestionId: string | null;
 }) {
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<"idle" | "correct" | "incorrect">("idle");
+  const [explanation, setExplanation] = useState("");
   const [showExplanation, setShowExplanation] = useState(false);
+  const [grading, setGrading] = useState(false);
   const [isPreviouslyCompleted, setIsPreviouslyCompleted] = useState(false);
 
   const { user } = useAuth();
@@ -54,56 +57,44 @@ export default function QuestionClient({
   }, [user, question.topicId, question.id]);
 
   const checkAnswer = async () => {
-    // Basic whitespace normalization for comparison
-    const normalizedInput = input.trim().replace(/\s+/g, " ");
-    const normalizedAnswer = question.answer.trim().replace(/\s+/g, " ");
-    const isCorrect = normalizedInput === normalizedAnswer;
-    
-    if (isCorrect) {
-      setStatus("correct");
-      setShowExplanation(true);
-      setIsPreviouslyCompleted(true);
-    } else {
-      setStatus("incorrect");
-    }
-
-    if (user) {
-      try {
-        const supabase = await getSupabaseBrowser();
-        if (supabase) {
-          await supabase.from("practice_submissions").insert({
-            user_id: user.id,
-            topic_id: question.topicId,
-            question_id: question.id,
-            submitted_output: input,
-            is_correct: isCorrect,
-          });
-
-          await supabase.from("practice_progress").upsert(
-            {
-              user_id: user.id,
-              topic_id: question.topicId,
-              question_id: question.id,
-              is_completed: isCorrect || isPreviouslyCompleted,
-              last_submitted_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id,topic_id,question_id" }
-          );
-        }
-      } catch (err) {
-        console.error("Failed to save submission progress:", err);
+    setGrading(true);
+    try {
+      const res = await fetch("/api/practice/grade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topicId: question.topicId,
+          questionId: question.id,
+          answer: input,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus("incorrect");
+        setExplanation("");
+        setShowExplanation(false);
+        return;
       }
+      if (data.isCorrect) {
+        setStatus("correct");
+        setExplanation(typeof data.explanation === "string" ? data.explanation : "");
+        setShowExplanation(true);
+        setIsPreviouslyCompleted(true);
+      } else {
+        setStatus("incorrect");
+        setExplanation("");
+        setShowExplanation(false);
+      }
+    } catch {
+      setStatus("incorrect");
+    } finally {
+      setGrading(false);
     }
   };
 
   const handleTestInPredictor = () => {
-    // Store the code in localStorage or URL to pass to predictor
-    // The simplest way for now is just opening the predictor, but passing state 
-    // requires a bit more wiring. We'll use localStorage.
-    if (typeof window !== "undefined") {
-      localStorage.setItem("outputtracer_practice_code", question.code);
-      window.open("/#predictor", "_blank");
-    }
+    setPendingExample(question.code);
+    window.open("/", "_blank");
   };
 
   return (
@@ -165,10 +156,10 @@ export default function QuestionClient({
 
           <button
             onClick={checkAnswer}
-            disabled={!input.trim()}
+            disabled={!input.trim() || grading}
             className="mt-4 w-full rounded-[6px] bg-black px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#333333] disabled:bg-[#CCCCCC] disabled:text-[#888888]"
           >
-            Check Answer
+            {grading ? "Checking…" : "Check Answer"}
           </button>
 
           {status !== "idle" && (
@@ -201,7 +192,7 @@ export default function QuestionClient({
             <div className="mt-6 border-t border-[#EAEAEA] pt-6">
               <h3 className="text-sm font-semibold text-black">Explanation</h3>
               <p className="mt-2 text-sm leading-relaxed text-[#666666]">
-                {question.explanation}
+                {explanation}
               </p>
 
               {nextQuestionId && (
