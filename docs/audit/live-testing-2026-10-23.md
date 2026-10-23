@@ -23,7 +23,9 @@ every possible interaction or production load has been certified.
   Hidden tests were withheld from student responses.
 - Practice: the Basic Syntax / Variable Scope question accepted `10 30`, marked
   it correct and returned its explanation. Learn catalog and NASM course detail
-  pages loaded.
+  pages loaded. The NASM register lesson rejected premature completion, graded
+  the correct AH answer with its explanation and then recorded Lesson Completed
+  for the disposable QA account.
 - Automated suite: 400 passed across 51 files, 2 existing isolation tests skipped.
   TypeScript and changed-file ESLint pass. Production build passes.
 - Public release verification covers 15 routes, protected redirects and safe
