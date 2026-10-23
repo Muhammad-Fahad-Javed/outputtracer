@@ -893,7 +893,7 @@ export default function ClassroomManagePage({
                 </label>
               </div>
               <p className="text-[11px] text-[#777777]">
-                Classroom runs stay in C++ and do not start a trace. The time limit cannot exceed 10 seconds.
+                Runs use the assignment language. Assignment step tracing is not available yet. The time limit cannot exceed 10 seconds.
               </p>
 
               <div className="flex justify-end gap-2 pt-3">

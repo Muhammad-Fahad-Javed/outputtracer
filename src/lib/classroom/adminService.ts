@@ -330,7 +330,10 @@ export function computeClassroomProgress(input: {
 
   const studentBreakdown: StudentProgressSummary[] = students.map((m) => {
     const sId = m.user_id;
-    const studentSubs = submissions.filter((s) => s.student_id === sId);
+    const studentSubs = submissions.filter((s) =>
+      s.student_id === sId ||
+      (!s.student_id && s.group_id && groupMemberMap.get(s.group_id)?.includes(sId)),
+    );
     const graded = studentSubs.filter((s) => gradesMap.has(s.id));
 
     let scoreSum = 0;

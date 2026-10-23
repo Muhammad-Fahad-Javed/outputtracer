@@ -174,6 +174,26 @@ describe("computeClassroomProgress - completion rate", () => {
 });
 
 describe("computeClassroomProgress - class average", () => {
+  it("includes group work and its grade in every member's individual progress", () => {
+    const r = computeClassroomProgress({
+      students: [student(S1), student(S2), student("outsider")],
+      assignmentIds: [A1],
+      submissions: [submission("group-sub", A1, null, "graded", G1)],
+      grades: [grade("group-sub", 80)],
+      groupMembers: [{ group_id: G1, user_id: S1 }, { group_id: G1, user_id: S2 }],
+    });
+    for (const studentId of [S1, S2]) {
+      expect(r.studentBreakdown.find((s) => s.studentId === studentId)).toMatchObject({
+        submissionsCount: 1,
+        gradedCount: 1,
+        averageScorePercent: 80,
+        lastActiveAt: "2026-01-01T00:00:00.000Z",
+      });
+    }
+    expect(r.studentBreakdown.find((s) => s.studentId === "outsider")?.submissionsCount).toBe(0);
+    expect(r.averageClassScorePercent).toBe(80);
+  });
+
   it("includes a student whose graded work scored zero", () => {
     const r = computeClassroomProgress({
       students: [student(S1), student(S2)],
