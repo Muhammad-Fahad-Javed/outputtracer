@@ -125,6 +125,12 @@ export async function hasBubblewrap(): Promise<boolean> {
     if (await pathExists("/lib64")) {
       args.push("--ro-bind", "/lib64", "/lib64");
     }
+    // Amazon Linux resolves toolchain entry points such as /usr/bin/ld
+    // through /etc/alternatives. Mount only that symlink directory; mounting
+    // all of /etc would expose host configuration to untrusted programs.
+    if (await pathExists("/etc/alternatives")) {
+      args.push("--ro-bind", "/etc/alternatives", "/etc/alternatives");
+    }
     args.push("--", "/usr/bin/true");
     await execFileAsync("bwrap", args, { timeout: 3000 });
     bwrapAvailable = true;
@@ -272,6 +278,9 @@ async function bwrapPrefix(
 
   if (await pathExists("/lib64")) {
     args.push("--ro-bind", "/lib64", "/lib64");
+  }
+  if (await pathExists("/etc/alternatives")) {
+    args.push("--ro-bind", "/etc/alternatives", "/etc/alternatives");
   }
 
   args.push("--", innerCommand, ...innerArgs);
