@@ -23,11 +23,11 @@ Authoritative status list for this repository. Older notes in `docs/audit/` desc
 | Status | Count |
 | --- | ---: |
 | DONE_VERIFIED | 28 |
-| PARTIALLY_DONE | 3 |
+| PARTIALLY_DONE | 4 |
 | NOT_DONE | 9 |
 | BROKEN | 0 |
 | BLOCKED | 2 |
-| UNVERIFIED | 5 |
+| UNVERIFIED | 4 |
 | NOT_APPLICABLE | 1 |
 | Total | 48 |
 
@@ -56,7 +56,7 @@ Authoritative status list for this repository. Older notes in `docs/audit/` desc
 | OT-019 | Classroom | Assignment submit control | DONE_VERIFIED | `AssignmentWorkspace.tsx` renders "Submit assignment". Route argument-order tests passed (`classroomRouteAuth.test.ts`, 12). The button was not clicked in a browser this pass. | Click submit with a real student session after deploy | High |
 | OT-020 | Classroom | Assignment test editor | PARTIALLY_DONE | The create form sends one public case and one hidden case. There is no list editor for many cases. | Add a repeatable case list only if teachers need more than one of each | Medium |
 | OT-021 | Classroom | Local teacher dashboard without Supabase | DONE_VERIFIED | Development with no credentials returns `canCreateClassroom: true`. Production mode returns 401 (`localTeacherPreview.test.ts`). Roster label is "Local teacher". | Skip. Do not treat this as a production login. | Medium |
-| OT-022 | Auth | Real student, teacher, admin, and OAuth sessions | UNVERIFIED | Supabase is connected and auth-gated routes redirect correctly. No disposable role-specific sessions or verified Google OAuth flow were exercised. | Sign in with each role and test redirects and permissions | Critical |
+| OT-022 | Auth | Real student, teacher, admin, and OAuth sessions | PARTIALLY_DONE | Disposable student, teacher, and administrator sessions passed live SSR-cookie tests. Role homes, student admin denial, teacher activation, classroom creation/join, roster access, and admin overview passed. Google OAuth reaches Google's authorization screen. Email/password UI remains blocked because the production build lacks `NEXT_PUBLIC_TURNSTILE_SITE_KEY`. | Configure the matching Cloudflare Turnstile site key, rebuild, then complete browser login and OAuth consent | Critical |
 | OT-023 | Security | Content-Security-Policy enforcement | PARTIALLY_DONE | Responses use `Content-Security-Policy-Report-Only` and still allow inline and eval script for Monaco and Next. Enforcing it was not attempted. | Browser-pass the IDE, then enforce | Medium |
 | OT-024 | Security | HSTS | NOT_DONE | HTTPS on the apex works through Cloudflare. `ENABLE_HSTS` was not turned on. | Set the flag only after the certificate policy is confirmed | Medium |
 | OT-025 | Collaboration | Removed member keeps an open socket | NOT_DONE | New joins are checked. An already-open socket is not closed on removal. Not changed. | Disconnect the room member when access is revoked | Medium |

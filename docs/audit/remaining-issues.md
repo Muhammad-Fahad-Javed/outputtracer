@@ -10,7 +10,8 @@ These are not fixed, or they are fixed only in code and still need an operator.
 | --- | --- |
 | Apply migration 0013 | Needs a backup, a staging database, and explicit approval. Not applied. |
 | Apply migration 0014 | Same. Until it is applied, a signed-in browser can still insert `practice_submissions.is_correct` through PostgREST even though the app no longer does that. |
-| Real student, teacher, and admin sessions | Supabase is connected, but no disposable role-specific test accounts or verified Google OAuth flow were available in this pass. |
+| Browser email/password authentication | Supabase CAPTCHA protection is enabled with a Turnstile secret, but the production build lacks `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, so the login, signup, and password-reset forms fail closed before submission. Disposable role-specific sessions passed through the official Supabase SSR cookie path. |
+| OAuth completion | Google OAuth successfully reaches Google's authorization screen with the Supabase callback. Final consent and return require a disposable Google identity. |
 
 ## Still open in the product
 

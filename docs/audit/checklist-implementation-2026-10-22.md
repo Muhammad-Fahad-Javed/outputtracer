@@ -28,7 +28,7 @@ Recoverable source archives: `/tmp/outputtracer-checklist-baseline/source.tar` a
 - Similarity jobs/reports and assembly manual-entry policy are not implemented by this pass. Classroom execution currently hardcodes C++; adding assembly policy requires a deliberate language integration.
 - Open collaboration sockets still need access-revocation verification, message-rate tests, and real simultaneous-browser tests.
 - Existing authorship coloring is not proof of authorship. Durable event attribution, paste classification, history comparison UX, and review metrics require further validation.
-- Live schema/applied migrations, real stored metrics, OAuth, Turnstile enforcement, account sessions, email delivery, Nginx/PM2/Cloudflare and production isolation remain unverified.
+- Applied migration history before 0016, real stored metrics, completed OAuth consent, email delivery, and rollback under failure remain unverified. Supabase CAPTCHA enforcement is active, but browser email/password flows are blocked until the matching Turnstile site key is supplied at build time.
 - npm installation reported 15 dependency advisories (2 moderate, 9 high, 4 critical). No forced dependency upgrades were made; advisory analysis remains pending.
 - EC2 access is working as `ec2-user`. The live checkout is `/home/ec2-user/outputtracer`, managed by PM2 as `outputtracer`, and its local `/api` health check returns HTTP 200. The candidate remains isolated from that checkout.
 

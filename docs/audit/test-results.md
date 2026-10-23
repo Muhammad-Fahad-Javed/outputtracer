@@ -23,6 +23,22 @@ Duration    about 7 seconds
 
 The skipped test is the fail-closed case that only runs when the host has no isolation at all. This host has bubblewrap, so that case is skipped rather than passed.
 
+## Live authenticated flow — 23 October 2026
+
+Three disposable confirmed users were created through the Supabase admin API and stored in a mode-600 credential file outside the checkout. The teacher activated through the caller-scoped `activate_teacher_profile` RPC. Official Supabase SSR cookies were then used against the live application.
+
+- Student, teacher, and administrator sessions were recognized with the expected capabilities.
+- Student pages for projects, groups, classroom, and profile returned 200.
+- Student access to the administrator API and classroom creation returned 403.
+- The teacher created a classroom and a published assignment with public and hidden tests.
+- The student joined by code; the teacher roster contained both accounts.
+- The student assignment response did not contain hidden tests.
+- The student created a group and a project through authenticated Supabase RPCs.
+- The administrator overview loaded successfully.
+- Google OAuth reached Google's authorization screen with the Supabase callback configured.
+
+The email/password browser form is currently disabled because `NEXT_PUBLIC_TURNSTILE_SITE_KEY` was absent when the production bundle was built. Supabase CAPTCHA protection is enabled and rejects password authentication without a CAPTCHA token, so a matching Cloudflare Turnstile site key is required before browser login, signup, and password-reset testing can finish.
+
 Compiler and sandbox cases that ran under `isolation: "bwrap"`:
 
 - Hello world stdout
