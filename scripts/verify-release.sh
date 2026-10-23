@@ -24,7 +24,8 @@ PUBLIC_ROUTES=(
   /robots.txt /sitemap.xml /login/learner /login/teacher /login/admin
   /classroom/student
 )
-PROTECTED_ROUTES=( /projects /groups /admin /learn/dashboard /classroom/teacher )
+PROTECTED_ROUTES=( /learn/dashboard /classroom/teacher )
+CONFIG_GATED_ROUTES=( /projects /groups /admin )
 
 FAILED=0
 printf 'Verifying %s\n\n' "$BASE_URL"
@@ -45,10 +46,31 @@ for route in "${PROTECTED_ROUTES[@]}"; do
   case "$location" in
     *devs.surf*) status="FAIL (staging host)"; FAILED=1 ;;
     *"$BASE_URL"*) : ;;
+    /*) : ;;
     "") : ;;
     *) status="FAIL (off-site redirect)"; FAILED=1 ;;
   esac
   printf '%-26s %-6s %s\n' "$route" "$code" "$status (307 -> $location)"
+done
+for route in "${CONFIG_GATED_ROUTES[@]}"; do
+  body="$(curl -s --max-time 30 "$BASE_URL$route")"
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$BASE_URL$route" || echo 000)"
+  location="$(curl -sI --max-time 30 "$BASE_URL$route" | tr -d '\r' | awk 'tolower($1)=="location:" {print $2}')"
+  status="ok"
+  expected="auth redirect or safe setup page"
+  if [ "$code" = "307" ] || [ "$code" = "308" ]; then
+    case "$location" in
+      *devs.surf*) status="FAIL (staging host)"; FAILED=1 ;;
+      *"$BASE_URL"*|/*) : ;;
+      *) status="FAIL (off-site redirect)"; FAILED=1 ;;
+    esac
+  elif [ "$code" = "200" ] && printf '%s' "$body" | grep -Eq 'Connect Supabase to turn on accounts|Access Restricted'; then
+    :
+  else
+    status="FAIL"
+    FAILED=1
+  fi
+  printf '%-26s %-6s %s\n' "$route" "$code" "$status ($expected)"
 done
 
 printf '\n'

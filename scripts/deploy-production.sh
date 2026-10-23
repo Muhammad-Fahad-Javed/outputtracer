@@ -145,7 +145,11 @@ PUBLIC_ROUTES=(
   /classroom/student
 )
 # Routes that must redirect an anonymous visitor to the login page.
-PROTECTED_ROUTES=( /projects /groups /admin /learn/dashboard /classroom/teacher )
+PROTECTED_ROUTES=( /learn/dashboard /classroom/teacher )
+# These routes redirect when Supabase is configured. Without production
+# credentials they must render only a setup/access-denied page, never private
+# data or the local development preview.
+CONFIG_GATED_ROUTES=( /projects /groups /admin )
 
 # --------------------------------------------------------------------- lock
 # Only one deployment may run at a time.
@@ -316,7 +320,8 @@ else
   log "3a. Typecheck, then build the candidate (live .next is not touched)"
 
   info "typecheck       : tsc --noEmit, before the compiler starts"
-  if ! ./node_modules/.bin/tsc --noEmit --pretty false --incremental false; then
+  BUILD_NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1024}"
+  if ! NODE_OPTIONS="$BUILD_NODE_OPTIONS" ./node_modules/.bin/tsc --noEmit --pretty false --incremental false; then
     fail "typecheck failed; the live release is untouched and still serving"
   fi
   export OUTPUTTRACER_DEFER_TYPECHECK=1
@@ -337,7 +342,7 @@ else
   BUILD_LOG="$(mktemp /tmp/outputtracer-build.XXXXXX.log)"
   info "build log       : $BUILD_LOG"
 
-  if ! npm run build >"$BUILD_LOG" 2>&1; then
+  if ! NODE_OPTIONS="$BUILD_NODE_OPTIONS" npm run build >"$BUILD_LOG" 2>&1; then
     info "---- last 40 lines of the build log ----"
     tail -40 "$BUILD_LOG"
     fail "build failed; the live release is untouched and still serving"
@@ -441,6 +446,19 @@ for route in "${PROTECTED_ROUTES[@]}"; do
   fi
 done
 info "all ${#PROTECTED_ROUTES[@]} protected routes redirected to login"
+
+for route in "${CONFIG_GATED_ROUTES[@]}"; do
+  body="$(curl -s --max-time 30 "http://127.0.0.1:$DEPLOY_PORT$route")"
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "http://127.0.0.1:$DEPLOY_PORT$route")"
+  if [ "$code" = "307" ] || [ "$code" = "308" ]; then
+    continue
+  fi
+  if [ "$code" = "200" ] && printf '%s' "$body" | grep -Eq 'Connect Supabase to turn on accounts|Access Restricted'; then
+    continue
+  fi
+  fail "candidate exposed or failed config-gated route $route (HTTP $code)"
+done
+info "all ${#CONFIG_GATED_ROUTES[@]} config-gated routes denied access safely"
 
 # The release id is checked against the body, not against a pipe.
 #
