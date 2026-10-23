@@ -4,16 +4,14 @@ The status table that this audit now maintains is [../OUTPUTTRACER_AUDIT_TRACKER
 
 These are not fixed, or they are fixed only in code and still need an operator.
 
-## Blocked on production access
+## Blocked on database configuration or authenticated access
 
 | Item | Why it is not done |
 | --- | --- |
-| Deploy OT-001 and this branch | Not authorized to deploy. Live `outputtracer.com` was not changed in this pass. |
 | Apply migration 0013 | Needs a backup, a staging database, and explicit approval. Not applied. |
 | Apply migration 0014 | Same. Until it is applied, a signed-in browser can still insert `practice_submissions.is_correct` through PostgREST even though the app no longer does that. |
+| Apply migration 0016 | Loaded in the authenticated Supabase SQL editor and waiting at the final destructive-query confirmation. |
 | Real student, teacher, and admin sessions | No Supabase keys, no test accounts, no Google OAuth client in this environment. |
-| Staging deploy and rollback | `rollback_promoted` is in `scripts/deploy-production.sh` and was not executed against a host. |
-| Confirm production bubblewrap | This VM now has bubblewrap. The EC2 host was not inspected. If production has no bubblewrap, the new policy refuses public C++ execution instead of using `unshare --net`. Set `ALLOW_FILESYSTEM_VISIBLE_SANDBOX=1` only after accepting that the host filesystem stays visible. |
 
 ## Still open in the product
 
@@ -27,7 +25,7 @@ These are not fixed, or they are fixed only in code and still need an operator.
 | Announcement composer | Closed for the class page. A teacher can post from the Announcements tab. Checked in the local browser against the in-memory store. |
 | Admin invite without a service client | Still not rechecked in this pass. |
 | `nasm` | Not installed here. The lab uses the built-in assembler. |
-| Python | Still disabled unless a configured isolated worker is present. There is no worker in this environment. |
+| Python capacity | The isolated worker is live with two concurrent slots on a one-vCPU EC2 host. Load and queue behavior still need production monitoring. |
 | Practice JSON on disk | `data/questions/*.json` still contains answers on the server. They are not passed to the client component. They are not under `public/`. |
 | Collab revocation | A member who is removed keeps the socket they already opened until it closes. New joins are checked. |
 | Browser end-to-end tests | No Playwright run. The assignment workspace, practice grading button, and lesson error were not clicked in a browser. |

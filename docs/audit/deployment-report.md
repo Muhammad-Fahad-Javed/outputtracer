@@ -1,29 +1,32 @@
 # Deployment
 
-## What is live
+## Live release
 
-https://outputtracer.com/ responds through Cloudflare (`server: cloudflare`). The app is Next.js (`x-powered-by: Next.js`, `x-nextjs-cache` on the homepage). This audit could not SSH to EC2, read PM2, Nginx, or the deployed git SHA. The live predict failure matches the `prlimitPrefix` bug in `4a8317e`, which is the current `main` commit. That is strong evidence the live build contains that function. It is not a `git rev-parse` on the server.
+The application is served through Cloudflare at https://outputtracer.com/ from EC2 checkout `/home/ec2-user/outputtracer`. The live artifact reports release `7b31d54` and build ID `build-TfctsWXpff2fKS`. The server checkout is on `main` at `8fcd2ee`; commits after the artifact only change deployment and security-test scripts.
 
-## Paths in the repo
+PM2 runs:
 
-| Script | What it does |
-| --- | --- |
-| `scripts/deploy-production.sh` | Lock, fetch `main`, build `NEXT_DIST_DIR=.next-candidate`, smoke port 3100, promote onto `.next`, `pm2 restart`. App dir default `/home/ec2-user/outputtracer` |
-| `scripts/rollback.sh` | Swap `.next.prev` into `.next` and restart PM2. Does not reset git |
-| `scripts/verify-release.sh` | Public routes 200, protected routes 307/308, rejects `devs.surf` redirects |
-| `deploy.sh` | apt, Docker, Nginx for `outputtracer.devs.surf`. Not the apex runbook |
-| `Dockerfile` | Node 22, `g++`, `gdb`, bubblewrap, `npm ci`, `npm run build`, user 1001 |
+- `outputtracer`: the Next.js custom server on port 3000.
+- `outputtracer-python-sandbox`: the authenticated Python worker on `127.0.0.1:8787`.
 
-`.env.example` documents `SITE_URL=https://outputtracer.com`. Browser redirects use the request host (`requestOrigin.ts`), so a stale `SITE_URL` does not by itself send users to another domain.
+The process list is saved with `pm2 save`. The Python token is generated on the host, stored at `/home/ec2-user/.config/outputtracer/python-sandbox.token` with mode 600, and never logged. The Docker image is `outputtracer-python-sandbox:latest`.
 
-## OT-009
+## Guarded deployment result
 
-The script header said a failed promotion rolls back. `fail` only printed and exited. After `.next` was replaced, a bad health check left the new build in place. This branch adds `rollback_promoted`, which moves the failed tree aside, restores `.next.prev`, and restarts PM2 before exiting. That function was not executed on a server.
+`scripts/deploy-production.sh --build-on-host` typechecked and built a candidate without touching the live `.next`, verified its required manifests and release marker, then smoke-tested all route classes on port 3100. A stale earlier candidate server was detected by the release-ID check and blocked promotion. After that process was removed, the clean candidate passed.
 
-## Release checks this branch expects
+The first promotion exposed that PM2 retains environment variables which disappear from a later `--update-env` call. It kept `NEXT_DIST_DIR=.next-candidate`, failed the health check, and the script preserved the failed artifact while restoring `.next.prev`. The previous `.next` was already corrupt and had no build ID, so the verified artifact was promoted manually and PM2 was restarted with `NEXT_DIST_DIR=.next`.
 
-Public routes in the deploy script include `/`, `/login`, `/signup`, `/practice`, `/learn`, `/classroom`, `/assembly`, `/python`, `/examples`, robots, sitemap, and the login variants. Protected routes must redirect. `/admin` redirects only when Supabase env is set. A smoke box without those variables will fail the protected-route check. That matches `updateSession`.
+Commit `5b9cb14` fixes both promotion and rollback by explicitly passing `NEXT_DIST_DIR=.next`. This makes the release directory deterministic even when PM2 already contains a candidate value.
 
-## Not inspected
+## Verified checks
 
-Nginx `upgrade` headers, PM2 cwd, disk, certificates beyond Cloudflare's HTTPS response, backups, and whether `.next` on the host matches `4a8317e`. Do not change DNS, firewall, or production env from this audit.
+- All 15 public routes returned 200 over HTTPS.
+- `/learn/dashboard` and `/classroom/teacher` redirected anonymous users to login.
+- `/projects`, `/groups`, and `/admin` returned safe setup/access-restricted pages because Supabase is not configured on EC2.
+- The homepage carried `data-dpl-id="7b31d54"`.
+- The homepage canonical is `https://outputtracer.com`; `www` redirects to the apex.
+- C++, Python run, Python trace, and 8086 assembly succeeded through the deployed process.
+- PM2 and the Python worker recovered through `pm2 kill` followed by `pm2 resurrect`; both health checks passed.
+
+The corrupt pre-deployment artifact remains preserved as `.next.broken-before-7b31d54` for diagnosis and can be removed after the new release has remained stable. The deployment script retains `.next.prev` on normal promotions for rollback.

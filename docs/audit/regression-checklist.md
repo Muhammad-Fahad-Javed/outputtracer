@@ -4,15 +4,15 @@ Use this after deploying `cursor/full-audit-fixes-a40c` and, separately, after a
 
 ## Deploy
 
-- [ ] `scripts/deploy-production.sh` completes. Candidate smoke passes before promotion.
+- [x] Candidate build and smoke passed before promotion. The PM2 environment bug found during promotion is fixed in `5b9cb14`.
 - [ ] If you can do it on a spare host, kill the process after promotion and confirm `.next.prev` is restored. Do not do that on the only production box without a backup of `.next`.
-- [ ] Homepage contains the new deployment id.
-- [ ] `https://www.outputtracer.com/` is still 308 to the apex.
-- [ ] `/projects` and `/admin` still redirect anonymous users to `/login`.
+- [x] Homepage contains deployment id `7b31d54`.
+- [x] `https://www.outputtracer.com/` redirects to the apex.
+- [x] `/projects`, `/groups`, and `/admin` fail safely while Supabase is not configured.
 
 ## Compiler
 
-- [ ] `POST /api/predict` with `{"source":"#include <iostream>\nint main(){std::cout<<\"hi\";}","trace":false}` returns `"output":"hi"`.
+- [x] Live `POST /api/predict` returned `"output":"CPP_OK"`.
 - [ ] A program with `for(;;){}` returns a timeout, not a stuck PM2 process (`ps` shows no leftover `main.out` after a minute).
 - [ ] A project run still requires a signed-in editor and does not accept substitute source.
 - [ ] Terminal stdin still reaches a program that uses `cin`.
@@ -31,7 +31,7 @@ Use this after deploying `cursor/full-audit-fixes-a40c` and, separately, after a
 - [ ] Submitting the right answer still returns the explanation.
 - [ ] `/examples` "Try in Predictor" opens `/` with that source in the C++ buffer.
 - [ ] An assembly lesson still opens `/assembly` with the starter.
-- [ ] `/api/python` stays 503 `disabled` until the Docker worker is configured.
+- [x] The Docker worker is configured; `/api/python` returned `42` and `/api/python/trace` returned ordered steps.
 
 ## Auth
 
@@ -47,7 +47,7 @@ Use this after deploying `cursor/full-audit-fixes-a40c` and, separately, after a
 ## This pass, still to confirm after deploy
 
 - [ ] Homepage sends `Content-Security-Policy-Report-Only` and does not send `X-Powered-By`.
-- [ ] A C++ program that opens `/etc/passwd` does not print the file. If it does, bubblewrap is not the isolation mode.
+- [x] Production-mode EC2 integration could not read an outside marker file and could not make an outbound connection under Bubblewrap.
 - [ ] `deploy.sh` exits immediately and does not change Nginx.
 - [ ] Practice "Check Answer" still marks a correct prediction without the answer appearing in the page source.
 - [ ] Marking a lesson complete before its questions are answered returns 409.

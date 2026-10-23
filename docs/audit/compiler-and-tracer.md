@@ -4,7 +4,7 @@
 
 C++ is a real `g++` process. `compileAndRun` in `src/lib/cppRunner.ts` writes the submission to a temp directory and invokes the compiler through `planSandboxedCommand` (`execFile` / `spawn` with an argument array, not a shell). The interactive terminal uses the same planner (`src/lib/wsTerminal.ts`). GDB tracing is a second execution (`src/lib/gdbTracer.ts`) and is skipped when the caller passes `trace: false`.
 
-Python is a Docker worker (`sandbox-worker/server.mjs`) when `PYTHON_EXECUTION_ENABLED=true` and the URL and token are set. The live site returns 503 `disabled`. 8086 does not execute machine code on the host. See [assembly-lab.md](./assembly-lab.md).
+Python runs through `sandbox-worker/server.mjs` on `127.0.0.1:8787` with a bearer token shared only with the Next.js process. Each run or trace uses a fresh locked-down Docker container. Production run and trace requests passed on 23 October 2026. 8086 does not execute machine code on the host. See [assembly-lab.md](./assembly-lab.md).
 
 ## OT-001 — `prlimit` dropped the compiler arguments (fixed in this branch)
 
@@ -36,7 +36,7 @@ After the fix, on this host (`isolation: unshare-net`):
 | `prlimit` only | Host filesystem visible | host network | prlimit only |
 | none | Host | Host | Refused in production |
 
-This host has no bubblewrap, so tests ran under `unshare-net`. That is not a claim that the live host uses the same mode. `GET /api` deliberately does not report the isolation level.
+The EC2 host has Bubblewrap 0.10.0. Production-mode integration verified compile, run, and GDB tracing plus environment, filesystem, and network isolation. `GET /api` deliberately does not report the isolation level.
 
 `ALLOW_UNSANDBOXED_EXECUTION` cannot enable unsandboxed C++ in production (`unsandboxedExecutionAllowed`).
 

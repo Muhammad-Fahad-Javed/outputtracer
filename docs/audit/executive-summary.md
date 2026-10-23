@@ -1,46 +1,33 @@
 # Executive summary
 
-## Verified state
+## Verified production state — 23 October 2026
 
-OutputTracer is a Next.js 16 App Router application served by a custom Node server (`server.ts`) on https://outputtracer.com/. Cloudflare terminates TLS. The homepage, public labs, practice, and learn catalog returned HTTP 200 on 21 October 2026. `www` redirects to the apex with 308. HTTP redirects to HTTPS with 301. Anonymous users are redirected away from `/projects`, `/admin`, and `/learn/dashboard`.
+OutputTracer is deployed at https://outputtracer.com/ from release `7b31d54` on EC2. The checkout is on `main` at `8fcd2ee`; the two later commits only repair deployment and security-test tooling. PM2 runs the Next.js service and the loopback-only Python sandbox worker.
 
-The C++ compiler on the **live** site does not compile programs. `POST /api/predict` with a hello-world returned HTTP 200 and:
+The release verifier passed all 15 public routes, both protected redirects, all three configuration-gated routes, the canonical URL, and the `www` redirect. The live C++ API compiled and ran `CPP_OK` under Bubblewrap. The 8086 endpoint assembled a program with the built-in NASM-compatible engine. Python run returned `42`, and Python trace returned ordered steps, locals, and stdout through the authenticated Docker worker.
 
-```text
-g++: fatal error: no input files
-compilation terminated.
-```
+The Python worker uses a fresh container for each request with no network, a read-only root filesystem, a no-exec temporary filesystem, no Docker socket, UID 10001, dropped capabilities, and CPU, memory, PID, file, deadline, and output limits. All 11 adversarial checks passed on EC2. The shared worker token is stored only on the server in a mode-600 file and in the two PM2 process environments; its value was not printed.
 
-The cause is in `src/lib/sandbox.ts`. When `prlimit` is installed, `prlimitPrefix` wrapped `g++` and dropped every compiler argument, including the source file. This host reproduced the same failure, then passed hello-world, infinite-loop timeout, and output-limit tests after the arguments were preserved. That fix is in this branch. It is not on the live host until the next production deploy.
+The production C++ host now has Bubblewrap 0.10.0. Production-mode integration verified ordinary compilation, execution and GDB tracing, no inherited server secrets, no outside-file reads, and no outbound network access. `/etc/alternatives` is mounted read-only so Amazon Linux's linker symlink resolves without exposing the rest of `/etc`.
 
-Python execution is intentionally off in production (`POST /api/python` returns 503 `disabled`). The 8086 assemble endpoint works and reported engine `builtin-nasm-compat`.
+## Release validation
 
-## Core functionality
+- Full Vitest suite: 48 files passed; 388 tests passed and 2 environment-dependent cases skipped.
+- TypeScript: `tsc --noEmit` passed.
+- ESLint: passed with no warnings.
+- Production build: completed on EC2 with a valid `BUILD_ID` and release marker.
+- Candidate smoke: 15 public routes returned 200, 2 protected routes redirected to login, and 3 configuration-gated routes failed safely.
+- Live verification: the same route checks passed over `https://outputtracer.com`.
+- PM2 promotion failure was exercised in production. The first promotion retained `NEXT_DIST_DIR=.next-candidate`; the guard rolled back and preserved the verified artifact. `scripts/deploy-production.sh` now explicitly sets `NEXT_DIST_DIR=.next` for both promotion and rollback.
 
-| Area | Live site, 21 Oct 2026 | This branch |
-| --- | --- | --- |
-| Public pages, login, signup, practice, learn, assembly UI | HTTP 200 | Unchanged routing |
-| C++ compile and run | Broken (`no input files`) | Fixed and tested with `g++` under `unshare --net` |
-| GDB trace | Not verified live; this host has no `gdb` | Trace can be skipped for grading; GDB still best-effort |
-| Python | Disabled | Host fallback cannot run in production |
-| 8086 assemble | Builtin assembler succeeded | Unit tests cover the emulator |
-| Classroom assignment execute, submit, grade | Those handlers called `getClassroom` with the ids reversed, so members received 403 | Argument order fixed and tested |
-| Learn answer keys | `answer` column is revoked; explanations still restated answers | Student payload blanks `explanation`; migration 0013 revokes the column |
-| Auth roles | Server checks `app_roles` / `ADMIN_USER_IDS`, not the browser | Unchanged |
+## Database and authenticated flows
 
-## Most important risks
+Migration `0016_teacher_self_service.sql` is loaded in the authenticated Supabase SQL editor and is waiting at Supabase's final destructive-query confirmation. Until it is applied, the teacher activation page will fail closed. Applied state for migrations `0013` and `0014` is still unknown. The EC2 app currently has no Supabase environment variables, so account-backed projects, groups, classroom persistence, and admin sessions show safe setup or access-restricted pages instead of using the production database.
 
-1. **Live compiler outage (OT-001).** Every predict and terminal run that uses `prlimit` invokes `g++` with no files. Students cannot run C++.
-2. **Database policies that the Next.js API does not enforce (OT-006).** Any signed-in user with the public anon key can read every profile email, read `hidden_test_cases`, and insert a submission row that already contains a grade. Migration `0013` closes these gaps. It has not been applied.
-3. **Classroom write APIs were dead for real members (OT-002).** Fixed in this branch. The assignment page still has no submit button, so the student workflow is not complete even after the API accepts the caller.
+## Remaining priorities
 
-## What requires attention before the next release
-
-1. Deploy this branch with `scripts/deploy-production.sh` so the compiler fix and the classroom argument fix go live together. The script now restores `.next.prev` if the health check fails after promotion.
-2. Apply `supabase/migrations/0013_close_privilege_gaps.sql` in Supabase **after** reading it. Do not disable row level security. The service role keeps writing grades and progress.
-3. Confirm `POST /api/predict` prints `hi` for a hello-world, and that a teacher can open an assignment route that previously 403'd.
-4. Do not enable `PYTHON_EXECUTION_ENABLED` until `PYTHON_SANDBOX_URL` and a token of at least 32 characters point at the Docker worker.
-
-## Coverage and uncertainty
-
-Routes were inventoried from `src/app` and probed with `curl` as an anonymous visitor. No student, teacher, or admin session was available, so authenticated UI flows were reviewed from source and unit tests, not clicked in production. Supabase was not connected from this environment, so row level security was reviewed from migrations and not executed against the live database. `gdb`, `nasm`, and `bubblewrap` are not installed here. Two bubblewrap integration tests were skipped for that reason. No Lighthouse score was collected.
+1. Apply and verify migration `0016`, then test teacher activation with a disposable authenticated user.
+2. Determine whether migrations `0013` and `0014` are applied; apply them only after reviewing the live schema and backup state.
+3. Configure the EC2 application with the Supabase URL, anon key, and service-role key without exposing values, then test real student, teacher, and admin sessions.
+4. Complete authenticated browser workflows for assignment submission, grading, projects, groups, invitations, and realtime collaboration.
+5. Review the 15 dependency advisories reported by `npm ci` without forcing breaking upgrades into this release.

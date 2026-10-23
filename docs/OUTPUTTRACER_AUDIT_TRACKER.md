@@ -13,21 +13,21 @@ Authoritative status list for this repository. Older notes in `docs/audit/` desc
 | Secrets | No `.env` or `.env.local` in the workspace. Values were not printed. |
 | Local server | `npm run dev` on port 3000. `POST /api/predict` of a hello-world returned `status: success` and output `hi\n` on 21 Oct 2026. |
 | Production | `https://outputtracer.com/` returned 200. `https://www.outputtracer.com/` returned 308 to the apex. `http://outputtracer.com/` returned 301 to HTTPS. |
-| Production compiler | `POST https://outputtracer.com/api/predict` of the same hello-world returned HTTP 200 with `g++: fatal error: no input files`. Checked 21 Oct 2026, 16:48 UTC. This branch is not deployed. |
+| Production compiler | Release `7b31d54` returned `CPP_OK` through `/api/predict` under Bubblewrap on 23 Oct 2026. |
 | Database | No Supabase credentials in this environment. Applied migration history was not queried. |
-| Sandbox on this VM | `npm test` logged `isolation: "bwrap"` for compiler runs. The EC2 host was not inspected. |
-| Not done by this pass | No production deploy, no migration apply, no DNS or TLS change, no service restart on EC2. |
+| Production sandboxes | EC2 C++ uses Bubblewrap 0.10.0. Python uses a fresh locked-down Docker container per request; 11 adversarial checks passed. |
+| Production operations | Deployed and restarted PM2 on EC2. Python worker enabled on loopback. No DNS or TLS changes. Migration 0016 awaits Supabase's final confirmation. |
 
 ## Status counts
 
 | Status | Count |
 | --- | ---: |
-| DONE_VERIFIED | 22 |
-| PARTIALLY_DONE | 4 |
-| NOT_DONE | 10 |
-| BROKEN | 1 |
-| BLOCKED | 5 |
-| UNVERIFIED | 5 |
+| DONE_VERIFIED | 28 |
+| PARTIALLY_DONE | 3 |
+| NOT_DONE | 9 |
+| BROKEN | 0 |
+| BLOCKED | 3 |
+| UNVERIFIED | 4 |
 | NOT_APPLICABLE | 1 |
 | Total | 48 |
 
@@ -36,11 +36,11 @@ Authoritative status list for this repository. Older notes in `docs/audit/` desc
 | ID | Category | Task | Status | Evidence | Next Action | Priority |
 | --- | --- | --- | --- | --- | --- | --- |
 | OT-001 | Compiler | C++ hello-world on this branch | DONE_VERIFIED | Local `POST /api/predict` returned `hi\n`. `src/lib/cppRunner.test.ts` passed in `npm test` (331 passed, 1 skipped). | Skip | Critical |
-| OT-002 | Compiler | C++ hello-world on production | BROKEN | Live `POST /api/predict` still returns `g++: fatal error: no input files`. | Deploy this branch with `scripts/deploy-production.sh` after authorization | Critical |
-| OT-003 | Deployment | Ship the repair branch | BLOCKED | Not authorized to deploy or restart EC2. Rollback script exists and was not executed. | Operator runs the production script and confirms `hi` on the live API | Critical |
+| OT-002 | Compiler | C++ hello-world on production | DONE_VERIFIED | Live `/api/predict` returned `CPP_OK` on release `7b31d54`. | Monitor | Critical |
+| OT-003 | Deployment | Ship the repair branch | DONE_VERIFIED | Candidate checks passed and release `7b31d54` is live. PM2 directory persistence fix is in `5b9cb14`. | Use the guarded script for future releases | Critical |
 | OT-004 | Security | Process-group timeout | DONE_VERIFIED | `src/lib/processGroup.test.ts` passed, including the wall-clock kill. | Skip | High |
 | OT-005 | Security | Bubblewrap on this VM | DONE_VERIFIED | Integration tests logged `isolation: "bwrap"`. The outside-include case compiled as an error. One isolation case remains skipped when no isolator exists; it did not run because bwrap is present. | Skip for this VM | Critical |
-| OT-006 | Security | Bubblewrap on the EC2 host | UNVERIFIED | This VM is not the production host. No SSH inspection was performed. | On the host, run a hello-world and a program that tries to read `/etc/passwd` | Critical |
+| OT-006 | Security | Bubblewrap on the EC2 host | DONE_VERIFIED | Bubblewrap 0.10.0 passed production-mode compile/run/GDB plus secret, filesystem, and network isolation probes. | Monitor | Critical |
 | OT-007 | Database | Apply migration 0013 | BLOCKED | File exists. No database credentials. Not applied. | Backup, then apply on staging before production | Critical |
 | OT-008 | Database | Apply migration 0014 | BLOCKED | File exists. Not applied. Until it is, a signed-in browser can still write `practice_submissions.is_correct` through PostgREST. | Apply with 0013 after a backup | High |
 | OT-009 | Security | RLS left enabled in migrations | DONE_VERIFIED | `src/lib/migrations.audit.test.ts` passed. The grant text was not changed in this pass. | Skip | High |
@@ -48,7 +48,7 @@ Authoritative status list for this repository. Older notes in `docs/audit/` desc
 | OT-011 | Learn | Lesson completion requires correct answers | DONE_VERIFIED | `src/lib/learn/learn.test.ts` (18) passed. Implementation was already on the branch and was not rewritten. | Skip | High |
 | OT-012 | Assembly | Session caps and builtin assembler | DONE_VERIFIED | `src/lib/asm/asm.test.ts` (20) passed. | Skip | High |
 | OT-013 | Assembly | Native NASM | NOT_DONE | `nasm` is not installed on this VM. The lab uses the builtin assembler. Production was not checked. | Install and test NASM only on a host where the lab should use it | Medium |
-| OT-014 | Python | Isolated Python execution | BLOCKED | No `PYTHON_SANDBOX_URL` worker in this environment. Host fallback stays off when production rules apply. `src/lib/python/python.test.ts` (36) passed. | Provide an isolated worker before enabling execution | High |
+| OT-014 | Python | Isolated Python execution | DONE_VERIFIED | Loopback worker is live under PM2. All 11 adversarial Docker checks passed; run returned `42` and trace returned ordered steps. | Monitor load and queue depth | High |
 | OT-015 | Java | Java compiler | NOT_APPLICABLE | No Java route or runner exists. Do not advertise one. | None | Low |
 | OT-016 | Debugger | Hide GDB argc/argv and runtime symbols | DONE_VERIFIED | `readableTraceVariables` is applied to each returned step. Three unit tests passed, including `x = 1` kept beside `argc`, `argv`, and `std::__cxx11`. A new GDB capture was not recorded. | Skip | Medium |
 | OT-017 | Classroom | Student `mine` includes a group submission | DONE_VERIFIED | `pickOwnSubmission` and `listCallerGroupIds` tests passed, including a memory group membership. `GET .../mine` calls both. Supabase was not connected, so the SQL was not executed. | Re-check with a real group submission after 0013 | High |
@@ -71,13 +71,13 @@ Authoritative status list for this repository. Older notes in `docs/audit/` desc
 | OT-034 | SEO | Canonical host, www, and HTTP | DONE_VERIFIED | Live www returned 308 to `https://outputtracer.com/`. Live HTTP returned 301 to HTTPS. `canonicalHost.test.ts` passed. | Skip | Medium |
 | OT-035 | SEO | robots.txt private prefixes | DONE_VERIFIED | `src/app/robots.test.ts` passed. | Skip | Medium |
 | OT-036 | SEO | Sitemap course URLs and Core Web Vitals | UNVERIFIED | No Lighthouse run. Sitemap course coverage was not re-measured this pass. | Measure after the compiler deploy | Low |
-| OT-037 | Routing | Public pages and protected redirects | PARTIALLY_DONE | Production homepage is 200. Earlier anonymous checks redirected `/projects`, `/admin`, and `/learn/dashboard`. Those redirects were not repeated on every route in this pass. | Re-probe the protected list after deploy | Medium |
+| OT-037 | Routing | Public pages and protected redirects | DONE_VERIFIED | Live verifier passed 15 public routes, 2 protected redirects, and 3 configuration-gated routes. | Keep in release verification | Medium |
 | OT-038 | Projects | Create, save, download, and share | UNVERIFIED | No signed-in Supabase user. Local project store tests passed (`localProjectStore.test.ts`, 3). | Exercise `/projects` with a real session | High |
 | OT-039 | Realtime | WebSocket origin, room cap, and production upgrade | PARTIALLY_DONE | `wsOrigin.test.ts` passed. A production WebSocket upgrade was not attempted. | After deploy, open two editors in one room | High |
 | OT-040 | Tests | Automated suite | DONE_VERIFIED | `npm test` exit 0. 37 files, 331 passed, 1 skipped. The skip is the "no isolator" case, which does not apply while bwrap exists. | Skip | High |
 | OT-041 | Tests | Browser end-to-end suite | NOT_DONE | No Playwright project. This pass used Chrome only for the teacher class page. | Add Playwright later; do not block the compiler deploy on it | Medium |
 | OT-042 | Build | Typecheck and lint of this pass | DONE_VERIFIED | `npx tsc --noEmit` exit 0. eslint on the edited paths exit 0. A fresh `next build` was not repeated. | Run `next build` in the deploy script | High |
-| OT-043 | Deployment | Rollback drill | NOT_DONE | `rollback_promoted` is documented and was not executed. | Run it on staging before relying on it | High |
+| OT-043 | Deployment | Rollback drill | DONE_VERIFIED | A failed PM2 health check preserved the candidate and restored `.next.prev`; the PM2 environment flaw found by the drill is fixed. | Repeat on a non-production host when infrastructure changes | High |
 | OT-044 | Operations | Logs, backups, and monitoring | UNVERIFIED | No access to EC2 logs, PM2, Nginx, or backup storage. | Operator confirms the last backup and that the app process is healthy | High |
 | OT-045 | Security | Rate-limit client IP | DONE_VERIFIED | `src/lib/rateLimit.test.ts` (7) passed. | Skip | High |
 | OT-046 | Dev | Preview and 127.0.0.1 script allowlist | DONE_VERIFIED | `next.config.ts` allows `127.0.0.1` and `**.agent.cvm.dev`. The teacher page loaded its client bundle from `http://127.0.0.1:3000`. | Skip | Medium |

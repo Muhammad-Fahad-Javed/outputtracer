@@ -10,7 +10,7 @@ Authentication is `supabase.auth.getUser()` inside the handler unless noted. The
 | `GET /api/config` | Public | Supabase URL and anon key for the browser |
 | `POST /api/predict` | Public, or project access when `projectId` is set | Compile and run C++. Rate limited. `trace: false` skips GDB |
 | `POST /api/asm` | Public | Assemble and step an 8086 session |
-| `POST /api/python`, `POST /api/python/trace` | Public when enabled | Proxy to the Python worker. Live: disabled |
+| `POST /api/python`, `POST /api/python/trace` | Public when enabled | Proxy to the authenticated loopback Python worker. Live and verified 23 October 2026 |
 | `POST /api/learn/progress` | User required to save. Guests can be graded | Grade a learn question or mark a lesson complete |
 | `GET/PUT/DELETE /api/profile` | User | Profile allow-list. Does not write `email` or roles |
 | `POST/DELETE /api/profile/avatar` | User | Image upload via the service role after a size and MIME check |

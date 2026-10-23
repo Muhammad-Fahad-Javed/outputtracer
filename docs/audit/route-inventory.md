@@ -4,9 +4,9 @@ Anonymous `curl -sI` against https://outputtracer.com/ on 21 October 2026, plus 
 
 | Route | Audience | Auth in source | Live status | Result |
 | --- | --- | --- | --- | --- |
-| `/` | Everyone | Public IDE (`UnifiedShell`) | 200 | Shell is public. C++ run was broken live. |
+| `/` | Everyone | Public IDE (`UnifiedShell`) | 200 | Shell and C++ compile/run verified live on 23 October 2026. |
 | `/about` | Everyone | Public | 200 | Static |
-| `/python` | Everyone | Public lab | 200 | API disabled live (503 `disabled`) |
+| `/python` | Everyone | Public lab | 200 | Run and trace APIs verified through the isolated Docker worker |
 | `/assembly` | Everyone | Public lab | 200 | Assemble API succeeded with the builtin engine |
 | `/examples` | Everyone | Public | 200 | "Try in Predictor" now loads into `UnifiedShell` in this branch |
 | `/practice` | Everyone | Public static bank | 200 | 10 topics, 220 questions |
@@ -22,7 +22,7 @@ Anonymous `curl -sI` against https://outputtracer.com/ on 21 October 2026, plus 
 | `/projects`, `/groups`, `/p/[id]` | User | Proxy plus page `getUser()` | `/projects` 307 to login | Pass for anonymous |
 | `/classroom` | Student/teacher | Client page, API 401 | 200 | Logged-out UI looks like an empty class list |
 | `/classroom/student` | Student | API 401 message | 200 | |
-| `/classroom/teacher` | Teacher | Server redirect | not in the first probe set; deploy script expects 307 | Source redirects |
+| `/classroom/teacher` | Teacher | Server redirect | 307 to `/login/teacher?next=/classroom/teacher` | Pass for anonymous |
 | `/classroom/teach/apply` | Applicant | Client form | not probed | |
 | `/classroom/[classId]` and children | Member | API checks | not probed with an id | Manage UI is teacher-only in the client |
 | `/admin`, `/admin/learn`, `/admin/teachers` | Admin | Proxy plus `checkIsAdmin` | `/admin` 307 to login | Non-admins who are signed in see a restriction panel |
@@ -30,7 +30,7 @@ Anonymous `curl -sI` against https://outputtracer.com/ on 21 October 2026, plus 
 | `/dashboard`, `/compiler` | n/a | No such pages | 404 | |
 | `/api` | Health | Public | 200 | Compiler version, not isolation mode |
 | `/api/config` | Browser | Public anon key | 200 | Anon key is meant to be public. Service role is not in this response (source returns URL and anon key only) |
-| `/robots.txt`, `/sitemap.xml` | Crawlers | | 200 | Live robots still use trailing-slash disallows until deploy |
+| `/robots.txt`, `/sitemap.xml` | Crawlers | | 200 | Verified after release `7b31d54` |
 | `https://www.outputtracer.com/` | | | 308 to apex | Pass |
 | `http://outputtracer.com/` | | | 301 to HTTPS | Pass |
 

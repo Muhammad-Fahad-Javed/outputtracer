@@ -4,13 +4,13 @@ Status values: working and verified, partially working, broken, implemented but 
 
 | Feature | Status | Evidence |
 | --- | --- | --- |
-| Homepage IDE shell | Partially working | Live 200. C++ run broken live (OT-001). Fixed in this branch and tested locally |
+| Homepage IDE shell | Working | Live 200. C++ run returned `CPP_OK` on 23 October 2026 |
 | C++ hello world, loops, output limit | Working and verified on the audit host after the fix | `cppRunner.test.ts` |
-| C++ on production | Broken until this branch is deployed | Live `no input files` |
+| C++ on production | Working | Bubblewrap compile/run passed on release `7b31d54` |
 | GDB trace | Implemented but unverified | No `gdb` on the audit host. Trace steps were 0. Live not retested after the argv fix |
 | Interactive terminal WebSocket | Implemented but unverified | `server.ts`, `wsTerminal.ts`. Not connected from a browser |
-| Python lab page | Partially working | Page 200. API 503 `disabled` live, which is the safe state |
-| Python Docker worker | Implemented but unverified | `sandbox-worker/` not started here |
+| Python lab page | Working | Page 200; run returned `42` and trace returned ordered steps live |
+| Python Docker worker | Working and verified | Loopback-only PM2 worker; 11 adversarial Docker isolation checks passed |
 | 8086 assemble | Working and verified | Live builtin assemble succeeded. 19 emulator tests passed |
 | 8086 native nasm | Not applicable on this host | `nasm` missing. Production reported the builtin engine |
 | Practice bank | Working and verified as static content | 220 questions. Client-side grading. Individual questions were not all opened |

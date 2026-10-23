@@ -4,13 +4,13 @@ Review method: source and SQL reading, anonymous production requests, and unit t
 
 | ID | Severity | Status | Component | What was verified |
 | --- | --- | --- | --- | --- |
-| OT-001 | Critical (availability) | Fixed in branch, live until deploy | `src/lib/sandbox.ts` `prlimitPrefix` | Live predict returns `no input files`. Local tests pass after argv is preserved. |
+| OT-001 | Critical (availability) | Fixed and deployed | `src/lib/sandbox.ts` `prlimitPrefix` | Live predict returned `CPP_OK` under Bubblewrap on release `7b31d54`. |
 | OT-006a | High | Migration written, not applied | `profiles` select | Policy text lets every signed-in user read every profile. Not executed against production. |
 | OT-006b | High | Migration written, not applied | `profiles.email` update | Policy allows it. Next profile API does not write email. Direct PostgREST was not attempted. |
 | OT-006c | High | Branch blanks the student payload; column revoke is in 0013 | Learn explanations | `normalizeQuestion` now returns `explanation: ""` when masking. Seed text still contains the answer on the server. |
 | OT-006d | High | Migration only | `hidden_test_cases` | API strips the field (`classroomService.ts`). RLS cannot. |
 | OT-006e | High | Migration only | submission insert | Students can set `grade` if the grant exists. App inserts via the service role. |
-| OT-003 | High | Fixed in branch | `pythonSandboxClient.ts` | Fallback ran on any non-production Node, and in production when `ALLOW_UNSANDBOXED_EXECUTION=true`. It inherited the server environment. Live Python is disabled, so this path is not active there today. Tests cover production refusal and "no fallback when the worker errors". |
+| OT-003 | High | Fixed and deployed | `pythonSandboxClient.ts` | Production has no host fallback. The authenticated loopback worker runs each request in a fresh locked-down Docker container; all 11 adversarial checks passed. |
 | OT-002 | High (broken authz, fail closed) | Fixed in branch | Classroom assignment routes | Swapped ids made `getClassroom` look up a classroom id equal to the user id. 12 route tests expect `(user-1, class-1)`. |
 | OT-004 | High for grading correctness | Fixed in branch | `executionClient.ts` | Multi-file bodies were concatenated. The internal POST now sends `files`. |
 | OT-005 | High for grade integrity | Fixed in branch | `gradingService.ts` | Sandbox outage is rethrown. A wrong program still fails the test. |
