@@ -325,7 +325,8 @@ export async function createSubmissionSnapshot(input: {
 }
 
 /**
- * Retrieves the immutable snapshot for a submission.
+ * Retrieves the latest immutable snapshot for a submission. Previous hand-ins
+ * remain unchanged, including any snapshots referenced by existing grades.
  */
 export async function getSubmissionSnapshot(submissionId: string): Promise<SubmissionSnapshot | null> {
   const admin = createAdminClient();
@@ -335,6 +336,9 @@ export async function getSubmissionSnapshot(submissionId: string): Promise<Submi
         .from("submission_snapshots")
         .select("*")
         .eq("submission_id", submissionId)
+        .order("submitted_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(1)
         .maybeSingle();
       if (!error && data) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
