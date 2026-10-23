@@ -135,10 +135,13 @@ describe("GET /api/classroom/student/dashboard", () => {
     expect(limited.length).toBe(1);
   });
 
-  it("scopes every query to the signed-in student", async () => {
+  it("scopes membership, notification, and personal metric queries to the signed-in student", async () => {
     await GET();
     expect(eqArgs("classroom_members", "user_id")).toContain("student-uuid");
-    expect(eqArgs("classroom_submissions", "student_id")).toContain("student-uuid");
+    expect(eqArgs("classroom_group_members", "user_id")).toContain("student-uuid");
     expect(eqArgs("classroom_notifications", "recipient_id")).toContain("student-uuid");
+    expect(eqArgs("learn_lesson_completions", "user_id")).toContain("student-uuid");
+    expect(eqArgs("practice_progress", "user_id")).toContain("student-uuid");
+    expect(eqArgs("projects", "owner_id")).toContain("student-uuid");
   });
 });

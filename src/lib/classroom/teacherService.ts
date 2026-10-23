@@ -7,7 +7,7 @@ import {
   ClassroomAuditLog,
   TeacherApplicationStatus,
 } from "./types";
-import { _setMemoryTeacherAppStatus, _setMemoryTeacherProfile, _getMemoryTeacherProfile } from "./roles";
+import { _setMemoryTeacherAppStatus, _setMemoryTeacherProfile } from "./roles";
 import {
   notifyPlatformOwnerNewTeacherApplication,
   notifyTeacherApplicationDecision,
@@ -29,10 +29,6 @@ export function _getMemoryAuditLogs(): ClassroomAuditLog[] {
 
 export function _getMemoryApplications(): TeacherApplication[] {
   return [...memoryApplications];
-}
-
-export function _addMemoryApplication(app: TeacherApplication): void {
-  memoryApplications.push(app);
 }
 
 function normalizeApplication(row: Record<string, unknown>): TeacherApplication {
@@ -85,28 +81,13 @@ export async function submitTeacherApplication(
     }
   }
 
-  // Self-service teacher activation: non-draft applications are immediately approved
-  const targetStatus: TeacherApplicationStatus = input.isDraft ? "draft" : "approved";
+  const targetStatus: TeacherApplicationStatus = input.isDraft ? "draft" : "pending_review";
   const now = new Date().toISOString();
 
   const admin = createAdminClient();
   if (admin) {
     try {
-      // 1. Check if user already has an active profile (e.g. suspended or approved)
-      const { data: profileRow } = await admin
-        .from("teacher_profiles")
-        .select("status")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (profileRow?.status === "suspended") {
-        return { success: false, error: "Your teacher account is suspended. Please contact platform administration." };
-      }
-      if (profileRow?.status === "approved") {
-        return { success: false, error: "You are already an approved teacher" };
-      }
-
-      // Check existing application status
+      // Check if user already has an active pending or approved application.
       const { data: existing } = await admin
         .from("teacher_applications")
         .select("id, status")
@@ -114,8 +95,13 @@ export async function submitTeacherApplication(
         .in("status", ["pending_review", "approved"])
         .maybeSingle();
 
-      if (existing?.status === "approved") {
-        return { success: false, error: "You are already an approved teacher" };
+      if (existing) {
+        if (existing.status === "approved") {
+          return { success: false, error: "You are already an approved teacher" };
+        }
+        if (existing.status === "pending_review" && !input.isDraft) {
+          return { success: false, error: "You already have a teacher application pending review" };
+        }
       }
 
       // 2. Insert application
@@ -129,8 +115,6 @@ export async function submitTeacherApplication(
           department: input.department?.trim() || null,
           courses_intended: input.coursesIntended?.trim() || null,
           evidence_notes: evidenceNotes,
-          reviewer_id: targetStatus === "approved" ? "self_service" : null,
-          reviewed_at: targetStatus === "approved" ? now : null,
           submitted_at: now,
           updated_at: now,
         })
@@ -144,33 +128,10 @@ export async function submitTeacherApplication(
 
       const app = normalizeApplication(data as Record<string, unknown>);
 
-      // 3. If approved (self-service), immediately upsert teacher_profile and app_roles
-      if (targetStatus === "approved") {
-        await admin.from("teacher_profiles").upsert(
-          {
-            user_id: userId,
-            status: "approved",
-            application_id: app.id,
-            approved_by: "self_service",
-            verified_at: now,
-            updated_at: now,
-          },
-          { onConflict: "user_id" }
-        );
-
-        // Security rule: Only assign 'teacher' role, strictly NEVER 'admin'
-        await admin.from("app_roles").upsert(
-          { user_id: userId, role: "teacher" },
-          { onConflict: "user_id,role" }
-        );
-      }
-
-      // 4. Record audit log
+      // Record audit log for the legacy application workflow.
       await admin.from("classroom_audit_logs").insert({
         actor_id: userId,
-        action: input.isDraft
-          ? "teacher_application_draft_saved"
-          : "teacher_self_service_activated",
+        action: input.isDraft ? "teacher_application_draft_saved" : "teacher_application_submitted",
         target_type: "teacher_application",
         target_id: app.id,
         details: {
@@ -214,19 +175,14 @@ export async function submitTeacherApplication(
   }
 
   // Fallback in-memory implementation for test environments
-  const memoryProfile = _getMemoryTeacherProfile(userId);
-  if (memoryProfile?.status === "suspended") {
-    return { success: false, error: "Your teacher account is suspended. Please contact platform administration." };
-  }
-  if (memoryProfile?.status === "approved") {
-    return { success: false, error: "You are already an approved teacher" };
-  }
-
   const existingMemory = memoryApplications.find(
-    (a) => a.userId === userId && a.status === "approved"
+    (a) => a.userId === userId && (a.status === "pending_review" || a.status === "approved")
   );
   if (existingMemory) {
-    return { success: false, error: "You are already an approved teacher" };
+    if (existingMemory.status === "approved") {
+      return { success: false, error: "You are already an approved teacher" };
+    }
+    return { success: false, error: "You already have a teacher application pending review" };
   }
 
   const newApp: TeacherApplication = {
@@ -238,8 +194,6 @@ export async function submitTeacherApplication(
     department: input.department?.trim(),
     coursesIntended: input.coursesIntended?.trim(),
     evidenceNotes,
-    reviewerId: targetStatus === "approved" ? "self_service" : undefined,
-    reviewedAt: targetStatus === "approved" ? now : undefined,
     submittedAt: now,
     createdAt: now,
     updatedAt: now,
@@ -248,22 +202,10 @@ export async function submitTeacherApplication(
   memoryApplications.push(newApp);
   _setMemoryTeacherAppStatus(userId, targetStatus);
 
-  if (targetStatus === "approved") {
-    _setMemoryTeacherProfile(userId, {
-      userId,
-      status: "approved",
-      applicationId: newApp.id,
-      approvedBy: "self_service",
-      verifiedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
   memoryAuditLogs.push({
     id: `log-${Date.now()}`,
     actorId: userId,
-    action: input.isDraft ? "teacher_application_draft_saved" : "teacher_self_service_activated",
+    action: input.isDraft ? "teacher_application_draft_saved" : "teacher_application_submitted",
     targetType: "teacher_application",
     targetId: newApp.id,
     details: { institutionName, status: targetStatus },
@@ -272,25 +214,6 @@ export async function submitTeacherApplication(
   });
 
   return { success: true, application: newApp };
-}
-
-/**
- * Convenience helper to activate self-service educator profile in one action.
- */
-export async function activateSelfServiceTeacher(
-  userId: string,
-  institutionName = "Independent Educator",
-  ipAddress?: string
-): Promise<{ success: boolean; application?: TeacherApplication; error?: string }> {
-  return submitTeacherApplication(
-    userId,
-    {
-      institutionName,
-      evidenceNotes: "Self-service verified educator profile activation.",
-      isDraft: false,
-    },
-    ipAddress
-  );
 }
 
 export async function getTeacherApplicationForUser(
