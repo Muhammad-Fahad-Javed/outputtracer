@@ -60,8 +60,11 @@ rollback_promoted() {
     mv .next "$failed_dir"
     mv "$PREV_DIR" .next
     info "restored the previous release; failed release kept in $failed_dir"
-    unset NEXT_DIST_DIR
-    if ! pm2 restart "$PM2_APP" --update-env; then
+    # PM2's --update-env updates values but does not remove variables that
+    # disappeared from the caller's environment. Set the live directory
+    # explicitly so a previous candidate smoke-test value cannot survive a
+    # promotion or rollback.
+    if ! NEXT_DIST_DIR=.next pm2 restart "$PM2_APP" --update-env; then
       info "PM2 did not restart the restored release; check: pm2 logs $PM2_APP --lines 50 --nostream"
     fi
   else
@@ -511,7 +514,7 @@ info "live release is now $TARGET_SHORT"
 
 # The live server must use the default distDir and the release id.
 export NEXT_DEPLOYMENT_ID="$TARGET_SHORT"
-unset NEXT_DIST_DIR
+export NEXT_DIST_DIR=.next
 
 pm2 stop "$PM2_APP" || true
 sleep 1
@@ -556,5 +559,5 @@ info "all ${#PUBLIC_ROUTES[@]} public routes answered 200 on the live site"
 log "Deployment complete"
 info "commit    : $TARGET_COMMIT"
 info "BUILD_ID  : $CANDIDATE_BUILD_ID"
-info "rollback  : pm2 stop $PM2_APP && rm -rf .next && mv $PREV_DIR .next && pm2 restart $PM2_APP --update-env"
+info "rollback  : pm2 stop $PM2_APP && rm -rf .next && mv $PREV_DIR .next && NEXT_DIST_DIR=.next pm2 restart $PM2_APP --update-env"
 info "logs      : pm2 logs $PM2_APP --lines 50 --nostream"
