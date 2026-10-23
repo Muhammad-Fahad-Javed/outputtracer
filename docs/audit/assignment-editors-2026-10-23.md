@@ -28,3 +28,20 @@ Assignment execution provides run/tests and NASM final machine state; interactiv
 terminal input, step debugging, memory/stack panes, activity-time measurement, and
 manual-entry policies are not implemented by this release. No nonfunctional toolbar
 buttons are shown for those capabilities.
+
+## Production verification
+
+Release `aacf2f9` was deployed from a checksum-verified artifact built locally with
+the existing Cloudflare production Turnstile site key. Candidate checks passed
+15 public routes, 2 protected redirects, and 3 configuration-gated denials. All
+15 live public routes then returned 200. The login page displayed Turnstile Success
+without manual interaction. No Cloudflare secret was rotated or printed.
+
+The final full test run passed 397 tests across 49 files; 2 pre-existing isolation
+tests remain skipped. Two-student synchronization/locking checks cover C++, Python,
+and NASM. A local browser run successfully assembled and executed main.asm.
+
+The authenticated live group test exposed a pre-existing schema gap: the submission
+route uses atomic upsert but classroom_submissions has no matching owner uniqueness
+indexes. Migration 0018 adds the two indexes without deleting historical records.
+Both indexes were applied with user approval and confirmed in pg_indexes.
