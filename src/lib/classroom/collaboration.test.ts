@@ -1,3 +1,4 @@
+import { CLASSROOM_LANGUAGES } from "./languages";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { base64ToBytes, bytesToBase64 } from "@/lib/cloud/base64";
@@ -402,7 +403,8 @@ describe("classroom collaboration", () => {
   });
 
   describe("live room", () => {
-    it("shares one group document and rejects student edits after lock", async () => {
+    it.each(["cpp", "python", "asm8086"] as const)("shares a %s group document and rejects edits after lock", async (language) => {
+      const entryFile = CLASSROOM_LANGUAGES[language].file;
       const created = await createClassroom(teacherA, { name: "Live" });
       const classId = created.classroom!.id;
       await joinClassroomByCode(student1, created.classroom!.joinCode);
@@ -412,6 +414,7 @@ describe("classroom collaboration", () => {
       await assignStudentToGroup(teacherA, classId, group.group!.id, student2);
       const assignment = await createAssignment(teacherA, classId, {
         title: "Shared",
+        language,
         isPublished: true,
         groupMode: true,
       });
@@ -442,11 +445,11 @@ describe("classroom collaboration", () => {
         if (origin !== "hydrate") update = bytes;
       });
       Y.applyUpdate(local, base64ToBytes(init.state), "hydrate");
-      const text = local.getMap("files").get("main.cpp") as Y.Text;
+      const text = local.getMap("files").get(entryFile) as Y.Text;
       text.insert(0, "/*live*/\n");
       first.emit("message", JSON.stringify({ type: "update", update: bytesToBase64(update!) }));
       await new Promise((resolve) => setTimeout(resolve, 40));
-      expect(getHub().peekClassroomFiles(docKey)?.["main.cpp"]).toContain("/*live*/");
+      expect(getHub().peekClassroomFiles(docKey)?.[entryFile]).toContain("/*live*/");
 
       const second = fakeSocket();
       getHub().attach(second as never);
@@ -466,14 +469,14 @@ describe("classroom collaboration", () => {
       const secondInit = JSON.parse(second.sent.find((raw) => JSON.parse(raw).type === "init")!);
       const reader = new Y.Doc();
       Y.applyUpdate(reader, base64ToBytes(secondInit.state));
-      expect((reader.getMap("files").get("main.cpp") as Y.Text).toString()).toContain("/*live*/");
+      expect((reader.getMap("files").get(entryFile) as Y.Text).toString()).toContain("/*live*/");
       expect(getHub().classroomPresence(docKey).map((person) => person.userId).sort()).toEqual([student1, student2]);
 
       await updateAssignmentPolicy(teacherA, classId, assignmentId, { locked: true });
       text.insert(0, "/*nope*/\n");
       first.emit("message", JSON.stringify({ type: "update", update: bytesToBase64(update!) }));
       await new Promise((resolve) => setTimeout(resolve, 40));
-      expect(getHub().peekClassroomFiles(docKey)?.["main.cpp"]).not.toContain("/*nope*/");
+      expect(getHub().peekClassroomFiles(docKey)?.[entryFile]).not.toContain("/*nope*/");
       expect(first.sent.some((raw) => JSON.parse(raw).type === "locked")).toBe(true);
 
       const teacher = fakeSocket();
@@ -495,7 +498,7 @@ describe("classroom collaboration", () => {
       expect(teacherInit.role).toBe("viewer");
       teacher.emit("message", JSON.stringify({ type: "update", update: bytesToBase64(update!) }));
       await new Promise((resolve) => setTimeout(resolve, 40));
-      expect(getHub().peekClassroomFiles(docKey)?.["main.cpp"]).not.toContain("/*nope*/");
+      expect(getHub().peekClassroomFiles(docKey)?.[entryFile]).not.toContain("/*nope*/");
     });
   });
 
