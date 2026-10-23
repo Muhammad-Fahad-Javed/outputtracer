@@ -324,6 +324,7 @@ export default function UnifiedShell() {
   const [panelHeight, setPanelHeight] = useState(280);
   const [isDragging, setIsDragging] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [roleHomeLink, setRoleHomeLink] = useState<{ href: string; label: string } | null>(null);
 
   // Examples Menu State
   const [examplesOpen, setExamplesOpen] = useState(false);
@@ -417,6 +418,33 @@ export default function UnifiedShell() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      return () => {
+        active = false;
+      };
+    }
+
+    fetch("/api/session-role")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((session) => {
+        if (!active || !session?.signedIn) return;
+        if (session.role === "admin" && session.isAdmin) {
+          setRoleHomeLink({ href: "/admin", label: "Admin Center" });
+        } else if (session.isVerifiedTeacher) {
+          setRoleHomeLink({ href: "/classroom/teacher", label: "Teacher Studio" });
+        } else {
+          setRoleHomeLink({ href: "/classroom/student", label: "My Classes" });
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   // Active step synchronization
   const updateLineHighlight = useCallback((line?: number) => {
@@ -1073,6 +1101,15 @@ export default function UnifiedShell() {
             <span>Learn</span>
           </Link>
 
+          {user && roleHomeLink && (
+            <Link
+              href={roleHomeLink.href}
+              className="rounded-[3px] px-2 py-1 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#2E2E2E] hover:text-white transition-colors"
+            >
+              {roleHomeLink.label}
+            </Link>
+          )}
+
           <Link
             href="/projects"
             className="rounded-[3px] px-2 py-1 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#2E2E2E] hover:text-white transition-colors"
@@ -1107,6 +1144,15 @@ export default function UnifiedShell() {
                 <div className="px-3 py-1.5 text-[11px] text-[#858585] border-b border-[#2E2E2E]">
                   {user?.email}
                 </div>
+                {roleHomeLink && (
+                  <Link
+                    href={roleHomeLink.href}
+                    onClick={() => setUserMenuOpen(false)}
+                    className="block px-3 py-1 text-xs text-[#CCCCCC] hover:bg-[#252526] hover:text-white"
+                  >
+                    {roleHomeLink.label}
+                  </Link>
+                )}
                 <Link
                   href="/projects"
                   onClick={() => setUserMenuOpen(false)}
