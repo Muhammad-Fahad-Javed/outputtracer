@@ -336,7 +336,7 @@ export default function ClassroomManagePage({
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#FAFAFA]">
+    <div className="flex min-h-screen flex-col bg-[#FAFAFA] text-black">
       <Header />
 
       <main className="flex-1 py-10 px-4 sm:px-6">
