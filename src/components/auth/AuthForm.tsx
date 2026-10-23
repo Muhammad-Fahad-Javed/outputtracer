@@ -239,7 +239,7 @@ export default function AuthForm({
   const rm = role ? roleMeta[role] : null;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-16">
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center bg-white px-5 py-16 text-black">
       <Link href="/" className="text-[14px] font-semibold">
         OutputTracer
       </Link>

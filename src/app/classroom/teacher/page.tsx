@@ -5,6 +5,8 @@ import { checkIsVerifiedTeacher } from "@/lib/classroom/roles";
 import { isAuthConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 export default async function ClassroomTeacherPage() {
   if (!isAuthConfigured()) {
     const preview = await ensureLocalPreviewTeacher();

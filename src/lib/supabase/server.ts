@@ -3,11 +3,13 @@ import { cookies } from "next/headers";
 import { supabaseAnonKey, supabaseUrl } from "./env";
 
 export async function createClient() {
+  // Access request state before checking configuration. A prebuilt release may
+  // be compiled without server credentials; never cache its anonymous result.
+  const cookieStore = await cookies();
   const url = supabaseUrl();
   const key = supabaseAnonKey();
   if (!url || !key) return null;
 
-  const cookieStore = await cookies();
   return createServerClient(url, key, {
     cookies: {
       getAll() {
