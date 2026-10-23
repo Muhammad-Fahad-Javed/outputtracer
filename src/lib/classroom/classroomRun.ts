@@ -57,16 +57,16 @@ export async function executeResolvedClassroom(input: {
   }
 
   const files = await loadCanonicalClassroomFiles(resolved.doc);
-  const inspected = inspectSourceFiles(files, { maxFiles: 16, maxSourceBytes: 200 * 1024 });
+  const inspected = inspectSourceFiles(files, { maxFiles: 16, maxSourceBytes: 200 * 1024 }, resolved.doc.language);
   if (!inspected.ok) {
     return { status: 400, body: { success: false, error: inspected.message } };
   }
 
-  const request = classroomExecutionRequest(files, resolved.doc.timeLimitMs, input.stdin ?? "");
+  const request = classroomExecutionRequest(files, resolved.doc.timeLimitMs, input.stdin ?? "", resolved.doc.language);
   const version = await saveCodeVersion({
     assignmentId: input.assignmentId,
     codeFiles: files,
-    language: "cpp",
+    language: resolved.doc.language,
     studentId: resolved.doc.groupId ? undefined : resolved.doc.studentId,
     groupId: resolved.doc.groupId,
   });
@@ -83,7 +83,7 @@ export async function executeResolvedClassroom(input: {
   let publicPassed = 0;
   if (input.runTests) {
     for (const test of resolved.doc.publicTestCases) {
-      const result = await runTestCase(files, "cpp", test.stdin, test.expectedOutput, request.timeLimitMs);
+      const result = await runTestCase(files, resolved.doc.language, test.stdin, test.expectedOutput, request.timeLimitMs);
       if (result.passed) publicPassed += 1;
       testResults.push({
         id: test.id,
@@ -99,7 +99,7 @@ export async function executeResolvedClassroom(input: {
     versionId: version.id,
     assignmentId: input.assignmentId,
     actorId: input.actorId,
-    language: "cpp",
+    language: resolved.doc.language,
     stdin: request.stdin,
     result: sandboxResult,
     publicTestsPassed: input.runTests ? publicPassed : undefined,
@@ -120,6 +120,7 @@ export async function executeResolvedClassroom(input: {
     body: {
       success: true,
       output: sandboxResult.stdout,
+      machine: sandboxResult.machine,
       stderr: sandboxResult.stderr,
       exitCode: sandboxResult.exitCode,
       durationMs: sandboxResult.durationMs,

@@ -20,7 +20,7 @@ export function seedDoc(doc: Y.Doc, files: Record<string, string>): void {
   doc.transact(() => {
     const map = fileMap(doc);
     for (const [name, content] of Object.entries(files)) {
-      if (!isValidSourceFilename(name)) continue;
+      if (!["cpp", "python", "asm8086"].some((lang) => isValidSourceFilename(name, lang as "cpp" | "python" | "asm8086"))) continue;
       const text = new Y.Text();
       if (content) text.insert(0, content);
       map.set(name, text);

@@ -52,6 +52,16 @@ describe("OutputTracer Classroom — Phase 2: Classrooms, Membership, Groups, an
   });
 
   describe("1. Classroom Creation & Permissions", () => {
+    it("inherits NASM from a classroom and preserves an explicit language override", async () => {
+      const cls = await createClassroom(teacherA, { name: "Assembly lab", subject: "8086 NASM" });
+      const asg = await createAssignment(teacherA, cls.classroom!.id, { title: "Registers" });
+      expect(asg.assignment?.language).toBe("asm8086");
+      expect(asg.assignment?.starterCode["main.asm"]).toContain("org 100h");
+      const python = await createAssignment(teacherA, cls.classroom!.id, { title: "Comparison", language: "python" });
+      expect(python.assignment?.starterCode["main.py"]).toContain("def main");
+      const bad = await createAssignment(teacherA, cls.classroom!.id, { title: "Wrong source", starterCode: { "main.cpp": "int main(){}" } });
+      expect(bad.success).toBe(false);
+    });
     it("allows a verified teacher to create a classroom and assigns ownership", async () => {
       const res = await createClassroom(teacherA, {
         name: "CS106B: Programming Abstractions",

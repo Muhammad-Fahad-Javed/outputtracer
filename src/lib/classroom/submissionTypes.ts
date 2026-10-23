@@ -211,6 +211,7 @@ export interface SandboxRequest {
 }
 
 export interface SandboxResult {
+  machine?: import("@/lib/asm/types").AsmExecutionStatus;
   stdout: string;
   stderr: string;
   exitCode: number;

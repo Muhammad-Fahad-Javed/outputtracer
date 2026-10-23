@@ -127,7 +127,7 @@ export async function POST(
   }
 
   const files = await loadCanonicalClassroomFiles(resolved.doc);
-  const inspected = inspectSourceFiles(files, { maxFiles: 16, maxSourceBytes: 200 * 1024 });
+  const inspected = inspectSourceFiles(files, { maxFiles: 16, maxSourceBytes: 200 * 1024 }, resolved.doc.language);
   if (!inspected.ok) {
     return NextResponse.json({ success: false, error: inspected.message }, { status: 400 });
   }
@@ -135,7 +135,7 @@ export async function POST(
   const version = await saveCodeVersion({
     assignmentId,
     codeFiles: files,
-    language: "cpp",
+    language: resolved.doc.language,
     studentId: resolved.doc.groupId ? undefined : resolved.doc.studentId,
     groupId: resolved.doc.groupId,
   });

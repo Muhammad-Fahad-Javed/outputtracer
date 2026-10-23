@@ -1,3 +1,6 @@
+import { AsmSession } from "@/lib/asm/session";
+import { runPythonCode } from "@/lib/python/pythonRunner";
+import { inspectSourceFiles } from "@/lib/sourceFiles";
 /**
  * executionClient.ts
  *
@@ -50,6 +53,25 @@ function validateRequest(req: SandboxRequest): void {
  */
 export async function runInSandbox(req: SandboxRequest): Promise<SandboxResult> {
   validateRequest(req);
+  if (Buffer.byteLength(req.stdin ?? "", "utf8") > 16 * 1024) throw new ExecutionError("Program input exceeds 16 KB.", "limit_exceeded");
+  if (req.language !== "cpp" && req.language !== "python" && req.language !== "asm8086") throw new ExecutionError("Unsupported language.", "compile_error");
+  const checked = inspectSourceFiles(req.files, { maxFiles: 16, maxSourceBytes: 200 * 1024 }, req.language);
+  if (!checked.ok) throw new ExecutionError(checked.message, "compile_error");
+  if (req.language === "python") {
+    if (Object.keys(req.files).length !== 1 || !req.files["main.py"]) throw new ExecutionError("Python assignments currently require a single main.py file.", "compile_error");
+    const result = await runPythonCode(req.files["main.py"], req.stdin ?? "");
+    return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode ?? 1, durationMs: result.executionTimeMs, timedOut: result.status === "timeout", compilationError: result.status === "syntax_error" ? result.stderr : undefined };
+  }
+  if (req.language === "asm8086") {
+    if (Object.keys(req.files).length !== 1 || !req.files["main.asm"]) throw new ExecutionError("Assembly assignments currently require a single main.asm file.", "compile_error");
+    const started = Date.now();
+    const session = new AsmSession("classroom", "", req.files["main.asm"], 5000, req.stdin ?? "");
+    const assembled = await session.assemble();
+    if (!assembled.success) return { stdout: "", stderr: "", exitCode: 1, durationMs: Date.now() - started, timedOut: false, compilationError: assembled.diagnostics.map(d => d.message).join("\n") };
+    session.run(5000);
+    const machine = session.getStatus();
+    return { stdout: machine.stdout, stderr: machine.canStepForward ? "Instruction limit reached." : "", exitCode: machine.exitCode ?? (machine.canStepForward ? 1 : 0), durationMs: Date.now() - started, timedOut: machine.canStepForward, machine };
+  }
 
   const sandboxUrl = process.env.SANDBOX_EXECUTION_URL;
   const timeoutMs = Math.min(req.timeLimitMs ?? DEFAULT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);

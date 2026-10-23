@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-editor-check/
 /out/
 
 # release directories used by scripts/deploy-production.sh. They are build

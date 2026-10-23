@@ -1,3 +1,4 @@
+import { classroomLanguage, isClassroomLanguage, CLASSROOM_LANGUAGES } from "./languages";
 import { randomInt } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAuthConfigured } from "@/lib/supabase/env";
@@ -68,6 +69,7 @@ function toAssignment(data: object, isTeacher: boolean): ClassroomAssignment {
   return {
     id: String(row.id),
     classroomId: String(row.classroom_id ?? row.classroomId),
+    language: classroomLanguage(row.language),
     title: String(row.title),
     description: String(row.description ?? ""),
     starterCode: (row.starter_code ?? row.starterCode ?? {}) as Record<string, string>,
@@ -207,6 +209,7 @@ function normalizeClassroom(row: Record<string, unknown>): Classroom {
     teacherId: String(row.teacher_id),
     name: String(row.name),
     subject: String(row.subject || "Computer Science"),
+    language: classroomLanguage(row.language, String(row.subject || "")),
     description: String(row.description || ""),
     joinCode: String(row.join_code),
     isArchived: Boolean(row.is_archived),
@@ -247,6 +250,8 @@ export async function createClassroom(
     return { success: false, error: "Classroom name must be between 1 and 100 characters" };
   }
 
+  if (input.language !== undefined && !isClassroomLanguage(input.language)) return { success: false, error: "Unsupported classroom language." };
+  const language = classroomLanguage(input.language, input.subject);
   const subject = (input.subject || "Computer Science").trim();
   const description = (input.description || "").trim();
   const joinCode = generateJoinCode();
@@ -261,6 +266,7 @@ export async function createClassroom(
           teacher_id: teacherId,
           name,
           subject,
+          language,
           description,
           join_code: joinCode,
           is_archived: false,
@@ -297,6 +303,7 @@ export async function createClassroom(
     teacherId,
     name,
     subject,
+    language,
     description,
     joinCode,
     isArchived: false,
@@ -1008,18 +1015,13 @@ export async function createAssignment(
     : 100;
   const now = new Date().toISOString();
 
-  const starterCode =
-    input.starterCode && Object.keys(input.starterCode).length > 0
-      ? input.starterCode
-      : {
-          "main.cpp":
-            "#include <iostream>\n\nint main() {\n    // Write your solution here.\n    return 0;\n}\n",
-        };
-
-  const inspected = inspectSourceFiles(starterCode, { maxFiles: 16, maxSourceBytes: 200 * 1024 });
-  if (!inspected.ok) {
-    return { success: false, error: inspected.message };
-  }
+  if (input.language !== undefined && !isClassroomLanguage(input.language)) return { success: false, error: "Unsupported assignment language." };
+  const language = classroomLanguage(input.language ?? access.classroom.language, access.classroom.subject);
+  const config = CLASSROOM_LANGUAGES[language];
+  const starterCode = input.starterCode && Object.keys(input.starterCode).length > 0 ? input.starterCode : { [config.file]: config.starter };
+  if (language !== "cpp" && (Object.keys(starterCode).length !== 1 || !starterCode[config.file])) return { success: false, error: `Use a single ${config.file} file for this assignment.` };
+  const inspected = inspectSourceFiles(starterCode, { maxFiles: 16, maxSourceBytes: 200 * 1024 }, language);
+  if (!inspected.ok) return { success: false, error: inspected.message };
 
   const publicTests = normalizeAssignmentTests(input.publicTestCases, false);
   if (!publicTests.ok) return { success: false, error: publicTests.error };
@@ -1038,6 +1040,7 @@ export async function createAssignment(
           title,
           description: input.description || "",
           starter_code: starterCode,
+          language,
           public_test_cases: publicTestCases,
           hidden_test_cases: hiddenTestCases,
           due_date: input.dueDate || null,
@@ -1058,6 +1061,7 @@ export async function createAssignment(
       if (!error && data) {
         return { success: true, assignment: toAssignment(data, true) };
       }
+      if (isAuthConfigured()) return { success: false, error: error?.message || "Could not save assignment." };
     } catch {
       // Memory fallback below
     }
@@ -1070,6 +1074,7 @@ export async function createAssignment(
     title,
     description: input.description || "",
     starterCode,
+    language,
     publicTestCases,
     hiddenTestCases,
     dueDate: input.dueDate,

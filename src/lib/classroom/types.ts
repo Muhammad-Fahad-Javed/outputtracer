@@ -1,3 +1,4 @@
+import type { ClassroomLanguage } from "./languages";
 // Type definitions for OutputTracer Classroom & Teacher Verification Platform
 
 export type TeacherApplicationStatus =
@@ -92,6 +93,7 @@ export interface ClassroomSettings {
 }
 
 export interface Classroom {
+  language?: ClassroomLanguage;
   id: string;
   teacherId: string;
   name: string;
@@ -134,6 +136,7 @@ export interface AssignmentTestCase {
 }
 
 export interface ClassroomAssignment {
+  language?: ClassroomLanguage;
   id: string;
   classroomId: string;
   title: string;
@@ -179,12 +182,14 @@ export interface ClassroomSubmission {
 }
 
 export interface CreateClassroomInput {
+  language?: ClassroomLanguage;
   name: string;
   subject?: string;
   description?: string;
 }
 
 export interface CreateAssignmentInput {
+  language?: ClassroomLanguage;
   title: string;
   description?: string;
   starterCode?: Record<string, string>;

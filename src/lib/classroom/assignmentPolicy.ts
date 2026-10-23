@@ -1,3 +1,4 @@
+import type { ClassroomLanguage } from "./languages";
 // Pure assignment access rules shared by the memory store, SQL rows, and routes.
 
 export const CLASSROOM_TIME_LIMIT_CAP_MS = 10_000;
@@ -98,11 +99,12 @@ export function studentRunDenial(
 export function classroomExecutionRequest(
   files: Record<string, string>,
   timeLimitMs: number,
-  stdin: string
-): { files: Record<string, string>; language: "cpp"; stdin: string; timeLimitMs: number } {
+  stdin: string,
+  language: ClassroomLanguage = "cpp"
+): { files: Record<string, string>; language: ClassroomLanguage; stdin: string; timeLimitMs: number } {
   return {
     files,
-    language: "cpp",
+    language,
     stdin,
     timeLimitMs: clampTimeLimitMs(timeLimitMs),
   };

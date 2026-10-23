@@ -1,3 +1,4 @@
+import type { ClassroomLanguage } from "./classroom/languages";
 // Validation for untrusted multi-file C++ submissions.
 // Keep this free of I/O so it can be unit-tested without g++.
 
@@ -11,7 +12,7 @@ export const ALLOWED_SOURCE_EXTENSIONS = [
 
 const FILENAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-export function isValidSourceFilename(name: string): boolean {
+export function isValidSourceFilename(name: string, language: ClassroomLanguage = "cpp"): boolean {
   if (typeof name !== "string" || name.length < 3 || name.length > 64) {
     return false;
   }
@@ -27,7 +28,8 @@ export function isValidSourceFilename(name: string): boolean {
   }
   if (!FILENAME_RE.test(name)) return false;
   const lower = name.toLowerCase();
-  return ALLOWED_SOURCE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+  const extensions = language === "python" ? [".py"] : language === "asm8086" ? [".asm", ".inc"] : ALLOWED_SOURCE_EXTENSIONS;
+  return extensions.some((ext) => lower.endsWith(ext));
 }
 
 export type SourceFilesOk = {
@@ -44,11 +46,12 @@ export type SourceFilesErr = {
 
 export function inspectSourceFiles(
   files: Record<string, string>,
-  limits: { maxFiles: number; maxSourceBytes: number }
+  limits: { maxFiles: number; maxSourceBytes: number },
+  language: ClassroomLanguage = "cpp"
 ): SourceFilesOk | SourceFilesErr {
   const names = Object.keys(files);
   if (names.length === 0) {
-    return { ok: false, title: "No code", message: "Please enter C++ code." };
+    return { ok: false, title: "No code", message: "Please enter source code." };
   }
   if (names.length > limits.maxFiles) {
     return {
@@ -62,7 +65,7 @@ export function inspectSourceFiles(
   const cppFiles: string[] = [];
 
   for (const [filename, content] of Object.entries(files)) {
-    if (!isValidSourceFilename(filename)) {
+    if (!isValidSourceFilename(filename, language)) {
       return {
         ok: false,
         title: "Invalid filename",
@@ -81,7 +84,7 @@ export function inspectSourceFiles(
     if (
       lower.endsWith(".cpp") ||
       lower.endsWith(".cc") ||
-      lower.endsWith(".cxx")
+      lower.endsWith(".cxx") || (language === "python" && lower.endsWith(".py")) || (language === "asm8086" && lower.endsWith(".asm"))
     ) {
       cppFiles.push(filename);
     }
@@ -99,7 +102,7 @@ export function inspectSourceFiles(
     return {
       ok: false,
       title: "No C++ source",
-      message: "Add at least one .cpp file to compile.",
+      message: "Add an entry source file for the assignment language.",
     };
   }
 

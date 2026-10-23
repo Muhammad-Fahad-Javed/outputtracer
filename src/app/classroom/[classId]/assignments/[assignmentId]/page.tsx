@@ -2,15 +2,8 @@
 
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 import {
   ArrowLeft,
-  Clock,
-  Play,
-  CheckCircle2,
-  Code2,
-  Users,
 } from "lucide-react";
 import { ClassroomAssignment } from "@/lib/classroom/types";
 import AssignmentWorkspace from "@/components/classroom/AssignmentWorkspace";
@@ -52,198 +45,22 @@ export default function AssignmentDetailPage({
         if (active) setLoading(false);
       });
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [classId, assignmentId]);
 
+  if (assignment && !isTeacher) return <main className="fixed inset-0 z-40 h-dvh bg-[#1e1e1e]"><AssignmentWorkspace classId={classId} assignmentId={assignmentId} allowLate={assignment.allowLate} assignment={assignment} /></main>;
+
   return (
-    <div className="flex min-h-screen flex-col bg-[#FAFAFA]">
-      <Header />
-
-      <main className="flex-1 py-10 px-4 sm:px-6">
-        <div className="mx-auto max-w-6xl">
-          <nav className="mb-6 flex flex-wrap items-center gap-2 text-xs text-[#666666]">
-            {isTeacher && (
-              <>
-                <Link href="/classroom/teacher" className="hover:text-black">Teacher Studio</Link>
-                <span aria-hidden="true">/</span>
-              </>
-            )}
-            <Link href={`/classroom/${classId}`} className="inline-flex items-center gap-1.5 hover:text-black">
-              <ArrowLeft size={13} /> Class
-            </Link>
-            {isTeacher && (
-              <>
-                <span aria-hidden="true">/</span>
-                <Link href={`/classroom/${classId}/manage`} className="hover:text-black">Manage</Link>
-              </>
-            )}
-          </nav>
-
-          {loading ? (
-            <div className="rounded-2xl border border-[#EAEAEA] bg-white p-12 text-center text-xs text-[#666666]">
-              Loading assignment...
-            </div>
-          ) : error || !assignment ? (
-            <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-xs">
-              <h2 className="text-base font-bold text-rose-700 mb-1">Access Restricted</h2>
-              <p className="text-xs text-[#666666] mb-4">{error || "Assignment not found."}</p>
-              <Link
-                href={`/classroom/${classId}`}
-                className="inline-flex items-center rounded-[4px] bg-black px-4 py-2 text-xs font-semibold text-white hover:bg-[#333333]"
-              >
-                Return to Classroom
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Header Box */}
-              <div className="rounded-2xl border border-[#EAEAEA] bg-white p-6 sm:p-8 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-semibold text-blue-800">
-                        {assignment.maxPoints} Points
-                      </span>
-                      {assignment.groupMode && (
-                        <span className="rounded-full bg-purple-50 px-2.5 py-0.5 text-[10px] font-semibold text-purple-700 flex items-center gap-1">
-                          <Users size={11} /> Group Project
-                        </span>
-                      )}
-                      {!assignment.isPublished && (
-                        <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-semibold text-gray-700">
-                          Draft
-                        </span>
-                      )}
-                    </div>
-
-                    <h1 className="text-2xl font-bold tracking-tight text-black">
-                      {assignment.title}
-                    </h1>
-
-                    <div className="flex flex-wrap gap-4 text-xs text-[#666666] pt-1">
-                      {assignment.dueDate ? (
-                        <span className="flex items-center gap-1">
-                          <Clock size={12} /> Due: {new Date(assignment.dueDate).toLocaleDateString()}
-                        </span>
-                      ) : (
-                        <span>No deadline configured</span>
-                      )}
-                      <span>Late submissions: {assignment.allowLate ? "Allowed" : "Disallowed"}</span>
-                    </div>
-                  </div>
-
-                  {!isTeacher && (
-                    <Link
-                      href="/"
-                      className="inline-flex items-center justify-center gap-1.5 rounded-[4px] bg-black px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#333333] shrink-0"
-                    >
-                      <Play size={12} fill="white" /> Open in OutputTracer IDE
-                    </Link>
-                  )}
-                </div>
-
-                {assignment.description && (
-                  <div className="mt-6 pt-6 border-t border-[#F0F0F0]">
-                    <h2 className="text-xs font-bold text-black uppercase tracking-wider mb-2">
-                      Instructions
-                    </h2>
-                    <p className="text-xs text-[#555555] leading-relaxed whitespace-pre-wrap">
-                      {assignment.description}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {isTeacher && (
-                <TeacherWatch classId={classId} assignmentId={assignmentId} />
-              )}
-
-              {/* Starter Code Preview */}
-              <details className="rounded-2xl border border-[#EAEAEA] bg-white p-6 shadow-xs" open={!isTeacher}>
-              <summary className="cursor-pointer text-sm font-bold text-black">Starter code and tests</summary>
-              <div className="pt-4">
-                <h2 className="text-sm font-bold text-black flex items-center gap-2 mb-3">
-                  <Code2 size={16} /> Starter Code
-                </h2>
-                <div className="rounded-lg border border-[#EAEAEA] bg-[#1E1E1E] p-4 text-xs font-mono text-white overflow-x-auto">
-                  <pre>{Object.values(assignment.starterCode)[0] || "// No starter code"}</pre>
-                </div>
-              </div>
-
-              {/* Public Test Cases */}
-              <div className="rounded-2xl border border-[#EAEAEA] bg-white p-6 shadow-xs">
-                <h2 className="text-sm font-bold text-black flex items-center gap-2 mb-3">
-                  <CheckCircle2 size={16} /> Public Test Specifications ({assignment.publicTestCases?.length || 0})
-                </h2>
-
-                {assignment.publicTestCases?.length === 0 ? (
-                  <p className="text-xs text-[#777777]">No public test cases provided for this assignment.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {assignment.publicTestCases?.map((tc, idx) => (
-                      <div key={tc.id || idx} className="rounded-lg border border-[#EAEAEA] bg-[#FBFBFB] p-3 text-xs space-y-1.5">
-                        <div className="flex items-center justify-between font-semibold text-black">
-                          <span>Test #{idx + 1}: {tc.name}</span>
-                          <span className="text-[#666666]">{tc.points} pts</span>
-                        </div>
-                        {tc.stdin && (
-                          <div className="text-[11px]">
-                            <span className="text-[#888888] font-mono">Standard Input:</span>
-                            <pre className="mt-0.5 rounded bg-white border border-[#EAEAEA] p-1.5 font-mono">{tc.stdin}</pre>
-                          </div>
-                        )}
-                        <div className="text-[11px]">
-                          <span className="text-[#888888] font-mono">Expected Output:</span>
-                          <pre className="mt-0.5 rounded bg-white border border-[#EAEAEA] p-1.5 font-mono">{tc.expectedOutput}</pre>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Hidden Test Case Banner */}
-                {isTeacher && assignment.hiddenTestCases && assignment.hiddenTestCases.length > 0 ? (
-                  <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50 p-3 text-xs text-purple-900">
-                    <strong className="block mb-1">Teacher View: {assignment.hiddenTestCases.length} Hidden Grading Tests Configured</strong>
-                    <p className="text-[11px] text-purple-800">These test cases are hidden from student API responses and will be evaluated during automated grading.</p>
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-lg border border-[#EAEAEA] bg-[#F5F5F5] p-3 text-xs text-[#666666]">
-                    <strong>Note on Grading:</strong> In addition to public practice checks, submissions may be verified against hidden automated test specifications upon final submission.
-                  </div>
-                )}
-              </div>
-              </details>
-
-              {isTeacher && localPreview ? (
-                <details className="rounded-2xl border border-[#EAEAEA] bg-white p-5 shadow-xs">
-                  <summary className="cursor-pointer text-sm font-semibold text-black">
-                    Preview as the sample student
-                  </summary>
-                  <div className="pt-4">
-                    <AssignmentWorkspace
-                      classId={classId}
-                      assignmentId={assignmentId}
-                      allowLate={assignment.allowLate}
-                      previewStudent
-                    />
-                  </div>
-                </details>
-              ) : !isTeacher ? (
-                <AssignmentWorkspace
-                  classId={classId}
-                  assignmentId={assignmentId}
-                  allowLate={assignment.allowLate}
-                />
-              ) : null}
-            </div>
-          )}
-        </div>
-      </main>
-
-      <Footer />
-    </div>
+    <main className="fixed inset-0 z-40 flex h-dvh flex-col bg-[#1e1e1e] text-[#ccc]">
+      <div className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-[#333] bg-[#181818] px-4 text-xs">
+        <div className="flex min-w-0 items-center gap-3"><Link href={`/classroom/${classId}`} className="flex shrink-0 items-center gap-2 hover:text-white"><ArrowLeft size={14} /> Classroom</Link><span className="text-[#555]">/</span><h1 className="truncate font-semibold text-white">{assignment?.title || "Assignment workspace"}</h1></div>
+        {isTeacher && <Link href={`/classroom/${classId}/manage`} className="shrink-0 hover:text-white">Manage class</Link>}
+      </div>
+      {loading ? <div className="grid flex-1 place-items-center font-mono text-sm">Loading assignment…</div> : error || !assignment ? <div className="grid flex-1 place-items-center p-8 text-sm text-red-300">{error || "Assignment not found."}</div> : <>
+        <details className="shrink-0 border-b border-[#333] bg-[#181818] px-4 py-2 text-xs"><summary className="cursor-pointer text-[#aaa]">Instructions & tests · {assignment.maxPoints} points · {assignment.language || "cpp"} · {assignment.groupMode ? "Group assignment" : "Individual assignment"}</summary><div className="max-h-60 space-y-3 overflow-auto py-4"><p className="whitespace-pre-wrap leading-6">{assignment.description || "No instructions."}</p>{assignment.publicTestCases.map(t => <div key={t.id}><strong>{t.name}</strong><pre className="whitespace-pre-wrap">Input: {t.stdin}\nExpected: {t.expectedOutput}</pre></div>)}<p className="text-[#888]">{assignment.hiddenTestCases?.length || 0} hidden tests configured · {assignment.dueDate ? `Due ${new Date(assignment.dueDate).toLocaleString()}` : "No deadline"}</p></div></details>
+        <div className="min-h-0 flex-1"><TeacherWatch classId={classId} assignmentId={assignmentId} language={assignment.language} /></div>
+        {localPreview && <details className="shrink-0 border-t border-[#333] bg-[#181818] text-xs"><summary className="cursor-pointer px-4 py-2">Preview sample student</summary><div className="fixed inset-x-0 bottom-0 top-24 z-50 bg-[#1e1e1e]"><button onClick={e => e.currentTarget.closest("details")?.removeAttribute("open")} className="absolute right-4 top-0 z-50 bg-[#333] px-3 py-1 text-white">Close preview</button><AssignmentWorkspace classId={classId} assignmentId={assignmentId} allowLate={assignment.allowLate} assignment={assignment} previewStudent /></div></details>}
+      </>}
+    </main>
   );
 }

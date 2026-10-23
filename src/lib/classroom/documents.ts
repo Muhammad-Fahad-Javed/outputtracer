@@ -1,3 +1,4 @@
+import { classroomLanguage, type ClassroomLanguage } from "./languages";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assignmentFreezeState } from "./assignmentPolicy";
 import {
@@ -20,6 +21,7 @@ export interface ClassroomDocumentRecord {
 }
 
 export interface ResolvedClassroomDocument {
+  language: ClassroomLanguage;
   docKey: string;
   classroomId: string;
   assignmentId: string;
@@ -211,6 +213,7 @@ export async function resolveClassroomDocument(input: {
       allowLate: assignment.allowLate,
       dueDate: assignment.dueDate,
       groupMode: assignment.groupMode,
+      language: classroomLanguage(assignment.language),
       starterCode: assignment.starterCode || {},
       publicTestCases: assignment.publicTestCases || [],
     },

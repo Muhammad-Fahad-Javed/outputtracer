@@ -1,5 +1,7 @@
 "use client";
 
+import { classroomLanguage } from "@/lib/classroom/languages";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
@@ -126,6 +128,7 @@ export default function ClassroomHub({ view = "session" }: { view?: "session" | 
         body: JSON.stringify({
           name: newClassName,
           subject: newClassSubject,
+          language: classroomLanguage(undefined, newClassSubject),
           description: newClassDescription,
         }),
       });
@@ -452,6 +455,7 @@ export default function ClassroomHub({ view = "session" }: { view?: "session" | 
                   className="w-full rounded-md border border-[#DCDCDC] px-2.5 py-2 text-xs outline-none focus:border-black"
                 >
                   <option value="C++">C++</option>
+                  <option value="Python">Python 3</option>
                   <option value="8086 Assembly">8086 Assembly</option>
                   <option value="Data Structures & Algorithms">Data Structures & Algorithms</option>
                   <option value="Systems Programming">Systems Programming</option>

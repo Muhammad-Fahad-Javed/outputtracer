@@ -71,6 +71,7 @@ export function useClassroomCollab(opts: {
 
   useEffect(() => {
     activeFileRef.current = activeFile;
+    awarenessRef.current?.setLocalStateField("file", activeFile);
   }, [activeFile]);
 
   useEffect(() => {

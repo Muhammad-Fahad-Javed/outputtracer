@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import * as Y from "yjs";
+import { CLASSROOM_LANGUAGES, classroomLanguage } from "@/lib/classroom/languages";
 import { Eye, Play } from "lucide-react";
 
 const CollabEditor = dynamic(() => import("@/components/collab/CollabEditor"), { ssr: false });
@@ -34,9 +35,11 @@ interface WatchPayload {
 export default function TeacherWatch({
   classId,
   assignmentId,
+  language,
 }: {
   classId: string;
   assignmentId: string;
+  language?: "cpp" | "python" | "asm8086";
 }) {
   const [watch, setWatch] = useState<WatchPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -110,7 +113,6 @@ export default function TeacherWatch({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           runTests: true,
-          language: "cpp",
           groupId: selected.kind === "group" ? selected.id : undefined,
           studentId: selected.kind === "student" ? selected.id : undefined,
         }),
@@ -156,13 +158,13 @@ export default function TeacherWatch({
   });
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#E4E4E7] bg-white shadow-sm">
-      <div className="flex flex-col gap-4 border-b border-[#F0F0F0] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1e1e1e] text-[#ccc]">
+      <div className="flex flex-col gap-4 border-b border-[#333] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-black">
+          <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-[#ddd]">
             <Eye size={16} /> Watch the class
           </h2>
-          <p className="mt-1 text-xs text-[#666666]">
+          <p className="mt-1 text-xs text-[#aaa]">
             Pick a {watch?.groupMode ? "group" : "student"}. You can read and run. Your typing does not change their code.
           </p>
         </div>
@@ -179,12 +181,12 @@ export default function TeacherWatch({
       </div>
 
       {watch && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-[#F4F4F5] bg-[#FAFAFA] px-4 py-3 sm:px-5">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[#333] bg-[#181818] px-4 py-3 sm:px-5">
           <button
             type="button"
             onClick={() => savePolicy({ locked: !watch.locked })}
             className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
-              watch.locked ? "bg-rose-600 text-white" : "border border-[#E4E4E7] bg-white text-black"
+              watch.locked ? "bg-rose-600 text-white" : "border border-[#333] bg-[#181818] text-[#ddd]"
             }`}
           >
             {watch.locked ? "Unlock editing" : "Lock editing"}
@@ -199,7 +201,7 @@ export default function TeacherWatch({
             checked={watch.allowLate}
             onChange={(checked) => savePolicy({ allowLate: checked })}
           />
-          <label className="inline-flex items-center gap-2 text-xs text-[#444]">
+          <label className="inline-flex items-center gap-2 text-xs text-[#bbb]">
             Time limit
             <input
               aria-label="Time limit milliseconds"
@@ -212,7 +214,7 @@ export default function TeacherWatch({
                 const value = Number(timeDraft);
                 if (Number.isFinite(value)) void savePolicy({ timeLimitMs: value });
               }}
-              className="w-20 rounded-md border border-[#E4E4E7] bg-white px-2 py-1 text-xs"
+              className="w-20 rounded-md border border-[#333] bg-[#181818] px-2 py-1 text-xs"
             />
             <span className="text-[#888]">ms</span>
           </label>
@@ -221,27 +223,27 @@ export default function TeacherWatch({
               {watch.freezeReason || "Students cannot edit or run."}
             </span>
           )}
-          {policyNote && <span className="text-[11px] text-[#333]">{policyNote}</span>}
+          {policyNote && <span className="text-[11px] text-[#ccc]">{policyNote}</span>}
         </div>
       )}
 
       {error ? (
         <p className="p-5 text-sm text-rose-700">{error}</p>
       ) : !watch ? (
-        <p className="p-5 text-sm text-[#666666]">Loading the class…</p>
+        <p className="p-5 text-sm text-[#aaa]">Loading the class…</p>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="border-b border-[#F0F0F0] lg:border-b-0 lg:border-r">
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-auto lg:grid-cols-[240px_minmax(0,1fr)]">
+          <aside className="border-b border-[#333] lg:border-b-0 lg:border-r">
             <div className="p-3">
               <input
                 aria-label={watch.groupMode ? "Find a group" : "Find a student"}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={watch.groupMode ? "Find a group" : "Find a student"}
-                className="w-full rounded-md border border-[#E4E4E7] px-3 py-2 text-sm outline-none focus:border-black"
+                className="w-full rounded-md border border-[#333] px-3 py-2 text-sm outline-none focus:border-black"
               />
             </div>
-            <div className="max-h-80 overflow-y-auto lg:max-h-[680px]">
+            <div className="max-h-60 overflow-y-auto lg:max-h-none">
               {participants.length === 0 ? (
                 <p className="px-4 pb-4 text-xs text-[#777777]">
                   {watch.participants.length === 0
@@ -269,14 +271,14 @@ export default function TeacherWatch({
                         setRunNote(null);
                       }}
                       className={`block w-full border-l-2 px-4 py-3 text-left ${
-                        active ? "border-black bg-[#F7F7F8]" : "border-transparent hover:bg-[#FAFAFA]"
+                        active ? "border-black bg-[#303030]" : "border-transparent hover:bg-[#181818]"
                       }`}
                     >
                       <span className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-black">{participant.name}</span>
+                        <span className="text-sm font-semibold text-[#ddd]">{participant.name}</span>
                         <span className={`h-2 w-2 rounded-full ${online ? "bg-emerald-500" : "bg-[#D4D4D8]"}`} />
                       </span>
-                      {memberLine && <span className="mt-1 block text-[11px] text-[#666]">{memberLine}</span>}
+                      {memberLine && <span className="mt-1 block text-[11px] text-[#aaa]">{memberLine}</span>}
                       <span className="mt-1 block text-[11px] text-[#888]">
                         {participant.online.length === 0
                           ? "Offline"
@@ -296,18 +298,18 @@ export default function TeacherWatch({
             </div>
           </aside>
 
-          <div className="min-w-0 space-y-3 p-3 sm:p-4">
+          <div className="flex min-h-0 min-w-0 flex-col gap-3 p-3 sm:p-4">
             {!selected ? (
-              <p className="py-16 text-center text-sm text-[#666]">Choose someone on the left to open their code.</p>
+              <p className="py-16 text-center text-sm text-[#aaa]">Choose someone on the left to open their code.</p>
             ) : collab.status === "blocked" ? (
               <p className="text-sm text-rose-700">{collab.error}</p>
             ) : collab.status === "connecting" && !collab.doc ? (
-              <p className="text-sm text-[#666]">Opening {selected.name}…</p>
+              <p className="text-sm text-[#aaa]">Opening {selected.name}…</p>
             ) : collab.doc && collab.awareness ? (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-black">{selected.name}</p>
+                    <p className="text-sm font-semibold text-[#ddd]">{selected.name}</p>
                     <p className="text-[11px] text-[#777]">{presence}</p>
                   </div>
                   <div className="flex flex-wrap gap-1">
@@ -317,7 +319,7 @@ export default function TeacherWatch({
                         type="button"
                         onClick={() => collab.setActiveFile(name)}
                         className={`rounded-md px-2.5 py-1 font-mono text-[11px] ${
-                          collab.activeFile === name ? "bg-black text-white" : "bg-[#F4F4F5] text-[#333]"
+                          collab.activeFile === name ? "bg-black text-white" : "bg-[#303030] text-[#ccc]"
                         }`}
                       >
                         {name}
@@ -331,7 +333,7 @@ export default function TeacherWatch({
                   filename={collab.activeFile}
                   names={authorNames}
                 />
-                <div className="h-[min(68vh,560px)] min-h-[320px] overflow-hidden rounded-xl border border-[#27272A]">
+                <div className="min-h-[320px] flex-1 overflow-hidden rounded-xl border border-[#27272A]">
                   <CollabEditor
                     doc={collab.doc}
                     awareness={collab.awareness}
@@ -339,10 +341,11 @@ export default function TeacherWatch({
                     readOnly
                     peers={collab.peers}
                     onRunShortcut={() => void run()}
+                    language={CLASSROOM_LANGUAGES[classroomLanguage(language)].monaco}
                     showAuthorship
                   />
                 </div>
-                {runNote && <p className="text-xs text-[#333]">{runNote}</p>}
+                {runNote && <p className="text-xs text-[#ccc]">{runNote}</p>}
                 {runOutput && (
                   <pre className="max-h-40 overflow-auto rounded-lg bg-[#18181B] p-3 font-mono text-[11px] text-[#E4E4E7] whitespace-pre-wrap">
                     {runOutput}
@@ -350,7 +353,7 @@ export default function TeacherWatch({
                 )}
               </>
             ) : (
-              <p className="text-sm text-[#666]">{collab.error || "The document is not open yet."}</p>
+              <p className="text-sm text-[#aaa]">{collab.error || "The document is not open yet."}</p>
             )}
           </div>
         </div>
@@ -369,7 +372,7 @@ function Toggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="inline-flex items-center gap-2 rounded-md border border-[#E4E4E7] bg-white px-2.5 py-1.5 text-xs text-black">
+    <label className="inline-flex items-center gap-2 rounded-md border border-[#333] bg-[#181818] px-2.5 py-1.5 text-xs text-[#ddd]">
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
@@ -421,9 +424,9 @@ function ContributionLegend({
   const report = file || document;
   if (!report) return null;
   return (
-    <div className="rounded-xl border border-[#E4E4E7] bg-[#FAFAFA] px-3 py-3">
+    <div className="rounded-xl border border-[#333] bg-[#181818] px-3 py-3">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-xs font-semibold text-black">Who wrote {filename}</p>
+        <p className="text-xs font-semibold text-[#ddd]">Who wrote {filename}</p>
         {document && document.shares.length > 0 && (
           <p className="text-[11px] text-[#777]">
             Whole document: {document.shares.map((share) => `${names[share.authorId] || "Student"} ${share.percent}%`).join(" · ")}
@@ -431,12 +434,12 @@ function ContributionLegend({
         )}
       </div>
       {report.shares.length === 0 ? (
-        <p className="mt-2 text-xs text-[#666]">Nobody has typed in this file yet. Starter code stays plain.</p>
+        <p className="mt-2 text-xs text-[#aaa]">Nobody has typed in this file yet. Starter code stays plain.</p>
       ) : (
         <ul className="mt-2 space-y-2">
           {report.shares.map((share) => (
             <li key={share.authorId}>
-              <div className="mb-1 flex items-center justify-between text-xs text-black">
+              <div className="mb-1 flex items-center justify-between text-xs text-[#ddd]">
                 <span className="inline-flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorForUser(share.authorId) }} />
                   {names[share.authorId] || "Student"}

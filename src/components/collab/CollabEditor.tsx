@@ -19,6 +19,7 @@ interface CollabEditorProps {
   onEditor?: (editor: Parameters<OnMount>[0]) => void;
   /** Color the characters each student typed. Used on the teacher watch view. */
   showAuthorship?: boolean;
+  language?: "cpp" | "python" | "asm";
 }
 
 export default function CollabEditor({
@@ -30,6 +31,7 @@ export default function CollabEditor({
   onRunShortcut,
   onEditor,
   showAuthorship = false,
+  language = "cpp",
 }: CollabEditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -42,6 +44,21 @@ export default function CollabEditor({
   });
 
   const handleMount: OnMount = (editor, monaco) => {
+    if (language === "asm") {
+      if (!monaco.languages.getLanguages().some((l: { id: string }) => l.id === "nasm")) monaco.languages.register({ id: "nasm" });
+      monaco.languages.setMonarchTokensProvider("nasm", {
+        ignoreCase: true,
+        tokenizer: { root: [
+          [/;.*$/, "comment"], [/"[^"\n]*"|'[^'\n]*'/, "string"],
+          [/\b(?:mov|xchg|lea|add|adc|sub|sbb|inc|dec|neg|cmp|and|or|xor|test|not|jmp|j[a-z]+|loop[a-z]*|call|ret|push|pop|pushf|popf|nop|hlt|int|clc|stc|cli|sti|cld|std|mul|imul|div|idiv|shl|shr|rol|ror)\b/, "keyword"],
+          [/\b(?:ax|ah|al|bx|bh|bl|cx|ch|cl|dx|dh|dl|sp|bp|si|di|ip|cs|ds|es|ss)\b/, "variable.predefined"],
+          [/\b(?:org|bits|section|global|equ|db|dw|dd|resb|resw|cpu)\b/, "type"],
+          [/\b(?:0x[0-9a-f]+|[0-9][0-9a-f]*h|[0-9]+)\b/, "number"],
+        ] },
+      });
+      const model = editor.getModel();
+      if (model) monaco.editor.setModelLanguage(model, "nasm");
+    }
     editorRef.current = editor;
     monacoRef.current = monaco;
     onEditor?.(editor);
@@ -156,7 +173,7 @@ export default function CollabEditor({
       <div className={`min-h-0 flex-1 ${showAuthorship ? "ot-authorship" : ""}`}>
         <Editor
           height="100%"
-          defaultLanguage="cpp"
+          language={language === "asm" ? "nasm" : language}
           theme="vs-dark"
           onMount={handleMount}
           options={{

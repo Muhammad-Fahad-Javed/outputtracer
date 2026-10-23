@@ -1,3 +1,4 @@
+import type { ClassroomLanguage } from "@/lib/classroom/languages";
 import * as Y from "yjs";
 import {
   Awareness,
@@ -31,7 +32,7 @@ const IDLE_EVICT_MS = 10 * 60 * 1000;
 const MAX_UPDATE_BYTES = 512 * 1024;
 const MAX_ROOM_CLIENTS = 24;
 
-function updateKeepsFilesValid(doc: Y.Doc, bytes: Uint8Array): boolean {
+function updateKeepsFilesValid(doc: Y.Doc, bytes: Uint8Array, language: ClassroomLanguage = "cpp"): boolean {
   const probe = new Y.Doc();
   try {
     Y.applyUpdate(probe, Y.encodeStateAsUpdate(doc));
@@ -39,12 +40,12 @@ function updateKeepsFilesValid(doc: Y.Doc, bytes: Uint8Array): boolean {
     const files = readFiles(probe);
     if (Object.keys(files).length === 0) return true;
     for (const name of Object.keys(files)) {
-      if (!isValidSourceFilename(name)) return false;
+      if (!isValidSourceFilename(name, language)) return false;
     }
     return inspectSourceFiles(files, {
       maxFiles: execConfig.maxSourceFiles,
       maxSourceBytes: execConfig.maxSourceBytes,
-    }).ok;
+    }, language).ok;
   } catch {
     return false;
   } finally {
@@ -61,6 +62,7 @@ interface ClientState {
 interface Room {
   projectId: string;
   kind: "project" | "classroom";
+  language?: ClassroomLanguage;
   classroom?: {
     classId: string;
     assignmentId: string;
@@ -267,7 +269,7 @@ class CollabHub {
       if (await this.classroomEditBlocked(ws, room)) return;
       const bytes = base64ToBytes(message.update);
       if (bytes.byteLength > MAX_UPDATE_BYTES) return;
-      if (!updateKeepsFilesValid(room.doc, bytes)) {
+      if (!updateKeepsFilesValid(room.doc, bytes, room.language)) {
         send(ws, { type: "error", message: "That edit is not allowed." });
         return;
       }
@@ -563,6 +565,7 @@ class CollabHub {
     const room: Room = {
       projectId: resolved.docKey,
       kind: "classroom",
+      language: resolved.language,
       classroom: {
         classId: resolved.classroomId,
         assignmentId: resolved.assignmentId,

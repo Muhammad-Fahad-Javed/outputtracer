@@ -1,4 +1,5 @@
 "use client";
+import { CLASSROOM_LANGUAGES, classroomLanguage, type ClassroomLanguage } from "@/lib/classroom/languages";
 
 import { useEffect, useState, useCallback, useRef, use } from "react";
 import Link from "next/link";
@@ -54,6 +55,7 @@ export default function ClassroomManagePage({
 
   // Assignment modal
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
+  const [asgLanguage, setAsgLanguage] = useState<ClassroomLanguage>("cpp");
   const [asgTitle, setAsgTitle] = useState("");
   const [asgDescription, setAsgDescription] = useState("");
   const [asgDueDate, setAsgDueDate] = useState("");
@@ -126,6 +128,9 @@ export default function ClassroomManagePage({
       }
       setError(null);
       setClassroom(classRes.classroom);
+      const lang = classroomLanguage(classRes.classroom.language, classRes.classroom.subject);
+      setAsgLanguage(lang);
+      setAsgStarter(CLASSROOM_LANGUAGES[lang].starter);
       if (rosterRes.success) setMembers(rosterRes.members || []);
       if (groupRes.success) setGroups(groupRes.groups || []);
       if (invRes?.success) setInvitations(invRes.invitations || []);
@@ -234,7 +239,7 @@ export default function ClassroomManagePage({
     setAsgSubmitting(true);
     try {
       const starterCode: Record<string, string> = {};
-      if (asgStarter.trim()) starterCode["main.cpp"] = asgStarter;
+      if (asgStarter.trim()) starterCode[CLASSROOM_LANGUAGES[asgLanguage].file] = asgStarter;
       const extraName = asgExtraName.trim();
       if (extraName && asgExtraBody.trim()) starterCode[extraName] = asgExtraBody;
       const publicTestCases = asgPublicExpected.trim()
@@ -270,6 +275,7 @@ export default function ClassroomManagePage({
           allowRun: asgAllowRun,
           allowTrace: asgAllowTrace,
           timeLimitMs: Number(asgTimeLimit) || 10000,
+          language: asgLanguage,
           starterCode: Object.keys(starterCode).length > 0 ? starterCode : undefined,
           publicTestCases,
           hiddenTestCases,
@@ -713,6 +719,13 @@ export default function ClassroomManagePage({
             <h2 className="text-base font-bold text-black mb-1">Create Coding Assignment</h2>
             <form onSubmit={handleCreateAssignment} className="space-y-3 mt-3">
               <div>
+                <label htmlFor="assignment-language" className="block text-xs font-semibold text-black mb-1">Assignment language</label>
+                <select id="assignment-language" value={asgLanguage} onChange={e => { const lang = e.target.value as ClassroomLanguage; setAsgLanguage(lang); setAsgStarter(CLASSROOM_LANGUAGES[lang].starter); setAsgExtraName(""); setAsgExtraBody(""); }} className="w-full rounded-md border border-[#DCDCDC] px-3 py-2 text-xs text-black">
+                  {Object.entries(CLASSROOM_LANGUAGES).map(([id, c]) => <option key={id} value={id}>{c.label}</option>)}
+                </select>
+                {asgLanguage !== "cpp" && <p className="mt-1 text-xs text-gray-600">Use a single {CLASSROOM_LANGUAGES[asgLanguage].file} entry file for this assignment.</p>}
+              </div>
+              <div>
                 <label htmlFor="assignment-title" className="block text-xs font-semibold text-black mb-1">Assignment Title *</label>
                 <input
                   id="assignment-title"
@@ -763,7 +776,7 @@ export default function ClassroomManagePage({
 
               <div>
                 <label htmlFor="asg-starter" className="block text-xs font-semibold text-black mb-1">
-                  Starter code (main.cpp)
+                  Starter code ({CLASSROOM_LANGUAGES[asgLanguage].file})
                 </label>
                 <textarea
                   id="asg-starter"
@@ -781,6 +794,7 @@ export default function ClassroomManagePage({
                   <input
                     id="asg-extra-name"
                     type="text"
+                    disabled={asgLanguage !== "cpp"}
                     placeholder="helper.h"
                     value={asgExtraName}
                     onChange={(e) => setAsgExtraName(e.target.value)}
@@ -800,7 +814,7 @@ export default function ClassroomManagePage({
                   />
                 </div>
               </div>
-              <p className="text-[11px] text-[#666666]">Language: C++. Hidden tests are stored for grading and are not returned to students.</p>
+              <p className="text-[11px] text-[#666666]">Language: {CLASSROOM_LANGUAGES[asgLanguage].label}. Hidden tests are stored for grading and are not returned to students.</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-black">Public test</p>

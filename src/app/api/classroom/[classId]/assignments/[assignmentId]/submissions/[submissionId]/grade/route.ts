@@ -100,7 +100,7 @@ export async function POST(
     try {
       const { data: asgn } = await admin
         .from("classroom_assignments")
-        .select("public_test_cases, hidden_test_cases, max_points")
+        .select("public_test_cases, hidden_test_cases, max_points, language")
         .eq("id", assignmentId)
         .eq("classroom_id", classId)
         .single();
@@ -114,6 +114,7 @@ export async function POST(
         publicTests: (asgn.public_test_cases as AssignmentTestCase[]) ?? [],
         hiddenTests: (asgn.hidden_test_cases as AssignmentTestCase[]) ?? [], // never returned to client
         maxPoints: asgn.max_points as number,
+        language: asgn.language ?? "cpp",
       });
 
       // Return hidden test counts to teacher ONLY — not test definitions
