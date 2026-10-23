@@ -1,0 +1,468 @@
+                    Complete Requirements Checklist
+Comprehensive reference list. Check an item only when the relevant implementation and verification criteria
+have been satisfied.
+
+
+A. Repository preservation and baseline
+    Verify current branch, commit SHA, and working tree.
+    Inspect changes to src/app/api/classroom/student/dashboard/route.ts.
+    Inspect changes to src/app/classroom/[classId]/manage/page.tsx.
+    Inspect changes to src/app/classroom/page.tsx.
+    Inspect changes to src/app/classroom/student/page.tsx.
+    Inspect changes to src/lib/classroom/adminService.ts.
+    Inspect stash@{0} and any newer stashes without modifying them.
+    Determine whether changes overlap with committed branches or other work.
+    Preserve uncommitted and untracked work.
+    Establish a recoverable checkpoint.
+    Inventory routes, APIs, database migrations, and relevant services.
+    Record the existing test and build results.
+    Create the initial audit report under docs/audit/.
+
+
+B. Existing website and route functionality
+    Homepage /.
+    C++ compiler and debugging workflow.
+    Python compiler /python.
+    8086 Assembly compiler /assembly.
+    About page /about.
+    Examples page /examples.
+    Login /login.
+    Learner login /login/learner.
+    Teacher login /login/teacher.
+    Admin login /login/admin.
+    Registration /signup.
+    OAuth callback /auth/callback.
+    User profile /profile.
+    Learning homepage /learn.
+    Learning dashboard /learn/dashboard.
+    Course and lesson routes.
+    Practice question listing and detail routes.
+    Classroom landing and student dashboard.
+    Teacher dashboard and application routes.
+    Classroom detail and management pages.
+    Assignment detail and invitation routes.
+    Classroom messages.
+    Projects listing and project editor.
+    Groups listing and group details.
+    Administrator dashboard.
+    Learning administration.
+    Teacher administration.
+
+
+
+                                        Complete Requirements Checklist - Page 1
+   All additional routes discovered in the repository.
+   All discovered API endpoints and supported HTTP methods.
+   Correct loading, empty, error, and success states.
+   Correct navigation and production-domain redirects.
+   No broken internal links or missing assets.
+   No unintended hydration errors or browser console errors.
+   Responsive desktop and mobile layouts.
+   Server-side protection of restricted routes and operations.
+
+
+C. Dashboard and application bug fixes
+   Count completed challenges from actual completion records.
+   Calculate unread notifications correctly.
+   Match frontend metric names with backend response fields.
+   Prevent state updates after component unmount.
+   Remove unnecessary duplicate fetches.
+   Fix class averages and progress calculations.
+   Fix group-submission statistics.
+   Handle empty datasets correctly.
+   Distinguish database failures from genuine zero values.
+   Add unit tests for calculation logic.
+   Verify that dashboard metrics match actual stored data.
+
+
+D. Authentication, profiles, and roles
+   Verify Google OAuth on the canonical production domain.
+   Verify email-based login and registration.
+   Validate OAuth callback URLs and redirect destinations.
+   Verify session creation, refresh, expiry, and logout.
+   Handle revoked access and changed roles.
+   Verify role selection and activation.
+   Remove mandatory teacher approval throughout frontend and backend.
+   Allow eligible registered users to activate Teacher profiles.
+   Remove obsolete teacher application and approval gates.
+   Migrate existing teacher records safely where needed.
+   Update database constraints and RLS policies as required.
+   Prevent self-assignment of Administrator privileges.
+   Preserve legitimate admin management and moderation capabilities.
+   Verify Turnstile using server-side verification.
+   Ensure private environment variables never enter client bundles.
+   Test unauthorized role changes and redirects.
+
+
+E. Classroom, sections, enrollment, and groups
+   Create multiple classes per teacher.
+   Create and manage class sections.
+   Set class names, descriptions, and section labels.
+   Generate secure, unpredictable joining codes.
+   Regenerate, revoke, expire, and validate joining codes.
+   Prevent unauthorized and repeated invitation redemption.
+
+
+
+                                      Complete Requirements Checklist - Page 2
+  View class rosters and enrollment status.
+  View assignments, projects, and class progress.
+  Update classroom details.
+  Archive classes without losing historical records.
+  Allow students to join multiple classes.
+  Display all enrolled classes to each student.
+  Allow students to leave classes according to policy.
+  Display clear errors for invalid or expired codes.
+  Create multiple student groups within a class.
+  Assign students to groups.
+  Move students between groups.
+  Remove students from groups.
+  Dissolve groups safely.
+  Assign projects to groups or individual students.
+  View each group's members, assignments, and history.
+  Define and enforce class, section, group, project, and membership relationships.
+  Prevent cross-classroom access.
+  Preserve historical submissions and membership attribution.
+
+
+F. Collaborative project workspace
+  Reuse the existing Monaco editor and compiler environment.
+  Integrate with the existing Yjs and WebSocket infrastructure where suitable.
+  Allow multiple authorized students to edit one project simultaneously.
+  Synchronize changes in real time.
+  Display collaborator presence.
+  Display distinct collaborator identities and colors.
+  Show live cursors and selections where supported.
+  Handle disconnections and reconnections.
+  Recover synchronized state after reconnecting.
+  Persist project changes.
+  Support multiple files where the existing architecture permits.
+  Maintain project version history.
+  Link project snapshots to assignments.
+  Verify project membership server-side.
+  Prevent unauthorized access by changing a URL or project ID.
+  Preserve project ownership and permissions.
+  Keep teacher inspection read-only unless an explicitly authorized action permits edits.
+  Verify simultaneous-edit and persistence behavior with integration tests.
+
+
+G. Teacher project inspection
+  Open a group's project directly in the existing compiler.
+  View project metadata and group membership.
+  View assignment requirements and deadlines.
+  View submission and grading status.
+  Observe active collaborators.
+  Inspect historical project versions.
+  Compare code revisions.
+
+
+
+
+                                      Complete Requirements Checklist - Page 3
+  View individual and group contributions.
+  Inspect execution history.
+  View compilation and runtime errors.
+  Review task and project progress.
+  Send group feedback.
+  Send individual feedback.
+  Ensure teacher inspection cannot silently overwrite student code.
+  Attribute teacher-triggered executions to the teacher.
+  Enforce teaching permissions on every inspected resource.
+
+
+H. Persistent code attribution and contribution metrics
+  Record the responsible user for eligible code-change events.
+  Record project and file identifiers.
+  Record timestamps and version identifiers.
+  Record insertions, deletions, and replacements where appropriate.
+  Distinguish paste, bulk edits, and formatting events where technically supported.
+  Maintain persistent change history.
+  Attribute changes to the correct project and assignment context.
+  Display collaborator colors and author-attributed code regions.
+  Navigate historical changes.
+  Compare historical versions.
+  Track files modified.
+  Track recorded edits and insertions/deletions.
+  Track editing sessions and milestones.
+  Track tasks completed and execution attempts.
+  Support review and approval records where implemented.
+  Handle simultaneous edits, deletions, refactoring, and renames.
+  Preserve submission snapshots and attribution metadata.
+  Avoid treating current line ownership as definitive proof of authorship.
+  Avoid using raw line count as the sole student-performance metric.
+  Explain which contribution metrics are observed and which are estimated.
+
+
+I. Compiler execution monitoring
+  Record who initiated an execution.
+  Record the exact project version that ran.
+  Record programming language and timestamps.
+  Record compilation success or failure.
+  Record runtime success or failure.
+  Distinguish compilation errors from runtime errors.
+  Record standard output and error output under appropriate retention rules.
+  Record timeout and resource-limit termination.
+  Record test results where supported.
+  Display execution history to authorized teachers.
+  Compare execution attempts.
+  Distinguish editing, saving, submitting, compiling, and successful execution.
+  Do not infer assignment completion from successful compilation alone.
+  Apply access controls to execution logs and output.
+
+
+
+
+                                     Complete Requirements Checklist - Page 4
+J. Teacher messaging and notifications
+  Direct messages between teachers and individual students.
+  Announcements to entire classes.
+  Announcements to sections.
+  Messages to selected groups.
+  Project-collaborator communication.
+  Assignment instructions and reminders.
+  Deadline notifications.
+  Teacher feedback messages.
+  Conversation history.
+  Read and delivery status where supported.
+  Notifications for student replies.
+  Enforce sender and recipient authorization.
+  Prevent unauthorized bulk messaging.
+  Integrate email only when an approved provider is configured.
+  Configure provider credentials securely.
+  Validate recipient addresses and authorization.
+  Add email rate limits and sending limits.
+  Track delivery results where supported.
+  Handle email failures and retries safely.
+  Avoid exposing recipients' email addresses unnecessarily.
+
+
+K. Code similarity and plagiarism analysis
+  Compare authorized submissions within a class.
+  Compare relevant submissions across groups.
+  Support permitted cross-class comparisons.
+  Compare earlier and later versions of the same assignment.
+  Compare individual and group submissions where appropriate.
+  Normalize whitespace and comments.
+  Normalize renamed identifiers where supported.
+  Use syntax-tree or structural comparison where suitable.
+  Compare control flow, expressions, functions, and matching regions.
+  Provide a documented fallback for languages without suitable parsers.
+  Account for supplied templates and starter code.
+  Exclude or discount identifiable shared scaffolding where appropriate.
+  Support C++ analysis.
+  Support Python analysis.
+  Support 8086 Assembly analysis.
+  Produce similarity scores with the method clearly identified.
+  Display matched source regions.
+  Display version timestamps when reliable.
+  Record the first-observed and later-observed matching versions.
+  Distinguish chronology from proof of authorship.
+  Identify uncertain directionality and shared-source possibilities.
+  Provide teacher-review links to authorized versions.
+  Document confidence levels and technical limitations.
+  Run expensive comparisons asynchronously where needed.
+
+
+
+                                       Complete Requirements Checklist - Page 5
+  Bound file sizes and processing time.
+  Protect reports and submissions using access controls.
+  Never automatically penalize students or change grades based on similarity alone.
+  Test false positives, renamed identifiers, formatting changes, and shared templates.
+
+
+L. 8086 Assembly manual-entry restriction
+  Add an assignment-level manual-entry policy.
+  Allow authorized teachers to enable or disable the policy.
+  Notify students before starting the assignment.
+  Block ordinary clipboard paste through supported editor actions.
+  Intercept supported paste keyboard shortcuts.
+  Disable the relevant context-menu paste action where feasible.
+  Preserve normal typing and editing.
+  Preserve debugging, assembly, and execution.
+  Avoid affecting C++ and Python editors.
+  Record appropriate, privacy-conscious editor events where supported.
+  Test keyboard, context-menu, and supported editor paste paths.
+  Document browser and operating-system bypass limitations.
+  Never claim the feature guarantees independently authored code.
+
+
+M. Database, authorization, and Supabase RLS
+  Inventory existing migrations and applied migration state.
+  Compare repository schema with the live database schema.
+  Reuse existing tables when they already satisfy requirements.
+  Add reviewed migrations for genuinely missing capabilities.
+  Define profile and role permissions.
+  Define classroom, section, membership, and invitation relationships.
+  Define group and project membership.
+  Define assignment and submission relationships.
+  Define collaborative document metadata and version history.
+  Define persistent change-event storage.
+  Define execution history.
+  Define messages and notifications.
+  Define similarity jobs and reports.
+  Define assignment input-policy storage.
+  Define administrative audit records where required.
+  Review foreign keys and deletion behavior.
+  Add appropriate indexes and uniqueness constraints.
+  Protect transactions and concurrent operations.
+  Restrict user-editable profile fields.
+  Deny unauthorized role changes.
+  Restrict teachers to authorized classrooms and projects.
+  Restrict students to permitted projects and submissions.
+  Enforce permissions on collaboration sessions.
+  Enforce messaging and similarity-report permissions.
+  Protect storage objects and private files.
+  Back up relevant production data before schema changes.
+
+
+
+
+                                     Complete Requirements Checklist - Page 6
+  Never expose service-role credentials in client-side code.
+
+
+N. WebSocket and real-time security
+  Verify /ws/terminal and /ws/collab.
+  Validate the production WebSocket origin.
+  Restrict development origins appropriately.
+  Enforce required authentication.
+  Validate classroom and project membership during connection.
+  Prevent room access by guessed identifiers.
+  Apply message-size limits.
+  Apply connection and message rate limits.
+  Bound concurrent connections and resource use.
+  Handle stale sessions and disconnections.
+  Verify reconnect and synchronization behavior.
+  Configure Nginx upgrade headers correctly.
+  Prevent code and presence leaks between projects.
+  Test unauthorized connection attempts.
+
+
+O. C++, Python, and Assembly execution security
+  Verify C++ compilation and standard input/output.
+  Verify GDB tracing and variable inspection.
+  Verify Python execution and tracing.
+  Verify 8086 Assembly assembly and emulation.
+  Verify register, flag, memory, and stack inspection.
+  Verify supported DOS interrupt behavior.
+  Validate request sizes.
+  Enforce execution timeouts.
+  Enforce memory and process limits where supported.
+  Control CPU consumption and concurrent executions.
+  Use safe subprocess invocation.
+  Isolate temporary files.
+  Clean up temporary files and processes.
+  Terminate process trees after timeouts.
+  Rate-limit abuse-prone endpoints.
+  Prevent unintended access to environment variables and secrets.
+  Test real sandbox boundaries rather than relying only on mocks.
+  Document any isolation guarantees that remain unverified.
+
+
+P. AWS, Cloudflare, Nginx, PM2, and production
+  Check CPU, memory, swap, and disk capacity.
+  Verify the current deployment script.
+  Verify candidate-build behavior.
+  Prevent builds from corrupting the active .next deployment.
+  Retain a known-good release for rollback.
+  Validate the candidate before switching traffic.
+  Verify PM2 runs the intended release.
+  Inspect Nginx upstream and WebSocket settings.
+
+
+
+                                     Complete Requirements Checklist - Page 7
+  Verify canonical apex-domain behavior.
+  Redirect www to the canonical domain if intended.
+  Remove unintended staging-domain redirects.
+  Verify TLS certificates and renewal.
+  Verify Cloudflare DNS and proxy configuration.
+  Configure and test compression.
+  Configure appropriate security headers.
+  Verify production environment variables without printing secrets.
+  Verify application logs and health checks.
+  Test login and OAuth in production.
+  Test C++, Python, and Assembly execution in production.
+  Test classroom APIs and permissions in production.
+  Test WebSocket collaboration in production.
+  Verify new features against real production data and permissions.
+  Document the deployed release and rollback procedure.
+
+
+Q. SEO, accessibility, performance, and UI
+  Correct outdated titles and page metadata.
+  Verify canonical URLs.
+  Remove unintended staging URLs.
+  Repair broken internal links.
+  Verify sitemap and robots configuration.
+  Review indexing and canonicalization issues.
+  Apply appropriate security headers.
+  Verify HTTP compression and static asset delivery.
+  Improve mobile responsiveness.
+  Check keyboard accessibility and focus states.
+  Improve loading performance where measurements justify it.
+  Reduce unnecessary client-side requests.
+  Update outdated About page content.
+  Preserve the established OutputTracer visual identity.
+  Avoid unnecessary compiler UI redesigns.
+  Measure performance before and after changes.
+
+
+R. Automated tests and acceptance
+  TypeScript check: tsc --noEmit.
+  ESLint check.
+  Full Vitest suite.
+  Next.js production build.
+  Application startup and health checks.
+  C++ regression tests.
+  Python regression tests.
+  Assembly regression tests.
+  Authentication and OAuth tests.
+  Project save/load tests.
+  Real-time collaboration tests.
+  Classroom and group-management tests.
+
+
+
+
+                                    Complete Requirements Checklist - Page 8
+  Teacher self-service activation tests.
+  Unauthorized role-change tests.
+  Cross-user and cross-classroom authorization tests.
+  WebSocket permission tests.
+  Contribution attribution and version-history tests.
+  Execution-record tests.
+  Messaging and notification tests.
+  Similarity-analysis tests.
+  Assembly paste-restriction tests.
+  RLS and migration verification.
+  Production smoke tests.
+  Record failures, skipped tests, and unavailable dependencies.
+  Do not weaken tests to force a passing result.
+
+
+S. Audit reports and documentation
+  docs/audit/ repository baseline and architecture.
+  Route and API inventory.
+  Confirmed bugs and reproducible evidence.
+  Security and authorization findings.
+  Database migrations, RLS, and schema changes.
+  Compiler and sandbox findings.
+  Teacher onboarding and classroom architecture.
+  Collaboration and attribution architecture.
+  Messaging and email implementation.
+  Similarity methodology and limitations.
+  Assembly manual-entry restrictions.
+  Performance and deployment reliability.
+  Automated test results.
+  Production verification and rollback.
+  Remaining defects and known limitations.
+  Record severity, evidence, remediation, and verification status.
+  Remove secrets and unnecessary personal information from reports.
+
+
+
+
+                                      Complete Requirements Checklist - Page 9
+

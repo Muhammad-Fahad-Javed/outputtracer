@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import ClassroomHub from "@/components/classroom/ClassroomHub";
 import { ensureLocalPreviewTeacher } from "@/lib/classroom/localTeacherPreview";
 import { checkIsVerifiedTeacher } from "@/lib/classroom/roles";
-import { activateSelfServiceTeacher } from "@/lib/classroom/teacherService";
 import { isAuthConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 
@@ -17,15 +16,8 @@ export default async function ClassroomTeacherPage() {
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   if (!user) redirect("/login/teacher?next=/classroom/teacher");
 
-  let isTeacher = await checkIsVerifiedTeacher(user.id);
-  if (!isTeacher) {
-    const activation = await activateSelfServiceTeacher(user.id, "Independent Educator");
-    if (activation.success) {
-      isTeacher = true;
-    } else {
-      redirect("/classroom/student");
-    }
-  }
+  const isTeacher = await checkIsVerifiedTeacher(user.id);
+  if (!isTeacher) redirect("/classroom/teach/apply");
 
   return <ClassroomHub view="teacher" />;
 }

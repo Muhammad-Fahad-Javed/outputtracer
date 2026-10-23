@@ -15,9 +15,9 @@ describe("roleHome", () => {
     expect(roleHome("learner", teacher)).toBe("/classroom/student");
   });
 
-  it("sends an approved teacher to the studio and an unapproved teacher to the student dashboard", () => {
+  it("sends an approved teacher to the studio and an inactive teacher to activation", () => {
     expect(roleHome("teacher", teacher)).toBe("/classroom/teacher");
-    expect(roleHome("teacher", student)).toBe("/classroom/student");
+    expect(roleHome("teacher", student)).toBe("/classroom/teach/apply");
   });
 
   it("sends an admin only when the account is an admin", () => {
@@ -43,7 +43,7 @@ describe("destinationAfterLogin", () => {
         ...student,
         next: "/classroom/teacher",
       })
-    ).toBe("/classroom/student");
+    ).toBe("/classroom/teach/apply");
   });
 
   it("keeps an explicit project path and rejects an off-site next", () => {

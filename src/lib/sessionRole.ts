@@ -24,11 +24,11 @@ export function parseSessionRole(value: string | null | undefined): SessionRole 
 /**
  * Where this sign-in should land.
  * An approved teacher profile does not override an explicit learner choice.
- * A teacher choice only opens the studio when the account is actually approved.
+ * A teacher choice opens activation until the profile is active.
  */
 export function roleHome(role: SessionRole, caps: RoleCapabilities): string {
   if (role === "admin") return caps.isAdmin ? ADMIN_HOME : LEARNER_HOME;
-  if (role === "teacher") return caps.isVerifiedTeacher ? TEACHER_HOME : LEARNER_HOME;
+  if (role === "teacher") return caps.isVerifiedTeacher ? TEACHER_HOME : "/classroom/teach/apply";
   return LEARNER_HOME;
 }
 
@@ -45,7 +45,7 @@ export function destinationAfterLogin(input: {
   const safe = safeNextPath(input.next, home);
   const pathOnly = safe.split("?")[0];
   if (pathOnly === LEGACY_CLASSROOM_HUB) return home;
-  if (pathOnly === TEACHER_HOME && !input.isVerifiedTeacher) return LEARNER_HOME;
+  if (pathOnly === TEACHER_HOME && !input.isVerifiedTeacher) return "/classroom/teach/apply";
   if (pathOnly === ADMIN_HOME && !input.isAdmin) return LEARNER_HOME;
   return safe;
 }
@@ -98,9 +98,9 @@ export function accountMenuFor(input: {
     ];
   }
   const items = [profile, { label: "Student Dashboard", href: LEARNER_HOME }];
-  if (input.isVerifiedTeacher) {
-    items.push({ label: "Switch to teacher", href: "/auth/continue?role=teacher" });
-  }
+  items.push(input.isVerifiedTeacher
+    ? { label: "Switch to teacher", href: "/auth/continue?role=teacher" }
+    : { label: "Activate Teacher profile", href: "/classroom/teach/apply" });
   return items;
 }
 

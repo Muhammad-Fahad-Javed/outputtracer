@@ -331,7 +331,7 @@ export default function AuthForm({
               onExpire={() => {
                 setCaptchaToken(null);
               }}
-              onError={(err) => {
+              onError={() => {
                 setCaptchaToken(null);
                 setError("Security verification failed. Please try again.");
               }}

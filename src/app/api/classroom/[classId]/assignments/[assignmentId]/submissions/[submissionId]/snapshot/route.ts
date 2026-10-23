@@ -6,14 +6,15 @@
 
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { getClassroom } from "@/lib/classroom/classroomService";
+import { canReadHistory } from "@/lib/classroom/historyAccess";
+import { getClassroom, getAssignment, listCallerGroupIds } from "@/lib/classroom/classroomService";
 import { getSubmissionSnapshot } from "@/lib/classroom/versioningService";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ classId: string; assignmentId: string; submissionId: string }> }
 ) {
-  const { classId, submissionId } = await params;
+  const { classId, assignmentId, submissionId } = await params;
   const supabase = await createServerClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
@@ -21,11 +22,16 @@ export async function GET(
   const access = await getClassroom(user.id, classId);
   if (!access.success) return NextResponse.json({ success: false, error: access.error }, { status: 403 });
 
+  const assignmentAccess = await getAssignment(user.id, classId, assignmentId);
+  if (!assignmentAccess.success) return NextResponse.json({ success: false, error: "Assignment access denied." }, { status: 403 });
   const snapshot = await getSubmissionSnapshot(submissionId);
   if (!snapshot) return NextResponse.json({ success: false, error: "Snapshot not found." }, { status: 404 });
 
   // Students can only see their own snapshot
-  if (!access.isTeacher && snapshot.studentId && snapshot.studentId !== user.id) {
+  if (!canReadHistory({
+    actorId: user.id, assignmentId, isTeacher: Boolean(access.isTeacher),
+    groupIds: access.isTeacher ? [] : await listCallerGroupIds(user.id, classId),
+  }, snapshot)) {
     return NextResponse.json({ success: false, error: "Access denied." }, { status: 403 });
   }
 

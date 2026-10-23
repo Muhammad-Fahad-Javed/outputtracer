@@ -1,3 +1,4 @@
+import { canAccessSubmission } from "@/lib/classroom/historyAccess";
 /**
  * POST /api/classroom/[classId]/assignments/[assignmentId]/submissions/[submissionId]/grade
  *   Apply or update a grade for a submission (teacher only).
@@ -31,6 +32,11 @@ export async function GET(
 
   if (!(await assignmentBelongsToClassroom(classId, assignmentId))) {
     return NextResponse.json({ success: false, error: "Assignment not found." }, { status: 404 });
+  }
+
+  if (!(await canAccessSubmission({ actorId: user.id, classroomId: classId,
+    assignmentId, submissionId, isTeacher: Boolean(access.isTeacher) }))) {
+    return NextResponse.json({ success: false, error: "Submission access denied." }, { status: 403 });
   }
 
   const grade = await getGrade(submissionId);
@@ -72,6 +78,11 @@ export async function POST(
 
   if (!(await assignmentBelongsToClassroom(classId, assignmentId))) {
     return NextResponse.json({ success: false, error: "Assignment not found." }, { status: 404 });
+  }
+
+  if (!(await canAccessSubmission({ actorId: user.id, classroomId: classId,
+    assignmentId, submissionId, isTeacher: Boolean(access.isTeacher) }))) {
+    return NextResponse.json({ success: false, error: "Submission access denied." }, { status: 403 });
   }
 
   let body: { mode?: string } & Partial<GradeInput>;

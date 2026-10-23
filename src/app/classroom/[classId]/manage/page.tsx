@@ -105,29 +105,26 @@ export default function ClassroomManagePage({
     }>;
   } | null>(null);
 
-  // Guards against setting state after the component unmounts.
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
+  const loadController = useRef<AbortController | null>(null);
   const loadAll = useCallback(() => {
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
+    const { signal } = controller;
     Promise.all([
-      fetch(`/api/classroom/${classId}`).then((r) => r.json()),
-      fetch(`/api/classroom/${classId}/roster`).then((r) => r.json()),
-      fetch(`/api/classroom/${classId}/groups`).then((r) => r.json()),
-      fetch(`/api/classroom/${classId}/invitations`).then((r) => r.json()),
-      fetch(`/api/classroom/${classId}/reports/progress`).then((r) => r.json()),
+      fetch(`/api/classroom/${classId}`, { signal }).then((r) => r.json()),
+      fetch(`/api/classroom/${classId}/roster`, { signal }).then((r) => r.json()),
+      fetch(`/api/classroom/${classId}/groups`, { signal }).then((r) => r.json()),
+      fetch(`/api/classroom/${classId}/invitations`, { signal }).then((r) => r.json()),
+      fetch(`/api/classroom/${classId}/reports/progress`, { signal }).then((r) => r.json()),
     ]).then(([classRes, rosterRes, groupRes, invRes, progRes]) => {
-      if (!mountedRef.current) return;
+      if (signal.aborted) return;
       if (!classRes.success || !classRes.isTeacher) {
         setError(classRes.error || "Instructor privileges required to manage this classroom.");
         setLoading(false);
         return;
       }
+      setError(null);
       setClassroom(classRes.classroom);
       if (rosterRes.success) setMembers(rosterRes.members || []);
       if (groupRes.success) setGroups(groupRes.groups || []);
@@ -135,18 +132,15 @@ export default function ClassroomManagePage({
       if (progRes?.success) setProgressReport(progRes.report || null);
       setLoading(false);
     }).catch(() => {
-      if (!mountedRef.current) return;
+      if (signal.aborted) return;
       setError("Failed to load management console.");
       setLoading(false);
     });
   }, [classId]);
 
-  // Load once on mount. The previous implementation re-implemented the fetch
-  // list here with only three of the five endpoints, so opening the console
-  // issued eight requests instead of five and raced two responses into the
-  // same state.
   useEffect(() => {
     loadAll();
+    return () => { loadController.current?.abort(); };
   }, [loadAll]);
 
   const handleRemoveMember = async (userId: string, name: string) => {

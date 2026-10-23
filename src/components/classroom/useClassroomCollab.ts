@@ -74,11 +74,7 @@ export function useClassroomCollab(opts: {
   }, [activeFile]);
 
   useEffect(() => {
-    if (!enabled) {
-      setStatus("idle");
-      setSession(null);
-      return;
-    }
+    if (!enabled) return;
 
     let stopped = false;
     let doc = new Y.Doc();
@@ -396,16 +392,16 @@ export function useClassroomCollab(opts: {
   }, []);
 
   return {
-    status,
-    error,
+    status: enabled ? status : "idle",
+    error: enabled ? error : null,
     blockedCode,
     role,
     fileNames,
     peers,
     activeFile,
     setActiveFile,
-    doc: session?.doc ?? null,
-    awareness: session?.awareness ?? null,
+    doc: enabled ? session?.doc ?? null : null,
+    awareness: enabled ? session?.awareness ?? null : null,
     frozen,
     freezeReason,
     allowRun,

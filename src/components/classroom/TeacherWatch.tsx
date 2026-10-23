@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import * as Y from "yjs";
 import { Eye, Play } from "lucide-react";
@@ -69,12 +69,8 @@ export default function TeacherWatch({
     return () => clearInterval(timer);
   }, [load]);
 
-  useEffect(() => {
-    if (selectedId || !watch?.participants.length) return;
-    setSelectedId(watch.participants[0].id);
-  }, [selectedId, watch]);
-
-  const selected = watch?.participants.find((participant) => participant.id === selectedId) || null;
+  const selected = watch?.participants.find((participant) => participant.id === selectedId)
+    || watch?.participants[0] || null;
   const collab = useClassroomCollab({
     classId,
     assignmentId,
@@ -380,29 +376,35 @@ function Toggle({
   );
 }
 
+function createContributionStore(doc: Y.Doc | null, filename: string) {
+    const read = () => {
+      const text = doc?.getMap("files").get(filename);
+      return {
+        document: doc ? authorshipOfDoc(doc) : null,
+        file: text instanceof Y.Text ? authorshipOfText(text) : null,
+      };
+    };
+    let snapshot = read();
+    return {
+      getSnapshot: () => snapshot,
+      subscribe: (notify: () => void) => {
+        if (!doc) return () => {};
+        const update = () => { snapshot = read(); notify(); };
+        const files = doc.getMap("files");
+        files.observeDeep(update);
+        update();
+        return () => files.unobserveDeep(update);
+      },
+    };
+}
+
+
 function useContribution(doc: Y.Doc | null, filename: string): {
   document: AuthorshipReport | null;
   file: AuthorshipReport | null;
 } {
-  const [documentReport, setDocumentReport] = useState<AuthorshipReport | null>(null);
-  const [fileReport, setFileReport] = useState<AuthorshipReport | null>(null);
-  useEffect(() => {
-    if (!doc) {
-      setDocumentReport(null);
-      setFileReport(null);
-      return;
-    }
-    const update = () => {
-      setDocumentReport(authorshipOfDoc(doc));
-      const text = doc.getMap("files").get(filename);
-      setFileReport(text instanceof Y.Text ? authorshipOfText(text) : null);
-    };
-    update();
-    const files = doc.getMap("files");
-    files.observeDeep(update);
-    return () => files.unobserveDeep(update);
-  }, [doc, filename]);
-  return { document: documentReport, file: fileReport };
+  const store = useMemo(() => createContributionStore(doc, filename), [doc, filename]);
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
 function ContributionLegend({

@@ -1,3 +1,4 @@
+import { canAccessSubmission } from "@/lib/classroom/historyAccess";
 /**
  * POST /api/classroom/[classId]/assignments/[assignmentId]/submissions/[submissionId]/feedback
  *   Add feedback comment (teacher only). Supports optional file/line reference and private flag.
@@ -16,13 +17,18 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ classId: string; assignmentId: string; submissionId: string }> }
 ) {
-  const { classId, submissionId } = await params;
+  const { classId, assignmentId, submissionId } = await params;
   const supabase = await createServerClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
 
   const access = await getClassroom(user.id, classId);
   if (!access.success) return NextResponse.json({ success: false, error: access.error }, { status: 403 });
+
+  if (!(await canAccessSubmission({ actorId: user.id, classroomId: classId,
+    assignmentId, submissionId, isTeacher: Boolean(access.isTeacher) }))) {
+    return NextResponse.json({ success: false, error: "Submission access denied." }, { status: 403 });
+  }
 
   const feedback = await listFeedback(submissionId, Boolean(access.isTeacher));
   return NextResponse.json({ success: true, feedback });
@@ -32,7 +38,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ classId: string; assignmentId: string; submissionId: string }> }
 ) {
-  const { classId, submissionId } = await params;
+  const { classId, assignmentId, submissionId } = await params;
   const supabase = await createServerClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   if (!user) return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
@@ -40,6 +46,11 @@ export async function POST(
   const access = await getClassroom(user.id, classId);
   if (!access.success || !access.isTeacher) {
     return NextResponse.json({ success: false, error: "Teacher access required to add feedback." }, { status: 403 });
+  }
+
+  if (!(await canAccessSubmission({ actorId: user.id, classroomId: classId,
+    assignmentId, submissionId, isTeacher: Boolean(access.isTeacher) }))) {
+    return NextResponse.json({ success: false, error: "Submission access denied." }, { status: 403 });
   }
 
   let body: AddFeedbackInput;

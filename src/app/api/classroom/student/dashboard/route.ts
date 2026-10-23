@@ -18,28 +18,12 @@ export async function GET() {
 
   const admin = createAdminClient();
   if (!admin) {
-    // Every stat the page renders must be present here, otherwise the cards
-    // show "undefined" instead of a number.
-    return NextResponse.json({
-      success: true,
-      stats: {
-        enrolledCount: 0,
-        pendingAssignmentsCount: 0,
-        unreadCount: 0,
-        completedLessonsCount: 0,
-        solvedProblemsCount: 0,
-        savedProjectsCount: 0,
-      },
-      classrooms: [],
-      upcomingDeadlines: [],
-      recentGrades: [],
-      recentActivity: [],
-    });
+    return NextResponse.json({ success: false, error: "Dashboard service unavailable" }, { status: 503 });
   }
 
   try {
     // 1. Enrolled classrooms
-    const { data: memberRows } = await admin
+    const { data: memberRows, error: memberError } = await admin
       .from("classroom_members")
       .select(`
         classroom_id,
@@ -55,7 +39,17 @@ export async function GET() {
       .eq("user_id", user.id)
       .eq("role", "student");
 
+    if (memberError) throw memberError;
     const classroomIds = (memberRows || []).map((m: Record<string, unknown>) => String(m.classroom_id));
+
+    const groupResult = await admin.from("classroom_group_members")
+      .select("group_id, classroom_groups!inner(classroom_id)").eq("user_id", user.id);
+    if (groupResult.error) throw groupResult.error;
+    const groupIds = (groupResult.data || []).map(g => g.group_id);
+    // IDs originate from verified membership rows, never request parameters.
+    const submissionOwner = groupIds.length
+      ? `student_id.eq.${user.id},group_id.in.(${groupIds.join(",")})`
+      : `student_id.eq.${user.id}`;
 
     // 2. Active assignments in those classrooms
     let pendingAssignmentsCount = 0;
@@ -69,7 +63,7 @@ export async function GET() {
     }> = [];
 
     if (classroomIds.length > 0) {
-      const { data: assignments } = await admin
+      const { data: assignments, error: assignmentError } = await admin
         .from("classroom_assignments")
         .select(`
           id,
@@ -83,15 +77,17 @@ export async function GET() {
         .eq("is_published", true)
         .order("due_date", { ascending: true });
 
-      if (assignments) {
+      if (assignmentError) throw assignmentError;
+      if (assignments?.length) {
         // Check submissions for this student
         const assignmentIds = assignments.map((a: Record<string, unknown>) => String(a.id));
-        const { data: submissions } = await admin
+        const { data: submissions, error: submissionError } = await admin
           .from("classroom_submissions")
           .select("assignment_id, status")
-          .eq("student_id", user.id)
+          .or(submissionOwner)
           .in("assignment_id", assignmentIds);
 
+        if (submissionError) throw submissionError;
         const submittedIds = new Set(
           (submissions || [])
             .filter((s: Record<string, unknown>) => s.status === "submitted" || s.status === "graded")
@@ -112,7 +108,7 @@ export async function GET() {
                 classroomId: String(a.classroom_id),
                 classroomName: String(cl?.name || "Classroom"),
                 dueDate: String(a.due_date),
-                maxPoints: Number(a.max_points || 100),
+                maxPoints: Number(a.max_points ?? 100),
               });
             }
           }
@@ -120,57 +116,56 @@ export async function GET() {
       }
     }
 
-    // 3. Recent grades
-    const { data: recentGradesData } = await admin
-      .from("classroom_submissions")
-      .select(`
-        id,
-        grade,
-        graded_at,
-        assignment:classroom_assignments(
-          id,
-          title,
-          max_points,
-          classroom_id,
-          classroom:classrooms(name)
-        )
-      `)
-      .eq("student_id", user.id)
-      .eq("status", "graded")
-      .order("graded_at", { ascending: false })
-      .limit(10);
+    // Read the canonical grade records written by gradingService, not legacy
+    // classroom_submissions.grade/status fields that manual grading does not update.
+    const { data: recentGradesData, error: gradesError } = classroomIds.length
+      ? await admin
+          .from("submission_grades")
+          .select(`
+            submission_id, total_points, max_points, graded_at,
+            submission:classroom_submissions!inner(
+              student_id, group_id,
+              assignment:classroom_assignments!inner(
+                id, title, classroom_id, classroom:classrooms(name)
+              )
+            )
+          `)
+          .or(submissionOwner, { referencedTable: "submission" })
+          .in("submission.assignment.classroom_id", classroomIds)
+          .order("graded_at", { ascending: false })
+          .limit(10)
+      : { data: [], error: null };
 
+    if (gradesError) throw gradesError;
     const recentGrades = (recentGradesData || []).map((row: Record<string, unknown>) => {
-      const asgn = row.assignment as Record<string, unknown> | null;
+      const submission = row.submission as Record<string, unknown> | null;
+      const asgn = submission?.assignment as Record<string, unknown> | null;
       const cl = asgn?.classroom as Record<string, unknown> | null;
       return {
-        submissionId: String(row.id),
+        submissionId: String(row.submission_id),
         assignmentId: String(asgn?.id || ""),
         assignmentTitle: String(asgn?.title || "Assignment"),
         classroomId: String(asgn?.classroom_id || ""),
         classroomName: String(cl?.name || "Classroom"),
-        grade: Number(row.grade || 0),
-        maxPoints: Number(asgn?.max_points || 100),
+        grade: Number(row.total_points ?? 0),
+        maxPoints: Number(row.max_points ?? 100),
         gradedAt: String(row.graded_at || ""),
       };
     });
 
     // 4. Recent notifications
-    const { data: notificationsData } = await admin
+    const { data: notificationsData, error: notificationsError } = await admin
       .from("classroom_notifications")
       .select("*")
       .eq("recipient_id", user.id)
       .order("created_at", { ascending: false })
       .limit(10);
 
-    // The unread badge must be the real number of unread notifications, not
-    // the number of unread ones inside the 10 most recent rows. Deriving it
-    // from the limited list capped the badge at 10.
-    const { count: unreadCount } = await admin
-      .from("classroom_notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("recipient_id", user.id)
-      .eq("is_read", false);
+    if (notificationsError) throw notificationsError;
+    const unread = await admin.from("classroom_notifications").select("id", { count: "exact", head: true })
+      .eq("recipient_id", user.id).eq("is_read", false);
+    if (unread.error) throw unread.error;
+    const unreadCount = unread.count ?? 0;
 
     // 5. Format classrooms list
     const classrooms = (memberRows || []).map((m: Record<string, unknown>) => {
@@ -188,23 +183,18 @@ export async function GET() {
     // 6. Persistent learning & project metrics
     const [lessonsRes, practiceRes, projectsRes] = await Promise.all([
       admin.from("learn_lesson_completions").select("*", { count: "exact", head: true }).eq("user_id", user.id),
-      // "Practice Solved" must count SOLVED questions. practice_progress has a
-      // row for every question the student has started, so without this filter
-      // the card counted attempts as well.
-      admin
-        .from("practice_progress")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .eq("is_completed", true),
+      admin.from("practice_progress").select("*", { count: "exact", head: true }).eq("user_id", user.id).eq("is_completed", true),
       admin.from("projects").select("*", { count: "exact", head: true }).eq("owner_id", user.id),
     ]);
+
+    if (lessonsRes.error || practiceRes.error || projectsRes.error) throw new Error("Could not load learning metrics.");
 
     return NextResponse.json({
       success: true,
       stats: {
         enrolledCount: classrooms.length,
         pendingAssignmentsCount,
-        unreadCount: unreadCount ?? 0,
+        unreadCount,
         completedLessonsCount: lessonsRes.count ?? 0,
         solvedProblemsCount: practiceRes.count ?? 0,
         savedProjectsCount: projectsRes.count ?? 0,

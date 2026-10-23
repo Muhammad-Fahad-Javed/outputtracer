@@ -17,7 +17,8 @@ import { loadCanonicalClassroomFiles } from "@/lib/classroom/classroomRun";
 import { resolveClassroomDocument } from "@/lib/classroom/documents";
 import { LOCAL_PREVIEW_STUDENT_ID } from "@/lib/classroom/localTeacherPreview";
 import { classroomRequestUser, isLocalPreviewActor } from "@/lib/classroom/requestUser";
-import { getClassroom } from "@/lib/classroom/classroomService";
+import { canReadHistory } from "@/lib/classroom/historyAccess";
+import { getClassroom, getAssignment, listCallerGroupIds } from "@/lib/classroom/classroomService";
 import {
   saveCodeVersion,
   listCodeVersions,
@@ -39,19 +40,27 @@ export async function GET(
   const access = await getClassroom(user.id, classId);
   if (!access.success) return NextResponse.json({ success: false, error: access.error }, { status: 403 });
 
+  const assignmentAccess = await getAssignment(user.id, classId, assignmentId);
+  if (!assignmentAccess.success) return NextResponse.json({ success: false, error: "Assignment access denied." }, { status: 403 });
+  const historyAccess = {
+    actorId: user.id, assignmentId, isTeacher: Boolean(access.isTeacher),
+    groupIds: access.isTeacher ? [] : await listCallerGroupIds(user.id, classId),
+  };
+
   const url = new URL(request.url);
   const diffParam = url.searchParams.get("diff");
   const targetStudentId = url.searchParams.get("studentId");
 
   // Diff mode
   if (diffParam) {
-    const [v1Id, v2Id] = diffParam.split(",");
+    const ids = diffParam.split(",");
+    if (ids.length !== 2 || ids.some(id => !id || id.length > 100)) return NextResponse.json({ error: "Provide two version IDs." }, { status: 400 });
+    const [v1Id, v2Id] = ids;
     const [v1, v2] = await Promise.all([getCodeVersion(v1Id), getCodeVersion(v2Id)]);
     if (!v1 || !v2) return NextResponse.json({ success: false, error: "One or both version IDs not found." }, { status: 404 });
 
-    // Access check: student can only diff their own versions
-    if (!access.isTeacher) {
-      if (v1.studentId !== user.id && v1.groupId == null) return NextResponse.json({ success: false, error: "Access denied." }, { status: 403 });
+    if (![v1, v2].every(version => canReadHistory(historyAccess, version))) {
+      return NextResponse.json({ success: false, error: "Access denied." }, { status: 403 });
     }
 
     const diff = computeVersionDiff(v1, v2);
