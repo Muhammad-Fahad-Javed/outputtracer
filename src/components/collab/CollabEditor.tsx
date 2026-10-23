@@ -1,13 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Editor, { OnMount } from "@monaco-editor/react";
+import Editor, { loader, OnMount } from "@monaco-editor/react";
+import * as monaco from "monaco-editor/editor/editor.api.js";
+import "monaco-editor/languages/definitions/cpp/register.js";
+import "monaco-editor/languages/definitions/python/register.js";
 import * as Y from "yjs";
 import { MonacoBinding } from "y-monaco";
 import type { Awareness } from "y-protocols/awareness";
 import type { CollabPeer } from "./useProjectCollab";
 import { colorForUser } from "./useProjectCollab";
 import { authorshipOfText } from "@/lib/classroom/authorship";
+
+// Yjs already imports the installed Monaco API. Use that same instance for
+// the React editor so classroom work does not wait on a second CDN runtime.
+loader.config({ monaco });
 
 interface CollabEditorProps {
   doc: Y.Doc;

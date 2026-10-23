@@ -229,7 +229,7 @@ console.log(`\n--- packaging -> ${tarPath} ---`);
 // The cache is also three quarters of the archive and is specific to the
 // machine that produced it. It is excluded; the server rebuilds what it
 // needs on the host.
-run("tar", ["-czf", tarPath, "--exclude=./cache", "-C", DIST_DIR, "."]);
+run("tar", ["-czf", tarPath, "--exclude=./cache", "--exclude=./dev", "-C", DIST_DIR, "."]);
 
 const hash = crypto.createHash("sha256").update(fs.readFileSync(tarPath)).digest("hex");
 fs.writeFileSync(`${tarPath}.sha256`, `${hash}  ${tarName}\n`);
