@@ -45,3 +45,10 @@ The authenticated live group test exposed a pre-existing schema gap: the submiss
 route uses atomic upsert but classroom_submissions has no matching owner uniqueness
 indexes. Migration 0018 adds the two indexes without deleting historical records.
 Both indexes were applied with user approval and confirmed in pg_indexes.
+
+The bounded authenticated production rerun passed for cpp, python, and asm8086:
+classroom language inheritance, group creation and membership, hidden-test
+withholding, collaboration-session entry files, actual execution, public tests,
+version saving, durable group submission, and teacher watch all succeeded.
+The NASM response also contained machine registers. Disposable fixtures use the
+previously authorized test accounts and remain available for inspection.
