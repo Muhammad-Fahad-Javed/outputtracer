@@ -6,9 +6,9 @@ Use this after deploying `cursor/full-audit-fixes-a40c` and, separately, after a
 
 - [x] Candidate build and smoke passed before promotion. The PM2 environment bug found during promotion is fixed in `5b9cb14`.
 - [ ] If you can do it on a spare host, kill the process after promotion and confirm `.next.prev` is restored. Do not do that on the only production box without a backup of `.next`.
-- [x] Homepage contains deployment id `7b31d54`.
+- [x] Homepage contains deployment id `7731c0a`.
 - [x] `https://www.outputtracer.com/` redirects to the apex.
-- [x] `/projects`, `/groups`, and `/admin` fail safely while Supabase is not configured.
+- [x] With Supabase configured, `/projects`, `/groups`, and `/admin` redirect anonymous users to login.
 
 ## Compiler
 

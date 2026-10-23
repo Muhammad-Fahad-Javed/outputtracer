@@ -30,7 +30,7 @@ Anonymous `curl -sI` against https://outputtracer.com/ on 21 October 2026, plus 
 | `/dashboard`, `/compiler` | n/a | No such pages | 404 | |
 | `/api` | Health | Public | 200 | Compiler version, not isolation mode |
 | `/api/config` | Browser | Public anon key | 200 | Anon key is meant to be public. Service role is not in this response (source returns URL and anon key only) |
-| `/robots.txt`, `/sitemap.xml` | Crawlers | | 200 | Verified after release `7b31d54` |
+| `/robots.txt`, `/sitemap.xml` | Crawlers | | 200 | Verified after release `7731c0a` |
 | `https://www.outputtracer.com/` | | | 308 to apex | Pass |
 | `http://outputtracer.com/` | | | 301 to HTTPS | Pass |
 

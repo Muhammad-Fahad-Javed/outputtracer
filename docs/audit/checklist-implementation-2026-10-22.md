@@ -2,7 +2,7 @@
 
 Baseline branch: `cursor/split-typecheck-deploy-daed`. Commit: `8fdee515246e9da8bac38fe4e6b0871918245c82`. Working tree was clean. No stashes existed, so there was no stash content to compare. The five paths named in section A had no uncommitted changes. Existing implementations are committed baseline work, not patches to discard.
 
-Recoverable source archives: `/tmp/outputtracer-checklist-baseline/source.tar` and `/tmp/outputtracer-checklist-working-source.tar.gz`. These are local temporary checkpoints; the Git history is the durable reference. Release `7b31d54` was deployed on 23 October 2026; migration 0016 is prepared but not yet confirmed in Supabase.
+Recoverable source archives: `/tmp/outputtracer-checklist-baseline/source.tar` and `/tmp/outputtracer-checklist-working-source.tar.gz`. These are local temporary checkpoints; the Git history is the durable reference. Release `7731c0a` was deployed on 23 October 2026 with Supabase connected; migration 0016 was applied successfully.
 
 ## Initial verification
 
@@ -16,7 +16,7 @@ Recoverable source archives: `/tmp/outputtracer-checklist-baseline/source.tar` a
 - Student dashboard counts only completed practice rows, queries unread counts independently of the recent ten, includes group submissions, and reports database failures rather than false zeros.
 - Progress reports use latest submitted/graded work per assignment; group members receive completion credit; genuine zero grades participate in averages. Grade queries are restricted to classroom submissions. Current group membership is used; historical membership remains a separate requirement.
 - Management console uses one cancellable loading path including invitations and progress on initial load.
-- Teacher self-service activation UI and caller-scoped SQL RPC. Migration 0016 preserves legacy approved storage values and suspended/revoked restrictions. It does not auto-promote denied applications, grant administrator access, or delete historical applications. SQL execution and live RLS verification are pending.
+- Teacher self-service activation UI and caller-scoped SQL RPC. Migration 0016 preserves legacy approved storage values and suspended/revoked restrictions. It does not auto-promote denied applications, grant administrator access, or delete historical applications. SQL execution succeeded; an authenticated disposable-user flow is still pending.
 - Teacher login directs inactive profiles to activation; learners retain their role choice. Existing administrator moderation services remain available.
 - Classroom joining-code randomness now uses Node crypto rather than Math.random. Rotation/expiry lifecycle is not claimed complete.
 - History diff checks both versions, assignment scope, and group ownership. Snapshots, grade operations, and feedback operations check assignment/submission ownership.
@@ -142,7 +142,7 @@ Recoverable source archives: `/tmp/outputtracer-checklist-baseline/source.tar` a
 - `0013_close_privilege_gaps.sql` — applied state unknown
 - `0014_practice_answer_integrity.sql` — applied state unknown
 - `0015_classroom_collab.sql` — applied state unknown
-- `0016_teacher_self_service.sql` — applied state unknown
+- `0016_teacher_self_service.sql` — applied successfully on 23 October 2026
 
 ## Verification after this implementation batch
 
@@ -152,8 +152,8 @@ Recoverable source archives: `/tmp/outputtracer-checklist-baseline/source.tar` a
 - TypeScript and ESLint were rerun after restoring the missing installed dependency. See final check status below.
 - Local disk pressure prevented a trustworthy local production build, so source was copied to `/home/ec2-user/outputtracer-candidate.FqZtvz` on EC2. The live checkout and its `.next` directory were not modified.
 - The isolated EC2 candidate passed `npm ci`, ESLint, a memory-capped standalone TypeScript check, and a full Turbopack production build. The final build was repeated after the last dashboard regression fix and completed successfully from the exact candidate source.
-- Release `7b31d54` is live on EC2. The public release verifier passed all route classes, C++ and assembly smoke tests passed, and the isolated Python run/trace worker is enabled after all 11 adversarial checks passed.
-- Migration 0016 is loaded in the authenticated Supabase SQL editor and awaits Supabase's final destructive-query confirmation. Until it is applied, teacher activation fails closed.
+- Release `7731c0a` is live on EC2 with Supabase configured. The public release verifier passed all route classes, C++ and assembly smoke tests passed, and the isolated Python run/trace worker remains enabled after all 11 adversarial checks passed.
+- Migration 0016 was applied successfully. The anon key can read `learn_courses`, the service role can read `profiles`, and auth-gated pages redirect anonymous users to login.
 - npm reported 15 dependency advisories (2 moderate, 9 high, 4 critical). No forced dependency changes were made as part of this functional batch.
 - The production host initially lacked Bubblewrap, so production policy could not provide private-filesystem isolation. Amazon Linux package `bubblewrap` 0.10.0 was installed. The first probe found `/usr/bin/ld` resolves through `/etc/alternatives`, which was absent inside the sandbox; the sandbox now mounts that symlink directory read-only without exposing all of `/etc`.
 - Production-mode EC2 integration now verifies that ordinary C++ compilation, execution and GDB tracing work under Bubblewrap, child processes do not inherit server secrets, source compilation cannot read an outside marker file, and outbound network access is blocked.

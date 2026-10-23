@@ -1,6 +1,6 @@
 # Test results
 
-Initial audit host: Linux, Node v22, `g++` 13.3, bubblewrap 0.9.0, gdb 15.1. Production follow-up on 23 October 2026 deployed release `7b31d54` to EC2 with Bubblewrap 0.10.0 and the isolated Python worker. Supabase migration 0016 still awaits final confirmation.
+Initial audit host: Linux, Node v22, `g++` 13.3, bubblewrap 0.9.0, gdb 15.1. Production follow-up on 23 October 2026 deployed release `7731c0a` to EC2 with Bubblewrap 0.10.0, the isolated Python worker, and Supabase configured. Migration 0016 was applied successfully.
 
 Bubblewrap and gdb were installed on this VM so the sandbox and tracer could be exercised. That install is local to the VM. It is not a change to the production host.
 

@@ -4,7 +4,7 @@ Review method: source and SQL reading, anonymous production requests, and unit t
 
 | ID | Severity | Status | Component | What was verified |
 | --- | --- | --- | --- | --- |
-| OT-001 | Critical (availability) | Fixed and deployed | `src/lib/sandbox.ts` `prlimitPrefix` | Live predict returned `CPP_OK` under Bubblewrap on release `7b31d54`. |
+| OT-001 | Critical (availability) | Fixed and deployed | `src/lib/sandbox.ts` `prlimitPrefix` | Live predict returned `CPP_OK` under Bubblewrap on release `7731c0a`. |
 | OT-006a | High | Migration written, not applied | `profiles` select | Policy text lets every signed-in user read every profile. Not executed against production. |
 | OT-006b | High | Migration written, not applied | `profiles.email` update | Policy allows it. Next profile API does not write email. Direct PostgREST was not attempted. |
 | OT-006c | High | Branch blanks the student payload; column revoke is in 0013 | Learn explanations | `normalizeQuestion` now returns `explanation: ""` when masking. Seed text still contains the answer on the server. |

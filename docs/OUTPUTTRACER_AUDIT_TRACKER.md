@@ -13,10 +13,10 @@ Authoritative status list for this repository. Older notes in `docs/audit/` desc
 | Secrets | No `.env` or `.env.local` in the workspace. Values were not printed. |
 | Local server | `npm run dev` on port 3000. `POST /api/predict` of a hello-world returned `status: success` and output `hi\n` on 21 Oct 2026. |
 | Production | `https://outputtracer.com/` returned 200. `https://www.outputtracer.com/` returned 308 to the apex. `http://outputtracer.com/` returned 301 to HTTPS. |
-| Production compiler | Release `7b31d54` returned `CPP_OK` through `/api/predict` under Bubblewrap on 23 Oct 2026. |
-| Database | No Supabase credentials in this environment. Applied migration history was not queried. |
+| Production compiler | Release `7731c0a` retains the verified Bubblewrap C++ and Docker Python execution paths. |
+| Database | Supabase URL, anon key, and service role are installed on EC2 in a mode-600 environment file. Migration 0016 was applied successfully. |
 | Production sandboxes | EC2 C++ uses Bubblewrap 0.10.0. Python uses a fresh locked-down Docker container per request; 11 adversarial checks passed. |
-| Production operations | Deployed and restarted PM2 on EC2. Python worker enabled on loopback. No DNS or TLS changes. Migration 0016 awaits Supabase's final confirmation. |
+| Production operations | Release `7731c0a` deployed with Supabase connected and the Python worker enabled on loopback. No DNS or TLS changes. |
 
 ## Status counts
 
@@ -26,8 +26,8 @@ Authoritative status list for this repository. Older notes in `docs/audit/` desc
 | PARTIALLY_DONE | 3 |
 | NOT_DONE | 9 |
 | BROKEN | 0 |
-| BLOCKED | 3 |
-| UNVERIFIED | 4 |
+| BLOCKED | 2 |
+| UNVERIFIED | 5 |
 | NOT_APPLICABLE | 1 |
 | Total | 48 |
 
@@ -36,8 +36,8 @@ Authoritative status list for this repository. Older notes in `docs/audit/` desc
 | ID | Category | Task | Status | Evidence | Next Action | Priority |
 | --- | --- | --- | --- | --- | --- | --- |
 | OT-001 | Compiler | C++ hello-world on this branch | DONE_VERIFIED | Local `POST /api/predict` returned `hi\n`. `src/lib/cppRunner.test.ts` passed in `npm test` (331 passed, 1 skipped). | Skip | Critical |
-| OT-002 | Compiler | C++ hello-world on production | DONE_VERIFIED | Live `/api/predict` returned `CPP_OK` on release `7b31d54`. | Monitor | Critical |
-| OT-003 | Deployment | Ship the repair branch | DONE_VERIFIED | Candidate checks passed and release `7b31d54` is live. PM2 directory persistence fix is in `5b9cb14`. | Use the guarded script for future releases | Critical |
+| OT-002 | Compiler | C++ hello-world on production | DONE_VERIFIED | Live `/api/predict` returned `CPP_OK`; release `7731c0a` uses the same verified execution code. | Monitor | Critical |
+| OT-003 | Deployment | Ship the repair branch | DONE_VERIFIED | Candidate and live checks passed; release `7731c0a` is live with Supabase configured. | Use the guarded script for future releases | Critical |
 | OT-004 | Security | Process-group timeout | DONE_VERIFIED | `src/lib/processGroup.test.ts` passed, including the wall-clock kill. | Skip | High |
 | OT-005 | Security | Bubblewrap on this VM | DONE_VERIFIED | Integration tests logged `isolation: "bwrap"`. The outside-include case compiled as an error. One isolation case remains skipped when no isolator exists; it did not run because bwrap is present. | Skip for this VM | Critical |
 | OT-006 | Security | Bubblewrap on the EC2 host | DONE_VERIFIED | Bubblewrap 0.10.0 passed production-mode compile/run/GDB plus secret, filesystem, and network isolation probes. | Monitor | Critical |
@@ -56,7 +56,7 @@ Authoritative status list for this repository. Older notes in `docs/audit/` desc
 | OT-019 | Classroom | Assignment submit control | DONE_VERIFIED | `AssignmentWorkspace.tsx` renders "Submit assignment". Route argument-order tests passed (`classroomRouteAuth.test.ts`, 12). The button was not clicked in a browser this pass. | Click submit with a real student session after deploy | High |
 | OT-020 | Classroom | Assignment test editor | PARTIALLY_DONE | The create form sends one public case and one hidden case. There is no list editor for many cases. | Add a repeatable case list only if teachers need more than one of each | Medium |
 | OT-021 | Classroom | Local teacher dashboard without Supabase | DONE_VERIFIED | Development with no credentials returns `canCreateClassroom: true`. Production mode returns 401 (`localTeacherPreview.test.ts`). Roster label is "Local teacher". | Skip. Do not treat this as a production login. | Medium |
-| OT-022 | Auth | Real student, teacher, admin, and OAuth sessions | BLOCKED | No Supabase URL, anon key, or service role in this environment. | Configure a staging project and sign in with each role | Critical |
+| OT-022 | Auth | Real student, teacher, admin, and OAuth sessions | UNVERIFIED | Supabase is connected and auth-gated routes redirect correctly. No disposable role-specific sessions or verified Google OAuth flow were exercised. | Sign in with each role and test redirects and permissions | Critical |
 | OT-023 | Security | Content-Security-Policy enforcement | PARTIALLY_DONE | Responses use `Content-Security-Policy-Report-Only` and still allow inline and eval script for Monaco and Next. Enforcing it was not attempted. | Browser-pass the IDE, then enforce | Medium |
 | OT-024 | Security | HSTS | NOT_DONE | HTTPS on the apex works through Cloudflare. `ENABLE_HSTS` was not turned on. | Set the flag only after the certificate policy is confirmed | Medium |
 | OT-025 | Collaboration | Removed member keeps an open socket | NOT_DONE | New joins are checked. An already-open socket is not closed on removal. Not changed. | Disconnect the room member when access is revoked | Medium |

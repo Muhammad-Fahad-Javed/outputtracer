@@ -10,8 +10,7 @@ These are not fixed, or they are fixed only in code and still need an operator.
 | --- | --- |
 | Apply migration 0013 | Needs a backup, a staging database, and explicit approval. Not applied. |
 | Apply migration 0014 | Same. Until it is applied, a signed-in browser can still insert `practice_submissions.is_correct` through PostgREST even though the app no longer does that. |
-| Apply migration 0016 | Loaded in the authenticated Supabase SQL editor and waiting at the final destructive-query confirmation. |
-| Real student, teacher, and admin sessions | No Supabase keys, no test accounts, no Google OAuth client in this environment. |
+| Real student, teacher, and admin sessions | Supabase is connected, but no disposable role-specific test accounts or verified Google OAuth flow were available in this pass. |
 
 ## Still open in the product
 

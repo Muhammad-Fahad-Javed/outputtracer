@@ -6,7 +6,7 @@ Status values: working and verified, partially working, broken, implemented but 
 | --- | --- | --- |
 | Homepage IDE shell | Working | Live 200. C++ run returned `CPP_OK` on 23 October 2026 |
 | C++ hello world, loops, output limit | Working and verified on the audit host after the fix | `cppRunner.test.ts` |
-| C++ on production | Working | Bubblewrap compile/run passed on release `7b31d54` |
+| C++ on production | Working | Bubblewrap compile/run passed on release `7731c0a` |
 | GDB trace | Implemented but unverified | No `gdb` on the audit host. Trace steps were 0. Live not retested after the argv fix |
 | Interactive terminal WebSocket | Implemented but unverified | `server.ts`, `wsTerminal.ts`. Not connected from a browser |
 | Python lab page | Working | Page 200; run returned `42` and trace returned ordered steps live |
