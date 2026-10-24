@@ -23,11 +23,11 @@ are not replaced. A submitted team's membership freeze survives reopening work.
 - Vitest: **421 passed, 2 skipped, 58 files passed**.
 - TypeScript: `npx tsc --noEmit` passed separately.
 - ESLint: `npx eslint src server.ts` passed without warnings.
-- Final production build: Next 16.3.1/Turbopack passed for **9bb856a**,
+- Final production build: Next 16.3.1/Turbopack passed for **16a1bfe**,
   generating 280 static pages. The isolated EC2 build used 650 MiB memory,
   1.4 GB swap and one CPU core; separate TypeScript and ESLint checks passed.
-  Release: `classroom-20261024-v5`. Verified archive SHA-256:
-  `33c7d21c6f0286dafec18e92f0840597f8c5049640179860104d0f0ecbdf1a11`.
+  Release: `classroom-20261025-v6`. Verified archive SHA-256:
+  `cd571bd26073e5e1f4d1b82608e53ca9f5b70183afa2ee8aecdd307c246194af`.
 - Authenticated production API checks: **31 passed**, plus **15 additional
   live access/Realtime checks**. Coverage includes role-cookie/RPC/metadata
   forgery denial, concurrent atomic teams, independent assignment membership,
@@ -73,7 +73,7 @@ assignments, documents, submissions, snapshots, grades, feedback and messages.
 This is a paged data export; it is not a transactionally frozen/PITR database backup.
 The reusable export command is `scripts/backup-classroom-data.mjs`.
 
-Production serves **9bb856a** (`classroom-20261024-v5`), pushed to GitHub main
+Production serves **16a1bfe** (`classroom-20261025-v6`), pushed to GitHub main
 and the implementation branch. Previous build and dependency trees are retained
 on EC2 for rollback. Approved migrations **0020–0024** were applied before release.
 A private preservation check verified all 16 original classes, 15 groups, 14
@@ -121,3 +121,24 @@ candidate smoke servers so they cannot deliver production notifications.
 An additional active collaboration-session suspension regression passed in the
 10-test collaboration file. The three service-worker privacy tests also passed
 independently, as did the migration acceptance script through 0026.
+
+## Browser-push follow-up — 25 October 2026
+
+The user explicitly authorized notification enrollment for the disposable QA
+account. The in-app browser's subscription was rejected by the existing supported
+provider allowlist. The initial generic error concealed that reason. Release
+**16a1bfe** now distinguishes unsupported providers, malformed endpoints and
+invalid encryption keys without exposing endpoint tokens, and unsubscribes a
+local device when server enrollment fails. Preference state is enabled only when
+both the local subscription and server preference exist. The destination
+allowlist and key requirements were not widened.
+
+Focused push validation and service-worker tests: **6 passed**, including one new
+error-classification/token-redaction regression. TypeScript, changed-file ESLint,
+production build and all 15 production route checks passed. The final browser
+retry visibly reported that its push service is unsupported. The QA account was
+signed out; the database reported **0 subscriptions** and **push disabled**, both
+before the retry and after logout. No device delivery is claimed: successful
+background push, notification-link opening and cleanup of a successfully enrolled
+device still need a compatible browser. Website notification and Realtime checks
+from the rollout remain valid independently.
