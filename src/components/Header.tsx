@@ -112,14 +112,14 @@ export default function Header() {
           ))}
         </nav>
 
+        <div className="flex items-center gap-2">
+          {!isLoading && signedIn && <NotificationBell />}
         <div className="hidden items-center gap-3 md:flex">
           {languageLabel&&<span className="rounded border border-[#DCDCDC] bg-[#F2F2F2] px-2 py-0.5 font-mono text-[11px] text-black">{languageLabel}</span>}
 
           {!isLoading && (
             signedIn ? (
               <div className="flex items-center gap-2.5">
-                <NotificationBell />
-
                 {/* User Account Dropdown */}
                 <div className="relative" ref={accountMenuRef}>
                   <button
@@ -205,6 +205,7 @@ export default function Header() {
         >
           {menuOpen ? <X size={19} /> : <Menu size={19} />}
         </button>
+        </div>
       </div>
 
       {menuOpen && (
