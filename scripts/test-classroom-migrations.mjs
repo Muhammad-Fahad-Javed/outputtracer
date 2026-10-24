@@ -59,6 +59,11 @@ if(!process.exitCode){
  assert((await q(`select * from claim_similarity_job()`)).length===0,'Multiple comparison jobs active');
  await db.exec(`grant usage on schema auth to authenticated; set request.jwt.claim.sub='${student}'; set role authenticated;`);
  assert((await q(`select count(*)::int n from classroom_notifications`))[0].n===1,'Notification RLS leaks another recipient');
+ const visibleClasses=await q(`select id from classrooms where id=$1`,[cid]);
+ assert(visibleClasses.length===1,'Enrolled student classroom read failed or recursed');
+ assert((await q(`select user_id from classroom_members where classroom_id=$1`,[cid])).length===3,'Enrolled student roster read failed or recursed');
+ assert((await q(`select id from classroom_assignments where id=$1`,[aid])).length===1,'Published assignment read failed or recursed');
+ let hiddenDenied=false;try{await q(`select hidden_test_cases from classroom_assignments where id=$1`,[aid]);}catch(e){hiddenDenied=e.code==='42501';}assert(hiddenDenied,'Direct hidden-test read was not denied at the column boundary');
  await db.exec(`reset role;`);
  await q(`update classroom_notifications set is_read=true where recipient_id=$1`,[student]);
  assert((await q(`select count(*)::int n from classroom_notifications where recipient_id=$1 and not is_read`,[student2]))[0].n===1,'Read state leaked to another recipient');
@@ -69,6 +74,11 @@ if(!process.exitCode){
  assert((await q(`select grade from classroom_submissions where group_id=$1`,[gid]))[0].grade==='70','Frozen team history cannot be graded after a student leaves');
  await q(`update teacher_profiles set status='suspended' where user_id=$1`,[teacher]);
  rejected=false;try{await create(await assignment(),'Denied',[student,student2]);}catch{rejected=true;}assert(rejected,'Suspended teacher could create teams');
+ await db.exec(`set request.jwt.claim.sub='${teacher}'; set role authenticated;`);
+ assert((await q(`select id from classrooms where id=$1`,[cid])).length===0,'Suspended teacher can read own class through membership');
+ assert((await q(`update classrooms set name='Unauthorized' where id=$1 returning id`,[cid])).length===0,'Suspended teacher can update class directly');
+ assert((await q(`select id from classroom_assignments where id=$1`,[aid])).length===0,'Suspended teacher can read published assignment through roster');
+ await db.exec(`reset role;`);
  const policy=(await q(`select qual from pg_policies where policyname='Teachers can manage classroom assignments'`))[0].qual;
  assert(policy.includes('is_verified_teacher'),'Owner RLS did not gain approval check');
  const granted=(await q(`select has_function_privilege('authenticated','public.activate_teacher_profile()','execute') allowed`))[0].allowed;

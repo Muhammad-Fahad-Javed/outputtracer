@@ -14,7 +14,7 @@ readable page/editor surfaces, contextual language labels, compact dashboards an
 resizable/collapsible editor panels, complete assignment-team rosters including offline members; private interactive NASM sessions using the
 existing 8086 engine, with waiting/resume and deterministic grading kept separate.
 
-Migrations: 0020–0025. Existing assignments retain legacy classroom groups and
+Migrations implemented: 0020–0026 (0026 awaiting production approval). Existing assignments retain legacy classroom groups and
 paste behavior; existing identifiers, documents, submissions, snapshots and grades
 are not replaced. A submitted team's membership freeze survives reopening work.
 
@@ -23,12 +23,19 @@ are not replaced. A submitted team's membership freeze survives reopening work.
 - Vitest: **421 passed, 2 skipped, 58 files passed**.
 - TypeScript: `npx tsc --noEmit` passed separately.
 - ESLint: `npx eslint src server.ts` passed without warnings.
-- Production builds: Next 16.3.1/Turbopack passed locally and for EC2 candidate
-  source commit **09ce303**, generating 280 static pages. The candidate build
-  used a bounded systemd unit with 650 MiB memory, approximately 1.4 GB swap and
-  one CPU core, with `NEXT_DEPLOYMENT_ID=classroom-20261024-v2`. It skipped the
-  in-build duplicate typecheck after the separate successful check. This build
-  does not include the subsequent pending service-worker update change.
+- Production builds: Next 16.3.1/Turbopack passed locally and on the bounded
+  EC2 candidate for **f3582b3**, generating 280 static pages. The final candidate
+  used 650 MiB memory, 1.4 GB swap and one CPU core with release id
+  `classroom-20261024-v3`; the in-build duplicate typecheck was skipped after
+  the separate successful check. Its SHA-256 verified archive is prepared on EC2.
+- Authenticated candidate API checks: **32 passed** initially; **31 passed** on
+  the final build (the one-time pending-teacher approval check was already satisfied).
+  These cover role forgery/RPC denial, atomic concurrent team creation, assignment
+  boundaries, paste policy/logging, isolated interactive NASM, teacher run restrictions,
+  immutable resubmission history, frozen teams, durable idempotent messages, recipient
+  read state, saved-work resumption/revocation fallback and opt-in push configuration.
+  Disposable sessions were issued through the authorized administration API;
+  password login CAPTCHA protection remains enabled.
 - `npm run test:migrations`: isolated PostgreSQL/WASM executes new migrations
   unchanged. Checks cover legacy data/defaults, rejected/atomic team writes,
   independent assignments, permanent freeze, direct membership mutation denial,
@@ -66,18 +73,22 @@ to grade previously submitted frozen-team work after a student leaves the
 classroom roster. It changes the validation function without replacing existing
 rows or changing grants and policies.
 
-The source branch was pushed at **09ce303**, including complete offline team
-rosters and clearer legacy classroom-group labels. A pending source change
-updates an existing service-worker registration on application mount so returning
-users receive the privacy-safe worker; it does not opt users into push. Large outbound
-artifact transfers stalled/truncated; the original SHA-256 check prevented use
-of the incomplete upload. The temporary unpublished GitHub draft used as an
-artifact-transfer fallback was deleted. Candidate dependencies and the successful
-bounded build are separate from the live application. Candidate API health is
-HTTP 200, but authenticated candidate QA is blocked at disposable-account sign-in;
-investigation is ongoing. Deployment, authenticated production
-regressions, actual Realtime delivery and browser-push opt-in/device/account-switch
-checks remain pending. No end-to-end production completion claim is made here.
+The source branch is pushed through **f3582b3**, including complete team rosters
+and refreshing existing service-worker registrations without opting users into push.
+Large outbound artifact transfers stalled/truncated; SHA verification rejected the
+incomplete upload. The temporary unpublished GitHub draft was deleted. A final
+build/archive and matching runtime dependencies are prepared separately on EC2.
+
+Additional live database tests identified historical recursive classroom/roster
+policies (42P17). Hidden-test privileges are already denied, but recursion masks
+that expected permission error. **0026** replaces the cycle with actor-scoped
+helpers, requires approval in reversed historical teacher-owner comparisons and
+reasserts hidden-column denial. The isolated PostgreSQL tests pass direct student
+class/roster/assignment reads, hidden-column rejection, and suspended-teacher
+read/update denial. It is staged in Supabase, awaiting confirmation before execution.
+Production promotion, worker completion, actual Realtime delivery and browser-push
+permission/device/account-switch checks remain pending; no production completion
+claim is made here.
 
 Typing restrictions are browser UI controls, not independent-authorship proof.
 Similarity scores support review and never change grades or claim AI detection.
@@ -89,4 +100,4 @@ candidate smoke servers so they cannot deliver production notifications.
 
 An additional active collaboration-session suspension regression passed in the
 10-test collaboration file. The three service-worker privacy tests also passed
-independently, as did the migration acceptance script through 0025.
+independently, as did the migration acceptance script through 0026.
