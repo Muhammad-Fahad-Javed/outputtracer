@@ -11,7 +11,7 @@ boilerplate exclusion, evidence passages and prior-self-work labels; durable ato
 messages/recipient notifications, opt-in push subscriptions/outbox and safe static
 service-worker caching; accessible-workspace history/resume and All Projects;
 readable page/editor surfaces, contextual language labels, compact dashboards and
-resizable/collapsible editor panels; private interactive NASM sessions using the
+resizable/collapsible editor panels, complete assignment-team rosters including offline members; private interactive NASM sessions using the
 existing 8086 engine, with waiting/resume and deterministic grading kept separate.
 
 Migrations: 0020–0024. Existing assignments retain legacy classroom groups and
@@ -48,8 +48,19 @@ assignments, documents, submissions, snapshots, grades, feedback and messages.
 This is a paged data export; it is not a transactionally frozen/PITR database backup.
 The reusable export command is `scripts/backup-classroom-data.mjs`.
 
-Production remains on release **1afda3f**. The permission-changing migrations are
-awaiting fresh browser-action confirmation. Deployment, authenticated production
+Production application remains on release **1afda3f**. The user approved and
+Supabase successfully applied migrations **0020–0024**. A subsequent private
+verification found all 16 original classes, 15 groups, 14 assignments, 3 documents,
+7 submissions and 13 immutable snapshots intact. Teacher profiles now comprise
+one approved instructor with provenance and four profiles pending administrator
+review. No real teacher was automatically reapproved.
+
+The source branch was pushed at 4fc8420; a small follow-up adds complete offline
+team rosters and clarifies the legacy classroom-group labels. Large outbound
+artifact transfers stalled/truncated; the original SHA-256 check prevented use
+of the incomplete upload. A temporary unpublished GitHub draft was also attempted
+as an artifact transfer fallback. Candidate dependencies are installed separately
+from the live application. A bounded candidate build is being prepared instead. Deployment, authenticated production
 regressions, actual Realtime delivery and browser-push opt-in/device/account-switch
 checks remain pending. No end-to-end production completion claim is made here.
 
@@ -60,3 +71,5 @@ Similarity jobs currently fail explicitly above 2,000 snapshots or 10 minutes ra
 than silently truncating the comparison corpus. Browser push requires valid VAPID
 configuration, permission and browser support. Background jobs are disabled for
 candidate smoke servers so they cannot deliver production notifications.
+
+An additional active collaboration-session suspension regression passed in the 10-test collaboration file.

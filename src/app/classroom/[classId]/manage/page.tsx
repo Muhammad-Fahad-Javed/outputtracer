@@ -417,7 +417,7 @@ export default function ClassroomManagePage({
                     onClick={() => setGroupModalOpen(true)}
                     className="inline-flex items-center gap-1.5 rounded-[4px] border border-[#DCDCDC] bg-white px-3.5 py-2 text-xs font-semibold text-black hover:bg-[#F2F2F2]"
                   >
-                    <Layers size={13} /> New Group
+                    <Layers size={13} /> Legacy Class Group
                   </button>
                 </div>
               </div>
@@ -558,7 +558,7 @@ export default function ClassroomManagePage({
               <div className="rounded-2xl border border-[#EAEAEA] bg-white shadow-xs overflow-hidden">
                 <div className="p-4 sm:p-5 border-b border-[#F0F0F0] flex items-center justify-between">
                   <h2 className="text-sm font-bold text-black flex items-center gap-1.5">
-                    <Layers size={16} /> Student Groups ({groups.length})
+                    <Layers size={16} /> Legacy Classroom Groups ({groups.length})
                   </h2>
                   {groups.length > 0 && (
                     <button
@@ -572,7 +572,7 @@ export default function ClassroomManagePage({
 
                 {groups.length === 0 ? (
                   <div className="p-8 text-center text-xs text-[#777777]">
-                    No collaborative groups created yet. Create groups for multi-student coding projects.
+                    No legacy classroom groups. For new group assignments, open the assignment and create its team from Teacher tools.
                   </div>
                 ) : (
                   <div className="max-h-[32rem] overflow-y-auto divide-y divide-[#F0F0F0]">
