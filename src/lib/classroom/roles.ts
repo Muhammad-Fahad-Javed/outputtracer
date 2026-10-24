@@ -1,3 +1,4 @@
+import { isAuthConfigured } from "@/lib/supabase/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsAdmin } from "@/lib/learn/db";
 import {
@@ -49,18 +50,20 @@ export async function checkIsVerifiedTeacher(userId: string | undefined): Promis
     try {
       const { data, error } = await admin
         .from("teacher_profiles")
-        .select("status")
+        .select("status, approved_by")
         .eq("user_id", userId)
         .eq("status", "approved")
         .maybeSingle();
 
-      if (!error && data?.status === "approved") {
+      if (!error && data?.status === "approved" && data.approved_by) {
         return true;
       }
     } catch {
       // Handled by memory fallback below
     }
   }
+
+  if (isAuthConfigured()) return false;
 
   // 2. In-memory check for tests / offline
   const memory = memoryTeacherProfiles.get(userId);

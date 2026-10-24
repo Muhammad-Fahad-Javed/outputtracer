@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import {removeBrowserPush} from "@/lib/pushClient";
 import type { User, Session } from "@supabase/supabase-js";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
@@ -53,7 +54,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
 
       // Listen for auth changes (sign in, sign out, token refresh)
+      let previousUserId=initialSession?.user.id;
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+        if(previousUserId&&previousUserId!==newSession?.user.id){
+          // Invalidate this device on account switches, including logout in another tab.
+          // Unsubscribed endpoints are retired by the outbox's expired-device cleanup.
+          void navigator.serviceWorker?.getRegistration('/').then(r=>r?.pushManager?.getSubscription()).then(s=>s?.unsubscribe()).catch(()=>{});
+        }
+        previousUserId=newSession?.user.id;
         setSession(newSession);
         setUser(newSession?.user ?? null);
         setIsLoading(false);
@@ -66,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     const supabase = await getSupabaseBrowser();
+    try{await removeBrowserPush();}catch{const r=await navigator.serviceWorker?.getRegistration("/");const sub=await r?.pushManager?.getSubscription();await sub?.unsubscribe();}
     if (supabase) await supabase.auth.signOut();
     setUser(null);
     setSession(null);

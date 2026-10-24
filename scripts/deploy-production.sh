@@ -411,7 +411,7 @@ cleanup_smoke() {
 }
 trap cleanup_smoke EXIT
 
-NODE_ENV=production PORT="$DEPLOY_PORT" NEXT_DIST_DIR="$CANDIDATE_DIR" \
+DISABLE_BACKGROUND_JOBS=1 NODE_ENV=production PORT="$DEPLOY_PORT" NEXT_DIST_DIR="$CANDIDATE_DIR" \
   NEXT_DEPLOYMENT_ID="$TARGET_SHORT" \
   node node_modules/tsx/dist/cli.mjs server.ts >/tmp/outputtracer-smoke.log 2>&1 &
 SMOKE_PID=$!

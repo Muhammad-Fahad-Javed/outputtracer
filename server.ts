@@ -4,6 +4,7 @@
 // server on the `/ws/terminal` path. All other traffic is handled by
 // Next.js as usual.
 
+import {startBackgroundJobs} from "./src/lib/backgroundJobs.js";
 import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
@@ -57,6 +58,7 @@ const app = next({ dev });
 const handle = app.getRequestHandler();
 
 app.prepare().then(() => {
+  startBackgroundJobs();
   const server = createServer((req, res) => {
     const parsedUrl = parse(req.url!, true);
     handle(req, res, parsedUrl);

@@ -1,0 +1,14 @@
+"use client";
+import {useState} from 'react';
+import type {AsmExecutionStatus} from '@/lib/asm/types';
+export default function DosTerminal({status,busy,error,onInput,onStart,onStop,onReset,privateRun=false}:{status?:AsmExecutionStatus|null;busy:boolean;error?:string|null;onInput:(text:string)=>Promise<void>;onStart?:()=>void;onStop?:()=>void;onReset?:()=>void;privateRun?:boolean}){
+ const [line,setLine]=useState('');const waiting=status?.state==='waiting_for_input';const mode=status?.inputRequest;
+ async function send(text:string){await onInput(text);setLine('');}
+ return <section data-surface="dark" className="flex h-full min-h-40 min-w-0 flex-1 flex-col bg-[#111] font-mono text-xs text-[#ddd]">
+ <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#333] px-3 py-2"><span>DOS-style terminal · 8086 engine{privateRun?' · Your private run':''}</span><div className="flex gap-3">{onStart&&<button disabled={busy} onClick={onStart} className="text-[#89d185] disabled:opacity-50">Start new run</button>}{onReset&&<button disabled={busy} onClick={onReset}>Reset</button>}{onStop&&<button disabled={busy||!status} onClick={onStop} className="text-red-300">Stop</button>}</div></div>
+ <pre aria-label="DOS program output" role="log" aria-live="polite" className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-3">{status?.stdout||(!status?'Run your program to start.':'')}</pre>
+ {(error||status?.error)&&<p role="alert" className="px-3 py-2 text-red-300">{error||status?.error}</p>}
+ <p role="status" className="px-3 py-1 text-[#aaa]">{busy?'Executing…':waiting?mode==='line'?'Waiting for a line. Press Enter to submit.':mode==='character_no_echo'?'Waiting for one character (no echo).':'Waiting for one character.':status?.state==='terminated'?`Program finished · exit code ${status.exitCode||0}`:status?.state||'Ready'}</p>
+ <form onSubmit={e=>{e.preventDefault();if(waiting&&mode==='line'&&!busy)void send(line);}} className="flex shrink-0 items-center gap-2 border-t border-[#333] p-2"><label htmlFor={privateRun?'assignment-dos-input':'dos-input'} className="text-[#89d185]">&gt;</label><input id={privateRun?'assignment-dos-input':'dos-input'} aria-label="DOS keyboard input" autoComplete="off" spellCheck={false} disabled={!waiting||busy} type={mode==='character_no_echo'?'password':'text'} value={line} onChange={e=>setLine(e.target.value)} onKeyDown={e=>{if(waiting&&!busy&&mode!=='line'){const text=e.key==='Enter'?'\r':e.key==='Backspace'?'\b':e.key.length===1?e.key:null;if(text!==null){e.preventDefault();void send(text);}}}} maxLength={4096} placeholder={waiting?'Type program input…':'Input is enabled when the program requests it'} className="min-w-0 flex-1 bg-transparent p-1 text-[#eee] outline-none disabled:opacity-50"/>{mode==='line'&&<button disabled={!waiting||busy} className="rounded border border-[#444] px-3 py-1 disabled:opacity-50">Enter</button>}</form>
+ </section>;
+}

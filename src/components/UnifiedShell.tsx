@@ -322,6 +322,8 @@ export default function UnifiedShell() {
   const [lang, setLang] = useState<SupportedLanguage>("cpp");
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>("output");
   const [panelHeight, setPanelHeight] = useState(280);
+  const [panelCollapsed,setPanelCollapsed]=useState(false);
+  useEffect(()=>{const frame=requestAnimationFrame(()=>{let ratio=.3;try{const saved=Number(localStorage.getItem('workspace-output-ratio'));if(saved>=.15&&saved<=.8)ratio=saved;}catch{}setPanelHeight(Math.max(160,(window.innerHeight-120)*ratio));});return()=>cancelAnimationFrame(frame);},[]);
   const [isDragging, setIsDragging] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [roleHomeLink, setRoleHomeLink] = useState<{ href: string; label: string } | null>(null);
@@ -342,7 +344,7 @@ export default function UnifiedShell() {
 
   // Stdin & interactive output state
   const [stdinInput, setStdinInput] = useState("");
-  const [typedInput, setTypedInput] = useState("hello");
+  const [typedInput, setTypedInput] = useState("");
   const [selectedTraceStep, setSelectedTraceStep] = useState<number>(5);
   const [downloadFormat, setDownloadFormat] = useState<".txt" | ".csv" | ".pdf" | ".png">(".csv");
 
@@ -497,7 +499,7 @@ export default function UnifiedShell() {
 
     if (newLang === "assembly") {
       setDownloadFormat(".png");
-      if (panelHeight < 400) setPanelHeight(420);
+
     } else {
       setDownloadFormat(".csv");
     }
@@ -505,6 +507,7 @@ export default function UnifiedShell() {
 
   // Resizable bottom panel drag logic
   const handleMouseDown = () => {
+    setPanelCollapsed(false);
     setIsDragging(true);
   };
 
@@ -514,6 +517,7 @@ export default function UnifiedShell() {
       const windowHeight = window.innerHeight;
       const newHeight = Math.max(160, Math.min(windowHeight - 140, windowHeight - e.clientY));
       setPanelHeight(newHeight);
+      try{localStorage.setItem("workspace-output-ratio",String(newHeight/(windowHeight-120)));}catch{}
     };
 
     const handleMouseUp = () => {
@@ -637,6 +641,11 @@ export default function UnifiedShell() {
     }
   };
 
+  const handleAsmInput = async (input:string) => {
+    if(!asmSessionId||!asmSessionToken)return;setAsmIsLoading(true);setAsmErrorMessage(null);
+    try{const r=await fetch('/api/asm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'input',sessionId:asmSessionId,sessionToken:asmSessionToken,input})});const d=await r.json();if(!r.ok||!d.success)throw Error(d.error||'Input failed.');setAsmStatus(d.status);updateLineHighlight(d.status.currentInstruction?.sourceLine);}catch(e){setAsmErrorMessage(e instanceof Error?e.message:'Input failed.');}finally{setAsmIsLoading(false);}
+  };
+  const handleAsmStop=async()=>{if(asmSessionId)await fetch('/api/asm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'stop',sessionId:asmSessionId,sessionToken:asmSessionToken})});setAsmSessionId(null);setAsmSessionToken(null);setAsmStatus(prev=>({...prev,state:'halted',canStepForward:false,inputRequest:undefined}));};
   const handleAsmStep = async () => {
     if (!asmSessionId) {
       await handleAsmAssemble();
@@ -933,7 +942,7 @@ export default function UnifiedShell() {
   };
 
   return (
-    <div
+    <div data-surface="dark"
       className="flex h-screen w-full flex-col overflow-hidden bg-[#0A0A0A] text-[#CCCCCC] antialiased select-none"
       style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}
     >
@@ -1111,7 +1120,7 @@ export default function UnifiedShell() {
           )}
 
           <Link
-            href="/projects"
+            href="/projects/resume"
             className="rounded-[3px] px-2 py-1 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#2E2E2E] hover:text-white transition-colors"
           >
             Projects
@@ -1158,7 +1167,7 @@ export default function UnifiedShell() {
                   onClick={() => setUserMenuOpen(false)}
                   className="block px-3 py-1 text-xs text-[#CCCCCC] hover:bg-[#252526] hover:text-white"
                 >
-                  My Projects
+                  All Projects
                 </Link>
                 <button
                   type="button"
@@ -1324,17 +1333,17 @@ export default function UnifiedShell() {
       </div>
 
       {/* 6. Bottom Panel with Language-Aware Tabs (Default 280px) */}
-      <div className="flex shrink-0 flex-col overflow-hidden bg-[#121212]" style={{ height: `${panelHeight}px` }}>
+      <div className="flex shrink-0 flex-col overflow-hidden bg-[#121212]" style={{ height: `${panelCollapsed?32:panelHeight}px` }}>
         {/* Tab Strip */}
         <div className="flex h-8 shrink-0 items-center justify-between border-b border-[#2E2E2E] bg-[#181818] px-2 select-none text-[12px]">
           <div className="flex h-full items-center gap-1 overflow-x-auto">
-            {config.tabs.map((tab) => {
+            <button type="button" className="shrink-0 px-2 text-[#aaa]" onClick={()=>setPanelCollapsed(v=>!v)}>{panelCollapsed?"Expand":"Collapse"}</button>{config.tabs.map((tab) => {
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {setActiveTab(tab.id);setPanelCollapsed(false);}}
                   className={`flex h-full items-center gap-1.5 border-b-2 px-3 text-[12px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                     isActive
                       ? "border-white bg-[#121212] text-white"
@@ -1429,6 +1438,8 @@ export default function UnifiedShell() {
               activeTab={activeTab}
               onTabChange={setActiveTab}
               onRun={handleAsmRun}
+              onInput={handleAsmInput}
+              onStop={handleAsmStop}
               onStep={handleAsmStep}
               onReset={handleAsmReset}
               onClear={handleAsmClear}
@@ -1444,7 +1455,7 @@ export default function UnifiedShell() {
               <div className="space-y-1 overflow-y-auto flex-1">
                 {lang === "assembly" ? (
                   <pre className="text-[#CCCCCC] whitespace-pre-wrap font-mono">
-                    {asmStatus.stdout || "Z:\\>mount c C:\\OutputTracer\nDrive C is mounted as local directory C:\\OutputTracer\\\nZ:\\>c:\nC:\\>nasm -f bin main.asm -o main.com\nC:\\>main.com\nenter text (max 99 chars): hello\n"}
+                    {asmStatus.stdout || "Run your program to see output."}
                   </pre>
                 ) : lang === "cpp" ? (
                   <pre className="text-[#CCCCCC] whitespace-pre-wrap font-mono">

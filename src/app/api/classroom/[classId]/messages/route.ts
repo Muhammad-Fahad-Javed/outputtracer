@@ -55,6 +55,7 @@ export async function POST(
   try {
     const body = await req.json();
     const result = await sendMessage(classId, user.id, {
+      clientRequestId: typeof body.clientRequestId === "string" ? body.clientRequestId : undefined,
       recipientId: body.recipientId || undefined,
       content: body.content,
     });

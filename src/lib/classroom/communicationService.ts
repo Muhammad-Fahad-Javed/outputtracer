@@ -470,6 +470,7 @@ export async function listUserNotifications(
     }
   }
 
+  if(isAuthConfigured())return {success:false};
   const list = memNotifications.get(recipientId) ?? [];
   return { success: true, notifications: list };
 }
@@ -481,17 +482,18 @@ export async function markNotificationAsRead(
   const admin = createAdminClient();
   if (admin) {
     try {
-      await admin
+      const {error}=await admin
         .from("classroom_notifications")
         .update({ is_read: true })
         .eq("id", notificationId)
         .eq("recipient_id", recipientId);
-      return { success: true };
+      return { success: !error };
     } catch {
       // Fall through
     }
   }
 
+  if(isAuthConfigured())return {success:false};
   const list = memNotifications.get(recipientId) ?? [];
   const target = list.find((n) => n.id === notificationId);
   if (target) {

@@ -74,6 +74,8 @@ export async function ensureLocalPreviewTeacher(): Promise<{ id: string; email: 
       await addClassroomMember(classId, LOCAL_PREVIEW_STUDENT_ID, "student");
     }
     _setMemoryMemberLabel(classId, LOCAL_PREVIEW_STUDENT_ID, "Sample student", "student@localhost");
+    if(!roster.members?.some(m=>m.userId==='local-preview-student-2'))await addClassroomMember(classId,'local-preview-student-2','student');
+    _setMemoryMemberLabel(classId,'local-preview-student-2','Second sample student','student2@localhost');
   }
 
   return { id: LOCAL_PREVIEW_TEACHER_ID, email: LOCAL_PREVIEW_TEACHER_EMAIL };

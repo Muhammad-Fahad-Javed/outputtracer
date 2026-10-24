@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import {
-  getTeacherApplicationForUser,
+  getTeacherApplicationForUser, submitTeacherApplication,
 } from "@/lib/classroom/teacherService";
 import { getUserCapabilities } from "@/lib/classroom/roles";
-import { activateTeacherProfile } from "@/lib/classroom/teacherActivation";
+
 
 export async function GET() {
   let user = null;
@@ -33,12 +33,13 @@ export async function GET() {
   });
 }
 
-// Legacy URL retained for bookmarked clients; activation no longer submits an application.
-export async function POST() {
+export async function POST(request: Request) {
   const supabase = await createServerClient();
   if (!supabase) return NextResponse.json({ error: "Authentication unavailable" }, { status: 503 });
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return NextResponse.json({ error: "Sign in required" }, { status: 401 });
-  const result = await activateTeacherProfile(supabase);
-  return NextResponse.json(result, { status: result.success ? 200 : 409 });
+  let body;
+  try { body = await request.json(); } catch { return NextResponse.json({error:"Application details are required."},{status:400}); }
+  const result = await submitTeacherApplication(user.id, body);
+  return NextResponse.json(result, { status: result.success ? 200 : 400 });
 }

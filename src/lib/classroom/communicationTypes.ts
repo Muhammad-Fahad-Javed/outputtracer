@@ -122,6 +122,7 @@ export interface ClassroomMessage {
 }
 
 export interface SendMessageInput {
+  clientRequestId?: string;
   recipientId?: string; // null/undefined = group message
   content: string;
 }

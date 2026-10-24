@@ -30,7 +30,7 @@ export async function GET(
   // Students can only see their own snapshot
   if (!canReadHistory({
     actorId: user.id, assignmentId, isTeacher: Boolean(access.isTeacher),
-    groupIds: access.isTeacher ? [] : await listCallerGroupIds(user.id, classId),
+    groupIds: access.isTeacher ? [] : await listCallerGroupIds(user.id, classId, assignmentId),
   }, snapshot)) {
     return NextResponse.json({ success: false, error: "Access denied." }, { status: 403 });
   }

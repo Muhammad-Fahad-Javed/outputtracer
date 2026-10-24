@@ -63,9 +63,10 @@ describe("navigation for the signed-in role", () => {
       role: "learner",
       ...teacher,
     }).map((link) => link.label);
-    expect(labels).toEqual(["C++", "Practice", "Learn", "My Classes"]);
+    expect(labels).toEqual(["Editor", "Projects", "Practice", "Learn", "My Classes"]);
     expect(accountMenuFor({ role: "learner", ...teacher }).map((item) => item.label)).toEqual([
       "My Profile",
+      "All Projects",
       "Student Dashboard",
       "Switch to teacher",
     ]);
@@ -74,7 +75,7 @@ describe("navigation for the signed-in role", () => {
   it("shows the studio to an approved teacher session and not the learner menu", () => {
     expect(
       navLinksFor({ signedIn: true, role: "teacher", ...teacher }).map((link) => link.href)
-    ).toEqual(["/", "/classroom/teacher"]);
+    ).toEqual(["/", "/projects/resume", "/classroom/teacher"]);
     expect(accountMenuFor({ role: "teacher", ...teacher }).map((item) => item.label)).not.toContain(
       "Student Dashboard"
     );

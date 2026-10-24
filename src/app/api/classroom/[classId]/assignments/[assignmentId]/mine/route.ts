@@ -34,7 +34,7 @@ export async function GET(
 
   const admin = createAdminClient();
   if (!admin) {
-    const groupIds = await listCallerGroupIds(user.id, classId);
+    const groupIds = await listCallerGroupIds(user.id, classId, assignmentId);
     const submission = readMemorySubmission(assignmentId, user.id, groupIds);
     return NextResponse.json({ success: true, submission });
   }
@@ -53,7 +53,7 @@ export async function GET(
 
   let row = personal;
   if (!row) {
-    const groupIds = await listCallerGroupIds(user.id, classId);
+    const groupIds = await listCallerGroupIds(user.id, classId, assignmentId);
     if (groupIds.length > 0) {
       const { data: grouped, error: groupError } = await admin
         .from("classroom_submissions")

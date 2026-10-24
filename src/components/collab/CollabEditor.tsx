@@ -27,6 +27,8 @@ interface CollabEditorProps {
   /** Color the characters each student typed. Used on the teacher watch view. */
   showAuthorship?: boolean;
   language?: "cpp" | "python" | "asm";
+  inputPolicy?: "typing_only" | "paste_allowed";
+  onPasteCode?: (characterCount:number)=>void;
 }
 
 export default function CollabEditor({
@@ -39,7 +41,20 @@ export default function CollabEditor({
   onEditor,
   showAuthorship = false,
   language = "cpp",
+  inputPolicy = "paste_allowed",
+  onPasteCode,
 }: CollabEditorProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [inputNotice,setInputNotice]=useState("");
+  useEffect(()=>{const root=rootRef.current;if(!root||readOnly)return;
+    const paste=(event:ClipboardEvent)=>{if(inputPolicy==="typing_only"){event.preventDefault();event.stopImmediatePropagation();setInputNotice("Typing-only assignment: paste is disabled by your teacher.");}};
+    const before=(event:InputEvent)=>{if(inputPolicy==="typing_only" && ["insertFromPaste","insertFromDrop"].includes(event.inputType)){event.preventDefault();event.stopImmediatePropagation();}};
+    const drop=(event:DragEvent)=>{event.preventDefault();event.stopImmediatePropagation();setInputNotice("File import and drag/drop are unavailable in this assignment editor.");};
+    root.addEventListener("paste",paste,true);root.addEventListener("beforeinput",before,true);root.addEventListener("drop",drop,true);
+    return()=>{root.removeEventListener("paste",paste,true);root.removeEventListener("beforeinput",before,true);root.removeEventListener("drop",drop,true);};
+  },[readOnly,inputPolicy,onPasteCode]);
+  const pastePolicyRef=useRef({inputPolicy,onPasteCode});
+  useEffect(()=>{pastePolicyRef.current={inputPolicy,onPasteCode};},[inputPolicy,onPasteCode]);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
@@ -66,6 +81,18 @@ export default function CollabEditor({
       const model = editor.getModel();
       if (model) monaco.editor.setModelLanguage(model, "nasm");
     }
+    // Covers Monaco context-menu/Clipboard API paste paths that do not dispatch
+    // a native paste event. Normal typing, composition, undo and navigation remain intact.
+    const pasteSubscription=editor.onDidPaste(event=>{
+      if(pastePolicyRef.current.inputPolicy==='typing_only'){
+        queueMicrotask(()=>editor.trigger('input-policy','undo',null));
+        setInputNotice('Typing-only assignment: paste is disabled by your teacher.');
+      }else{
+        const count=editor.getModel()?.getValueInRange(event.range).length||0;
+        if(count)pastePolicyRef.current.onPasteCode?.(count);
+      }
+    });
+    editor.onDidDispose(()=>pasteSubscription.dispose());
     editorRef.current = editor;
     monacoRef.current = monaco;
     onEditor?.(editor);
@@ -153,7 +180,8 @@ export default function CollabEditor({
     .join("\n");
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-[#1E1E1E]">
+    <div ref={rootRef} className="relative flex h-full flex-col overflow-hidden bg-[#1E1E1E]">
+      {inputNotice&&<button role="status" onClick={()=>setInputNotice("")} className="shrink-0 bg-[#423a1a] p-2 text-left text-xs text-white">{inputNotice} · Dismiss</button>}
       <style>{`
         .yRemoteSelection { background-color: rgba(97, 175, 239, 0.2); }
         .yRemoteSelectionHead {

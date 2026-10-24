@@ -44,7 +44,7 @@ export async function GET(
   if (!assignmentAccess.success) return NextResponse.json({ success: false, error: "Assignment access denied." }, { status: 403 });
   const historyAccess = {
     actorId: user.id, assignmentId, isTeacher: Boolean(access.isTeacher),
-    groupIds: access.isTeacher ? [] : await listCallerGroupIds(user.id, classId),
+    groupIds: access.isTeacher ? [] : await listCallerGroupIds(user.id, classId, assignmentId),
   };
 
   const url = new URL(request.url);

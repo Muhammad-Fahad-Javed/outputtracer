@@ -1,3 +1,4 @@
+import { isAuthConfigured } from "@/lib/supabase/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsAdmin } from "@/lib/learn/db";
 import {
@@ -146,11 +147,11 @@ export async function submitTeacherApplication(
         try {
           const { data: profile } = await admin
             .from("profiles")
-            .select("display_name, email, full_name")
+            .select("display_name, email")
             .eq("id", userId)
             .maybeSingle();
 
-          const applicantName = profile?.full_name || profile?.display_name || "Applicant";
+          const applicantName = profile?.display_name || "Applicant";
           const applicantEmail = input.institutionEmail || profile?.email || "Unknown Email";
           const siteUrl = resolveSiteUrl();
 
@@ -174,6 +175,7 @@ export async function submitTeacherApplication(
     }
   }
 
+  if(isAuthConfigured())return {success:false,error:"Teacher application database unavailable."};
   // Fallback in-memory implementation for test environments
   const existingMemory = memoryApplications.find(
     (a) => a.userId === userId && (a.status === "pending_review" || a.status === "approved")
@@ -240,6 +242,7 @@ export async function getTeacherApplicationForUser(
     }
   }
 
+  if(isAuthConfigured())return null;
   const memory = memoryApplications
     .filter((a) => a.userId === userId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
@@ -362,7 +365,7 @@ export async function decideTeacherApplicationAdmin(
 
       // 3. Update or create teacher profile and app_roles based on decision
       if (newStatus === "approved") {
-        await admin.from("teacher_profiles").upsert({
+        const profileWrite=await admin.from("teacher_profiles").upsert({
           user_id: applicantUserId,
           status: "approved",
           application_id: applicationId,
@@ -370,6 +373,8 @@ export async function decideTeacherApplicationAdmin(
           verified_at: now,
           updated_at: now,
         });
+
+        if(profileWrite.error)return {success:false,error:"Could not save teacher approval. Retry the review."};
 
         // Also sync role in app_roles table
         await admin.from("app_roles").upsert(
@@ -408,13 +413,13 @@ export async function decideTeacherApplicationAdmin(
         try {
           const { data: applicantProfile } = await admin
             .from("profiles")
-            .select("display_name, email, full_name")
+            .select("display_name, email")
             .eq("id", applicantUserId)
             .maybeSingle();
 
           const recipientEmail = (targetApp.institution_email as string) || applicantProfile?.email;
           if (recipientEmail) {
-            const recipientName = applicantProfile?.full_name || applicantProfile?.display_name || "Educator";
+            const recipientName = applicantProfile?.display_name || "Educator";
             const siteUrl = resolveSiteUrl();
             const actionUrl = newStatus === "approved" ? `${siteUrl}/classroom` : `${siteUrl}/classroom/teach/apply`;
 
@@ -441,6 +446,7 @@ export async function decideTeacherApplicationAdmin(
     }
   }
 
+  if(isAuthConfigured())return {success:false,error:"Teacher review database unavailable."};
   // Memory fallback for tests
   const idx = memoryApplications.findIndex((a) => a.id === applicationId);
   if (idx === -1) {

@@ -19,6 +19,6 @@ export async function canAccessSubmission(input: {
   const snapshot = await getSubmissionSnapshot(input.submissionId);
   if (!snapshot) return false;
   return canReadHistory({ ...input,
-    groupIds: input.isTeacher ? [] : await listCallerGroupIds(input.actorId, input.classroomId),
+    groupIds: input.isTeacher ? [] : await listCallerGroupIds(input.actorId, input.classroomId, input.assignmentId),
   }, snapshot);
 }

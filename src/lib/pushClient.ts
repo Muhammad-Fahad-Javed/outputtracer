@@ -1,0 +1,2 @@
+/** Call before destroying the signed-in session; remove only this browser device. */
+export async function removeBrowserPush(){if(!('serviceWorker' in navigator))return;const r=await navigator.serviceWorker.getRegistration('/');const s=await r?.pushManager?.getSubscription();if(s){const response=await fetch('/api/notifications/push',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:s.endpoint})});if(!response.ok)throw Error('Could not remove this browser notification subscription.');await s.unsubscribe();}}

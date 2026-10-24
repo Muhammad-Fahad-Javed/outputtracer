@@ -1,3 +1,5 @@
+"use client";
+import {usePathname} from "next/navigation";
 import Link from "next/link";
 
 const FOOTER_LINKS = [
@@ -9,8 +11,11 @@ const FOOTER_LINKS = [
 ];
 
 export default function Footer() {
+  const path=usePathname();
+  const compact=/^\/(classroom|projects|groups|profile|admin|p)(\/|$)/.test(path||'') || path?.startsWith('/learn/dashboard');
+  if(compact)return <footer data-surface="light" className="shrink-0 border-t px-5 py-2 text-[11px] text-gray-600"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2"><span>OutputTracer · Fairline Technologies · FAHAD & AADIL</span><nav aria-label="Footer" className="flex gap-4"><Link href="/projects">All Projects</Link><Link href="/learn">Learn</Link><Link href="/about">About</Link></nav></div></footer>;
   return (
-    <footer className="border-t border-[#DCDCDC]">
+    <footer data-surface="light" className="border-t border-[#DCDCDC]">
       <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div>

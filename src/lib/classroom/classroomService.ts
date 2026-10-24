@@ -1,4 +1,5 @@
 import { classroomLanguage, isClassroomLanguage, CLASSROOM_LANGUAGES } from "./languages";
+import { memoryTeamFrozen } from "./submissionMemory";
 import { randomInt } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAuthConfigured } from "@/lib/supabase/env";
@@ -83,6 +84,9 @@ function toAssignment(data: object, isTeacher: boolean): ClassroomAssignment {
     timeLimitMs: policy.timeLimitMs,
     maxPoints: Number(row.max_points ?? row.maxPoints ?? 100),
     groupMode: Boolean(row.group_mode ?? row.groupMode),
+    groupScope: (row.group_scope ?? row.groupScope ?? "legacy_class") as "assignment" | "legacy_class",
+    requiredGroupSize: Number(row.required_group_size ?? row.requiredGroupSize ?? 2),
+    inputPolicy: (row.input_policy ?? row.inputPolicy ?? "paste_allowed") as "typing_only" | "paste_allowed",
     isPublished: Boolean(row.is_published ?? row.isPublished),
     submissionCount: typeof submissionCount === "number" ? submissionCount : undefined,
     createdAt: String(row.created_at ?? row.createdAt),
@@ -131,7 +135,7 @@ async function mutateGroupMemberAdmin(
 ): Promise<{ handled: boolean; success: boolean; error?: string }> {
   const { data: group, error: groupError } = await admin
     .from("classroom_groups")
-    .select("id, classroom_id")
+    .select("id, classroom_id, assignment_id")
     .eq("id", groupId)
     .maybeSingle();
   if (groupError) return { handled: false, success: false, error: groupError.message };
@@ -139,6 +143,7 @@ async function mutateGroupMemberAdmin(
     return { handled: true, success: false, error: "Group not found" };
   }
 
+  if (group.assignment_id) return {handled:true,success:false,error:"Assignment team membership cannot be edited through legacy group controls."};
   if (mode === "remove") {
     const { error } = (await admin
       .from("classroom_group_members")
@@ -152,7 +157,7 @@ async function mutateGroupMemberAdmin(
   const listed = (await admin
     .from("classroom_groups")
     .select("id")
-    .eq("classroom_id", classroomId)) as {
+    .eq("classroom_id", classroomId).is("assignment_id",null)) as {
     data: { id: string }[] | null;
     error: { message: string } | null;
   };
@@ -187,7 +192,7 @@ async function deleteClassGroupMembershipsAdmin(
   const listed = (await admin
     .from("classroom_groups")
     .select("id")
-    .eq("classroom_id", classroomId)) as {
+    .eq("classroom_id", classroomId).is("assignment_id",null)) as {
     data: { id: string }[] | null;
     error: { message: string } | null;
   };
@@ -358,6 +363,9 @@ export async function getClassroom(
 
       const classroom = normalizeClassroom(classRow as Record<string, unknown>);
       const isOwner = classroom.teacherId === userId;
+      if (isOwner && !isAdmin && !(await checkIsVerifiedTeacher(userId))) {
+        return { success: false, error: "Administrator approval is required for teacher access." };
+      }
 
       if (!isAdmin && !isOwner) {
         // Check if caller is an enrolled student member
@@ -383,6 +391,7 @@ export async function getClassroom(
     }
   }
 
+  if (isAuthConfigured()) return { success: false, error: "Classroom database unavailable." };
   const classroom = memoryClassrooms.get(classroomId);
   if (!classroom) {
     return { success: false, error: "Classroom not found" };
@@ -391,6 +400,7 @@ export async function getClassroom(
   const members = memoryMembers.get(classroomId) || [];
   const member = members.find((m) => m.userId === userId);
   const isOwner = classroom.teacherId === userId;
+  if (isOwner && !isAdmin && !(await checkIsVerifiedTeacher(userId))) return { success: false, error: "Administrator approval is required for teacher access." };
 
   if (!isAdmin && !isOwner && !member) {
     return { success: false, error: "Access denied. You are not enrolled in this classroom." };
@@ -885,21 +895,26 @@ export async function removeStudentFromGroup(
 
 export async function listClassroomGroups(
   userId: string,
-  classroomId: string
+  classroomId: string,
+  assignmentId?: string
 ): Promise<{ success: boolean; groups?: ClassroomGroup[]; error?: string }> {
   const access = await getClassroom(userId, classroomId);
   if (!access.success) {
     return { success: false, error: access.error };
   }
 
+  const scoped = assignmentId ? await getAssignment(userId,classroomId,assignmentId) : null;
+  if (scoped && !scoped.success) return {success:false,error:scoped.error};
+  const scopeId = scoped?.assignment?.groupScope === "assignment" ? assignmentId : undefined;
   const includeEmail = Boolean(access.isTeacher);
   const admin = createAdminClient();
   if (admin) {
     try {
       const { data, error } = await admin
         .from("classroom_groups")
-        .select("id, classroom_id, name, created_at")
+        .select("id, classroom_id, assignment_id, membership_frozen_at, name, created_at")
         .eq("classroom_id", classroomId)
+        .filter("assignment_id", scopeId ? "eq" : "is", scopeId || "null")
         .order("created_at", { ascending: true });
 
       if (!error && data) {
@@ -928,7 +943,7 @@ export async function listClassroomGroups(
         const byUser = new Map((roster.members || []).map((member) => [member.userId, member]));
         return {
           success: true,
-          groups: data.map((group) => {
+          groups: data.filter(group=>includeEmail||!scopeId||(memberships.get(String(group.id))||[]).includes(userId)).map((group) => {
             const userIds = memberships.get(String(group.id)) || [];
             const members: ClassroomMember[] = userIds.map((memberId) => {
               const known = byUser.get(memberId);
@@ -943,6 +958,8 @@ export async function listClassroomGroups(
             return {
               id: String(group.id),
               classroomId: String(group.classroom_id),
+              assignmentId: group.assignment_id ? String(group.assignment_id) : undefined,
+              membershipFrozenAt: group.membership_frozen_at ? String(group.membership_frozen_at) : undefined,
               name: String(group.name),
               memberCount: members.length,
               members,
@@ -958,7 +975,7 @@ export async function listClassroomGroups(
     }
   }
 
-  return { success: true, groups: memoryGroupViews(classroomId, includeEmail) };
+  return { success: true, groups: memoryGroupViews(classroomId, includeEmail).filter(g => g.assignmentId === scopeId && (includeEmail||!scopeId||memoryGroupMembers.get(g.id)?.has(userId))) };
 }
 
 function normalizeAssignmentTests(
@@ -1016,6 +1033,9 @@ export async function createAssignment(
   const now = new Date().toISOString();
 
   if (input.language !== undefined && !isClassroomLanguage(input.language)) return { success: false, error: "Unsupported assignment language." };
+  if (input.requiredGroupSize !== undefined && (!Number.isInteger(input.requiredGroupSize) || input.requiredGroupSize<2 || input.requiredGroupSize>20)) return {success:false,error:"Team size must be an integer from 2 to 20."};
+  if (input.inputPolicy !== undefined && !["typing_only","paste_allowed"].includes(input.inputPolicy)) return {success:false,error:"Invalid input policy."};
+  if (input.groupScope !== undefined && !["assignment","legacy_class"].includes(input.groupScope)) return {success:false,error:"Invalid group scope."};
   const language = classroomLanguage(input.language ?? access.classroom.language, access.classroom.subject);
   const config = CLASSROOM_LANGUAGES[language];
   const starterCode = input.starterCode && Object.keys(input.starterCode).length > 0 ? input.starterCode : { [config.file]: config.starter };
@@ -1051,6 +1071,9 @@ export async function createAssignment(
           time_limit_ms: clampTimeLimitMs(input.timeLimitMs ?? CLASSROOM_TIME_LIMIT_DEFAULT_MS),
           max_points: maxPoints,
           group_mode: input.groupMode ?? false,
+          group_scope: input.groupScope ?? "assignment",
+          required_group_size: input.requiredGroupSize ?? 2,
+          input_policy: input.inputPolicy ?? "typing_only",
           is_published: input.isPublished ?? false,
           created_at: now,
           updated_at: now,
@@ -1085,6 +1108,9 @@ export async function createAssignment(
     timeLimitMs: clampTimeLimitMs(input.timeLimitMs ?? CLASSROOM_TIME_LIMIT_DEFAULT_MS),
     maxPoints,
     groupMode: input.groupMode ?? false,
+    groupScope: input.groupScope ?? "assignment",
+    requiredGroupSize: input.requiredGroupSize ?? 2,
+    inputPolicy: input.inputPolicy ?? "typing_only",
     isPublished: input.isPublished ?? false,
     createdAt: now,
     updatedAt: now,
@@ -1235,6 +1261,7 @@ export async function updateAssignmentPolicy(
     allowRun?: boolean;
     allowTrace?: boolean;
     timeLimitMs?: number;
+    inputPolicy?: "typing_only" | "paste_allowed";
   }
 ): Promise<{ success: boolean; assignment?: ClassroomAssignment; error?: string }> {
   const access = await getClassroom(actorUserId, classroomId);
@@ -1270,7 +1297,9 @@ export async function updateAssignmentPolicy(
     return { success: false, error: "timeLimitMs must be a number of milliseconds." };
   }
 
+  if (patch.inputPolicy !== undefined && !["typing_only","paste_allowed"].includes(patch.inputPolicy)) return {success:false,error:"Invalid input policy."};
   const next = {
+    inputPolicy: patch.inputPolicy ?? current.assignment.inputPolicy ?? "paste_allowed",
     locked: patch.locked ?? current.assignment.locked,
     allowLate: patch.allowLate ?? current.assignment.allowLate,
     allowRun: patch.allowRun ?? current.assignment.allowRun,
@@ -1288,6 +1317,7 @@ export async function updateAssignmentPolicy(
       const { data, error } = await admin
         .from("classroom_assignments")
         .update({
+          input_policy: next.inputPolicy,
           locked: next.locked,
           allow_late: next.allowLate,
           allow_run: next.allowRun,
@@ -1308,6 +1338,7 @@ export async function updateAssignmentPolicy(
 
   const stored = (memoryAssignments.get(classroomId) || []).find((assignment) => assignment.id === assignmentId);
   if (!stored) return { success: false, error: "Assignment not found" };
+  stored.inputPolicy = next.inputPolicy;
   stored.locked = next.locked;
   stored.allowLate = next.allowLate;
   stored.allowRun = next.allowRun;
@@ -1351,16 +1382,21 @@ export async function callerCanUseGroup(
 /** Group ids in this classroom that include the caller. Empty when none match. */
 export async function listCallerGroupIds(
   userId: string,
-  classroomId: string
+  classroomId: string,
+  assignmentId?: string
 ): Promise<string[]> {
   if (!userId || !classroomId) return [];
 
+  const assignment = assignmentId ? await getAssignment(userId,classroomId,assignmentId) : null;
+  if (assignment && !assignment.success) return [];
+  const scopeId = assignment?.assignment?.groupScope === "assignment" ? assignmentId : undefined;
   const admin = createAdminClient();
   if (admin) {
     const { data: groups, error } = await admin
       .from("classroom_groups")
       .select("id")
-      .eq("classroom_id", classroomId);
+      .eq("classroom_id", classroomId)
+      .filter("assignment_id", scopeId ? "eq" : "is", scopeId || "null");
     if (error || !groups?.length) return [];
     const ids = groups.map((group) => String(group.id));
     const { data: members, error: memberError } = await admin
@@ -1374,6 +1410,7 @@ export async function listCallerGroupIds(
 
   const groups = memoryGroups.get(classroomId) || [];
   return groups
+    .filter(group => group.assignmentId === scopeId)
     .filter((group) => memoryGroupMembers.get(group.id)?.has(userId))
     .map((group) => group.id);
 }
@@ -1408,4 +1445,29 @@ export async function assignmentBelongsToClassroom(
     }
   }
   return !catalog;
+}
+
+export async function createAssignmentTeam(actor:string,classId:string,assignmentId:string,input:{name:string;studentIds?:string[];emails?:string[];groupId?:string}) {
+ const access=await getAssignment(actor,classId,assignmentId);
+ if(!access.success || !access.assignment) return {success:false,error:access.error||"Assignment unavailable."};
+ const cls=await getClassroom(actor,classId);
+ if(!cls.isTeacher) return {success:false,error:"Teacher privileges required."};
+ const a=access.assignment;
+ if(!a.groupMode || a.groupScope!=="assignment") return {success:false,error:"This assignment uses legacy classroom groups."};
+ const roster=await listClassroomRoster(actor,classId); if(!roster.success) return {success:false,error:roster.error};
+ const enrolled=(roster.members||[]).filter(s=>s.role==='student');
+ if(input.studentIds && input.emails) return {success:false,error:"Use roster selection or email entry, not both."};
+ const ids=input.emails ? input.emails.map(email=>enrolled.find(s=>s.email?.toLowerCase()===email.trim().toLowerCase())?.userId||'') : input.studentIds||[];
+ if(ids.length!==a.requiredGroupSize || new Set(ids).size!==ids.length || ids.some(id=>!enrolled.some(s=>s.userId===id))) return {success:false,error:`Select exactly ${a.requiredGroupSize} distinct enrolled students. Invite and enroll unknown email addresses first.`};
+ const name=(input.name||'').trim();if(!name || name.length>80) return {success:false,error:"Team name must be 1–80 characters."};
+ const admin=createAdminClient();
+ if(admin){const {data,error}=await admin.rpc('create_assignment_team',{actor,aid:assignmentId,team_name:name,student_ids:ids,existing_group:input.groupId||null});return error?{success:false,error:error.message}:{success:true,groupId:data};}
+ if(isAuthConfigured())return {success:false,error:"Team database unavailable."};
+ const groups=memoryGroups.get(classId)||[];
+ if(groups.some(g=>g.id!==input.groupId && g.assignmentId===assignmentId && ids.some(id=>memoryGroupMembers.get(g.id)?.has(id))))return {success:false,error:"A student is already assigned to a team for this assignment."};
+ const existing=input.groupId?groups.find(g=>g.id===input.groupId&&g.assignmentId===assignmentId):undefined;
+ if(input.groupId&&!existing)return {success:false,error:"Team does not belong to this assignment."};
+ if(existing){if(memoryTeamFrozen(existing.id))return {success:false,error:"Team membership is frozen after the first submission."};}
+ const group:ClassroomGroup=existing?{...existing,name}:{id:`team-${Date.now()}-${Math.random()}`,classroomId:classId,assignmentId,name,createdAt:new Date().toISOString()};
+ if(existing)groups[groups.indexOf(existing)]=group;else groups.push(group);memoryGroups.set(classId,groups);memoryGroupMembers.set(group.id,new Set(ids));return {success:true,groupId:group.id};
 }

@@ -1,17 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {useAuth} from "@/components/AuthProvider";
+import {getSupabaseBrowser} from "@/lib/supabase/browser";
+import PushPreferences from "@/components/PushPreferences";
 import { Bell } from "lucide-react";
 import Link from "next/link";
 import { ClassroomNotification } from "@/lib/classroom/communicationTypes";
 
 export default function NotificationBell() {
+  const {user}=useAuth();
+  return user?<UserNotificationBell key={user.id} userId={user.id}/>:null;
+}
+function UserNotificationBell({userId}:{userId:string}){
   const [notifications, setNotifications] = useState<ClassroomNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
+    let detach: (()=>void)|undefined;
 
     const fetchNotifications = async () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
@@ -28,22 +36,25 @@ export default function NotificationBell() {
       }
     };
 
-    fetchNotifications();
+    void (async()=>{const client=await getSupabaseBrowser();if(!client||!active)return;const channel=client.channel(`notifications:${userId}`).on('postgres_changes',{event:'*',schema:'public',table:'classroom_notifications',filter:`recipient_id=eq.${userId}`},()=>void fetchNotifications()).subscribe(status=>{if(status==='SUBSCRIBED')void fetchNotifications();});detach=()=>{void client.removeChannel(channel);};})();
+    const onFocus=()=>void fetchNotifications();window.addEventListener('focus',onFocus);document.addEventListener('visibilitychange',onFocus);
+    void fetchNotifications();
     const interval = setInterval(fetchNotifications, 60000);
 
     return () => {
       active = false;
-      clearInterval(interval);
+      clearInterval(interval);detach?.();window.removeEventListener("focus",onFocus);document.removeEventListener("visibilitychange",onFocus);
     };
-  }, []);
+  }, [userId]);
 
   const handleMarkRead = async (id: string) => {
     try {
-      await fetch("/api/classroom/notifications", {
+      const response=await fetch("/api/classroom/notifications", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notificationId: id }),
       });
+      if(!response.ok)throw Error("Notification update failed");
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
       );
@@ -104,6 +115,7 @@ export default function NotificationBell() {
               ))
             )}
           </div>
+          <PushPreferences/>
         </div>
       )}
     </div>

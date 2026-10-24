@@ -23,10 +23,6 @@ export async function PATCH(
 
   try {
     const body = await req.json();
-    if (!body.senderId) {
-      return NextResponse.json({ success: false, error: "senderId is required" }, { status: 400 });
-    }
-
     const result = await markMessagesRead(classId, user.id, body.senderId);
     return NextResponse.json(result);
   } catch (err: unknown) {

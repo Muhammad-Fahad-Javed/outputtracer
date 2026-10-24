@@ -15,6 +15,7 @@ export interface SessionConfig {
   source: string;
   maxSteps?: number;
   stdin?: string;
+  interactiveInput?: boolean;
   /** Rate-limit key (client IP). Caps how many live sessions one caller can hold. */
   ownerKey?: string;
 }
@@ -38,6 +39,32 @@ export class AsmSession {
   public maxSteps: number;
 
   public stdin: string;
+  public scope?: {actorId:string;docKey:string;classId:string;assignmentId:string;sourceRevision:string};
+  public executedSteps=0;
+  public activeTimeMs=0;
+  public executionError: string|undefined;
+  public running=false;
+  public provideInput(text:string) {
+    if(this.running)throw Error("Execution is already running.");
+    const mode=this.cpu.inputRequest();
+    if(!mode)throw Error("The program is not waiting for input.");
+    if(text.length>4096||[...text].some(c=>c.charCodeAt(0)>255))throw Error("DOS input must contain at most 4096 single-byte characters.");
+    if(mode!=="line"&&text.length!==1)throw Error("Enter one character.");
+    this.cpu.feedStdin(mode==="line"?text.replace(/\r\n?/g,"\n")+"\n":text);
+  }
+  public async runUntilBlocked(timeLimitMs=10000) {
+    if(this.running)throw Error("Execution is already running.");
+    this.running=true;
+    const started=performance.now();
+    try{
+      while(!this.cpu.inputRequest()&&!this.cpu.halted&&!this.cpu.terminated&&!this.executionError){
+        this.run(200);
+        if(this.activeTimeMs+performance.now()-started>timeLimitMs){this.executionError="Execution time limit reached.";break;}
+        await new Promise(resolve=>setImmediate(resolve));
+      }
+      return this.getStatus();
+    }finally{this.activeTimeMs+=performance.now()-started;this.running=false;}
+  }
 
   constructor(id: string, token: string, source: string, maxSteps = 2000, stdin = "", ownerKey = "") {
     this.id = id;
@@ -80,11 +107,15 @@ export class AsmSession {
     );
     this.cpu.stdinBuffer = this.stdin;
     this.traceHistory = [];
+    this.executedSteps=0;this.activeTimeMs=0;this.executionError=undefined;
   }
 
   public step(): AsmTraceStep {
     this.lastActiveAt = Date.now();
+    const waiting=this.cpu.inputRequest();
     const step = this.cpu.step();
+    if(waiting)return step;
+    this.executedSteps++;
 
     // Map source line
     if (this.assembleResult) {
@@ -119,7 +150,8 @@ export class AsmSession {
     const newSteps: AsmTraceStep[] = [];
 
     let count = 0;
-    while (!this.cpu.halted && !this.cpu.terminated && count < effectiveLimit) {
+    while (!this.cpu.halted && !this.cpu.terminated && !this.cpu.inputRequest() && !this.executionError && count < effectiveLimit) {
+      if(this.executedSteps>=this.maxSteps){this.executionError="Instruction limit reached.";break;}
       const step = this.step();
       newSteps.push(step);
       count++;
@@ -156,7 +188,9 @@ export class AsmSession {
     }
 
     return {
-      state: this.cpu.terminated ? "terminated" : this.cpu.halted ? "halted" : "ready",
+      state: this.executionError ? "error" : this.cpu.terminated ? "terminated" : this.cpu.halted ? "halted" : this.cpu.inputRequest() ? "waiting_for_input" : "ready",
+      inputRequest: this.cpu.inputRequest(),
+      error: this.executionError,
       currentStep: currentStepNum,
       totalSteps: currentStepNum,
       currentInstruction,
@@ -164,7 +198,7 @@ export class AsmSession {
       flags: snap.flags,
       stdout: this.cpu.stdout,
       exitCode: this.cpu.exitCode,
-      canStepForward: !this.cpu.halted && !this.cpu.terminated,
+      canStepForward: !this.cpu.halted && !this.cpu.terminated && !this.cpu.inputRequest() && !this.executionError,
       canStepBack: this.traceHistory.length > 0,
     };
   }
@@ -199,6 +233,7 @@ class SessionManager {
     const token = crypto.randomBytes(24).toString("base64url");
     const maxSteps = Math.min(config.maxSteps || 2000, MAX_SESSION_STEPS);
     const session = new AsmSession(id, token, config.source, maxSteps, config.stdin || "", ownerKey);
+    session.cpu.interactiveInput = config.interactiveInput !== false;
     this.sessions.set(id, session);
     return session;
   }
@@ -254,4 +289,5 @@ class SessionManager {
   }
 }
 
-export const sessionManager = new SessionManager();
+const globalSessions=globalThis as unknown as {outputtracerAsmSessions?:SessionManager};
+export const sessionManager = globalSessions.outputtracerAsmSessions ||= new SessionManager();

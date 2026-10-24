@@ -2,7 +2,7 @@
 // Phase 3 Types: Versioning, Grading, Execution, Activity, Contributions
 // ==============================================================================
 
-export type ActivityEventType = "save" | "run" | "submit" | "grade" | "feedback" | "reopen";
+export type ActivityEventType = "save" | "run" | "submit" | "grade" | "feedback" | "reopen" | "paste";
 export type GradeMode = "auto" | "manual" | "mixed";
 export type RunMode = "manual" | "auto_grade" | "teacher_review";
 

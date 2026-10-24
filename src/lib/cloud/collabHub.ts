@@ -182,7 +182,15 @@ class CollabHub {
       }
     }, 10_000);
 
+    let checkingAccess=false;
+    const accessTimer=setInterval(()=>{if(checkingAccess||!room?.classroom||!state)return;checkingAccess=true;const cls=room.classroom;const actor=state.userId;
+      void import("@/lib/classroom/classroomService").then(async({getClassroom})=>{const access=await getClassroom(actor,cls.classId);if(!access.success){ws.close(1008,"Classroom access changed");return;}
+       const {resolveClassroomDocument}=await import("@/lib/classroom/documents");const resolved=await resolveClassroomDocument({actorId:actor,classroomId:cls.classId,assignmentId:cls.assignmentId,isTeacher:Boolean(access.isTeacher),groupId:cls.groupId,studentId:cls.studentId});if(!resolved.ok)ws.close(1008,"Document access changed");
+      }).catch(()=>ws.close(1011,"Could not verify access")).finally(()=>{checkingAccess=false;});
+    },30000);
+    accessTimer.unref?.();
     const leave = () => {
+      clearInterval(accessTimer);
       clearTimeout(timeout);
       if (!room || !state) return;
       room.clients.delete(ws);

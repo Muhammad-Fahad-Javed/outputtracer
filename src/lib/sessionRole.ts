@@ -62,19 +62,20 @@ export function navLinksFor(input: {
   isVerifiedTeacher: boolean;
   isAdmin: boolean;
 }): NavLink[] {
-  const cpp: NavLink = { label: "C++", href: "/" };
+  const cpp: NavLink = { label: "Editor", href: "/" };
+  const projects:NavLink={label:"Projects",href:"/projects/resume"};
   const practice: NavLink = { label: "Practice", href: "/practice" };
   const learn: NavLink = { label: "Learn", href: "/learn" };
   const classes: NavLink = { label: "My Classes", href: LEARNER_HOME };
 
   if (!input.signedIn) return [cpp, practice, learn];
   if (input.role === "admin" && input.isAdmin) {
-    return [cpp, { label: "Admin", href: ADMIN_HOME }];
+    return [cpp, projects, { label: "Admin", href: ADMIN_HOME }];
   }
   if (input.role === "teacher" && input.isVerifiedTeacher) {
-    return [cpp, { label: "Teacher Studio", href: TEACHER_HOME }];
+    return [cpp, projects, { label: "Teacher Studio", href: TEACHER_HOME }];
   }
-  return [cpp, practice, learn, classes];
+  return [cpp, projects, practice, learn, classes];
 }
 
 export function accountMenuFor(input: {
@@ -82,25 +83,26 @@ export function accountMenuFor(input: {
   isVerifiedTeacher: boolean;
   isAdmin: boolean;
 }): NavLink[] {
+  const allProjects:NavLink={label:"All Projects",href:"/projects"};
   const profile: NavLink = { label: "My Profile", href: "/profile" };
   if (input.role === "teacher" && input.isVerifiedTeacher) {
     return [
-      profile,
+      profile,allProjects,
       { label: "Teacher Studio", href: TEACHER_HOME },
       { label: "Switch to learner", href: "/auth/continue?role=learner" },
     ];
   }
   if (input.role === "admin" && input.isAdmin) {
     return [
-      profile,
+      profile,allProjects,
       { label: "Admin Center", href: ADMIN_HOME },
       { label: "Switch to learner", href: "/auth/continue?role=learner" },
     ];
   }
-  const items = [profile, { label: "Student Dashboard", href: LEARNER_HOME }];
+  const items = [profile,allProjects, { label: "Student Dashboard", href: LEARNER_HOME }];
   items.push(input.isVerifiedTeacher
     ? { label: "Switch to teacher", href: "/auth/continue?role=teacher" }
-    : { label: "Activate Teacher profile", href: "/classroom/teach/apply" });
+    : { label: "Apply for Teacher access", href: "/classroom/teach/apply" });
   return items;
 }
 

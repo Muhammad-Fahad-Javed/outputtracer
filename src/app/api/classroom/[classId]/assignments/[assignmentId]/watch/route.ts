@@ -44,7 +44,7 @@ export async function GET(
   }> = [];
 
   if (assignment.groupMode) {
-    const groups = await listClassroomGroups(user.id, classId);
+    const groups = await listClassroomGroups(user.id, classId, assignmentId);
     if (!groups.success) {
       return NextResponse.json({ success: false, error: groups.error || "Could not load groups" }, { status: 403 });
     }

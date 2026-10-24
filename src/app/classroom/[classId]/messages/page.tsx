@@ -63,6 +63,7 @@ export default function ClassroomMessagesPage() {
         const data = await res.json();
         if (data.success) {
           setMessages(data.messages || []);
+          if(document.visibilityState==='visible')void fetch(`/api/classroom/${classId}/messages/read`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({senderId:partnerId})});
         }
       }
     } catch {
@@ -88,7 +89,7 @@ export default function ClassroomMessagesPage() {
         }
         if (msgRes.ok) {
           const mData = await msgRes.json();
-          if (mData.success && active) setMessages(mData.messages || []);
+          if (mData.success && active){setMessages(mData.messages || []);if(document.visibilityState==='visible')void fetch(`/api/classroom/${classId}/messages/read`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:'{}'});}
         }
       } catch {
         // ignore
@@ -130,8 +131,8 @@ export default function ClassroomMessagesPage() {
     setLoadingMessages(true);
     loadMessages(conv.partnerId);
 
-    // If DM and has unread, mark read
-    if (conv.partnerId) {
+    // Read state belongs to this recipient, for both DMs and class chat.
+    {
       fetch(`/api/classroom/${classId}/messages/read`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -140,6 +141,7 @@ export default function ClassroomMessagesPage() {
     }
   };
 
+  const pendingSend=useRef<{content:string;partner?:string;id:string}|null>(null);
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const content = inputContent.trim();
@@ -155,6 +157,7 @@ export default function ClassroomMessagesPage() {
         body: JSON.stringify({
           recipientId: selectedPartnerId,
           content,
+          clientRequestId: (()=>{if(!pendingSend.current||pendingSend.current.content!==content||pendingSend.current.partner!==selectedPartnerId)pendingSend.current={content,partner:selectedPartnerId,id:crypto.randomUUID()};return pendingSend.current.id;})(),
         }),
       });
 
@@ -162,9 +165,10 @@ export default function ClassroomMessagesPage() {
       if (!res.ok || !data.success) {
         setError(data.error || "Failed to send message.");
       } else {
+        pendingSend.current=null;
         setInputContent("");
         if (data.message) {
-          setMessages((prev) => [...prev, data.message]);
+          setMessages((prev) => prev.some(m=>m.id===data.message.id)?prev:[...prev, data.message]);
         }
         loadConversations();
       }

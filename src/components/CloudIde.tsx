@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState, type ReactNode } from "react";
+import WorkspaceVisit from "@/components/WorkspaceVisit";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState } from "react";
@@ -159,7 +160,8 @@ export default function CloudIde(props: CloudIdeProps) {
   };
 
   return (
-    <section className="flex h-screen w-screen flex-col bg-[#2D2D30] text-[#D4D4D4]" onClick={closeMenu}>
+    <section data-surface="dark" className="flex h-screen w-screen flex-col bg-[#2D2D30] text-[#D4D4D4]" onClick={closeMenu}>
+      <WorkspaceVisit kind="project" id={props.id} ready={collab.status==="live"}/>
       <header className="flex h-7 shrink-0 items-center justify-between border-b border-[#333333] bg-[#2D2D30] px-2 text-[12px] text-[#F1F1F1]">
         <div className="flex items-center gap-1">
           <Link href="/projects" className="rounded-[2px] px-2 py-0.5 font-semibold hover:bg-[#3E3E42]" onClick={(e) => e.stopPropagation()}>

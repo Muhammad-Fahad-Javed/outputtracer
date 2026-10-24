@@ -84,3 +84,16 @@ body {
 .animate-blink {
   animation: blink-caret 1s step-end infinite;
 }
+
+/* Public/forms use a light surface; editor containers opt into dark explicitly. */
+body { background: #fff; color: #171717; color-scheme: light; }
+.light-surface, [data-surface="light"] { background: #fff; color: #171717; color-scheme: light; }
+[data-surface="dark"] { color-scheme: dark; }
+input, textarea, select { font: inherit; }
+select option { background: #fff; color: #171717; }
+[data-surface="dark"] select option { background: #222; color: #eee; }
+input::placeholder, textarea::placeholder { color: #737373; opacity: 1; }
+[data-surface="dark"] input::placeholder, [data-surface="dark"] textarea::placeholder { color: #aaa; }
+::selection { background: #b3d7ff; color: #111; }
+[data-surface="dark"] ::selection { background: #264f78; color: #fff; }
+:focus-visible { outline-color: #007acc; }

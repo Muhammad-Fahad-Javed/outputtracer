@@ -379,7 +379,7 @@ export async function recordActivityEvent(input: {
   const admin = createAdminClient();
   if (admin) {
     try {
-      await admin.from("assignment_activity_events").insert({
+      const {error}=await admin.from("assignment_activity_events").insert({
         assignment_id: input.assignmentId,
         actor_id: input.actorId,
         event_type: input.eventType,
@@ -387,12 +387,13 @@ export async function recordActivityEvent(input: {
         submission_id: input.submissionId ?? null,
         metadata: input.metadata ?? {},
       });
+      if(error)throw Error(error.message);
       return;
-    } catch {
-      // Fall through to memory
+    } catch(error) {
+      if(isAuthConfigured())throw error;
     }
   }
-
+  if(isAuthConfigured())throw Error("Activity database unavailable.");
   const event: ActivityEvent = {
     id: `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     assignmentId: input.assignmentId,
@@ -434,11 +435,13 @@ export async function listActivityEvents(
           createdAt: d.created_at as string,
         }));
       }
-    } catch {
-      // Fall through
+      if(error&&isAuthConfigured())throw Error(error.message);
+    } catch(error) {
+      if(isAuthConfigured())throw error;
     }
   }
 
+  if(isAuthConfigured())throw Error("Activity database unavailable.");
   const all = memActivityEvents.get(assignmentId) ?? [];
   return actorId ? all.filter((e) => e.actorId === actorId).reverse() : [...all].reverse();
 }

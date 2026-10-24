@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "NODE_ENV=production tsx server.ts",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:migrations": "node scripts/test-classroom-migrations.mjs"
   },
   "dependencies": {
+    "@marsidev/react-turnstile": "^1.6.2",
     "@monaco-editor/react": "^4.7.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
@@ -21,11 +23,11 @@
     "next": "16.3.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "web-push": "^3.6.7",
     "ws": "^8.21.3",
     "y-monaco": "^0.1.6",
     "y-protocols": "^1.0.7",
-    "yjs": "^13.6.33",
-    "@marsidev/react-turnstile": "^1.6.2"
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -33,12 +35,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
     "typescript": "^5",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "@electric-sql/pglite": "^0.5.11"
   }
 }

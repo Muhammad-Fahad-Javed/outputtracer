@@ -14,10 +14,12 @@ export interface MemorySubmission {
   gradedAt?: string | null;
 }
 
+const frozenGroups=new Set<string>();
+export function memoryTeamFrozen(groupId:string){return frozenGroups.has(groupId);}
 const memorySubmissions = new Map<string, MemorySubmission>();
 
 export function _resetMemorySubmissions(): void {
-  memorySubmissions.clear();
+  memorySubmissions.clear();frozenGroups.clear();
 }
 
 function key(assignmentId: string, studentId?: string, groupId?: string): string {
@@ -25,6 +27,7 @@ function key(assignmentId: string, studentId?: string, groupId?: string): string
 }
 
 export function saveMemorySubmission(submission: MemorySubmission): void {
+  if(submission.groupId&&submission.status!=='draft')frozenGroups.add(submission.groupId);
   memorySubmissions.set(key(submission.assignmentId, submission.studentId, submission.groupId), {
     ...submission,
     codeFiles: { ...submission.codeFiles },

@@ -153,7 +153,6 @@ describe("Classroom Platform — Persistence Integrity & Failure Handling", () =
   });
 
   it("returns failure instead of faking success when createAnnouncement database write fails", async () => {
-    configureSupabaseEnv();
     const teacherId = "teacher-ann-fail";
     _setMemoryTeacherProfile(teacherId, {
       userId: teacherId,
@@ -165,8 +164,13 @@ describe("Classroom Platform — Persistence Integrity & Failure Handling", () =
     const c = await createClassroom(teacherId, { name: "Announcements Test Class" });
     const classId = c.classroom!.id;
 
+    configureSupabaseEnv();
     mockClient = {
-      from: () => ({
+      from: (table:string) => ({
+        select: () => {
+          const builder={eq:()=>builder,maybeSingle:async()=>({data:table==='teacher_profiles'?{status:'approved',approved_by:'admin'}:table==='classrooms'?{id:classId,teacher_id:teacherId,name:'Class',settings:{}}:null,error:null})};
+          return builder;
+        },
         insert: () => ({
           select: () => ({
             single: () => Promise.resolve({ data: null, error: { message: "Announcements DB connection dropped" } }),
@@ -185,7 +189,6 @@ describe("Classroom Platform — Persistence Integrity & Failure Handling", () =
   });
 
   it("returns failure instead of faking success when createDiscussionPost database write fails", async () => {
-    configureSupabaseEnv();
     const teacherId = "teacher-disc-fail";
     _setMemoryTeacherProfile(teacherId, {
       userId: teacherId,
@@ -197,8 +200,13 @@ describe("Classroom Platform — Persistence Integrity & Failure Handling", () =
     const c = await createClassroom(teacherId, { name: "Discussion Test Class" });
     const classId = c.classroom!.id;
 
+    configureSupabaseEnv();
     mockClient = {
-      from: () => ({
+      from: (table:string) => ({
+        select: () => {
+          const builder={eq:()=>builder,maybeSingle:async()=>({data:table==='teacher_profiles'?{status:'approved',approved_by:'admin'}:table==='classrooms'?{id:classId,teacher_id:teacherId,name:'Class',settings:{}}:null,error:null})};
+          return builder;
+        },
         insert: () => ({
           select: () => ({
             single: () => Promise.resolve({ data: null, error: { message: "Discussions constraint error" } }),

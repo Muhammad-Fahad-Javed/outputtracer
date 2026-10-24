@@ -61,6 +61,8 @@ export default function ClassroomManagePage({
   const [asgDueDate, setAsgDueDate] = useState("");
   const [asgPoints, setAsgPoints] = useState(100);
   const [asgGroupMode, setAsgGroupMode] = useState(false);
+  const [asgGroupSize,setAsgGroupSize]=useState(2);
+  const [asgInputPolicy,setAsgInputPolicy]=useState<"typing_only"|"paste_allowed">("typing_only");
   const [asgPublish, setAsgPublish] = useState(true);
   const [asgAllowLate, setAsgAllowLate] = useState(true);
   const [asgAllowRun, setAsgAllowRun] = useState(true);
@@ -270,6 +272,9 @@ export default function ClassroomManagePage({
           dueDate: asgDueDate || undefined,
           maxPoints: Number(asgPoints) || 100,
           groupMode: asgGroupMode,
+          requiredGroupSize: asgGroupSize,
+          groupScope: "assignment",
+          inputPolicy: asgInputPolicy,
           isPublished: asgPublish,
           allowLate: asgAllowLate,
           allowRun: asgAllowRun,
@@ -891,6 +896,10 @@ export default function ClassroomManagePage({
                   />
                   <span>Publish Immediately</span>
                 </label>
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs">
+                {asgGroupMode&&<label>Students per team <input aria-label="Students per team" type="number" min={2} max={20} value={asgGroupSize} onChange={e=>setAsgGroupSize(Number(e.target.value))} className="ml-2 w-16 rounded border p-2"/></label>}
+                <label>Student input policy <select value={asgInputPolicy} onChange={e=>setAsgInputPolicy(e.target.value as "typing_only"|"paste_allowed")} className="ml-2 rounded border p-2"><option value="typing_only">Typing only</option><option value="paste_allowed">Allow paste and log events</option></select></label>
               </div>
               <p className="text-[11px] text-[#777777]">
                 Runs use the assignment language. Assignment step tracing is not available yet. The time limit cannot exceed 10 seconds.

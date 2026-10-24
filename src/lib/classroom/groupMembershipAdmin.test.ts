@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state: Record<string, Array<Record<string, unknown>>> = {};
 const admin = {
   from(table: string) {
-    const filters: { op: "eq" | "in"; col: string; val: unknown }[] = [];
+    const filters: { op: "eq" | "in" | "is"; col: string; val: unknown }[] = [];
     let operation: "select" | "delete" | "upsert" = "select";
     let row: Record<string, unknown> | null = null;
     const matches = (record: Record<string, unknown>) => filters.every((filter) => {
+      if (filter.op === "is") return record[filter.col] == null;
       if (filter.op === "eq") return record[filter.col] === filter.val;
       return Array.isArray(filter.val) && (filter.val as unknown[]).includes(record[filter.col]);
     });
@@ -43,6 +44,8 @@ const admin = {
       filters.push({ op: "eq", col, val });
       return chain();
     };
+    builder.is = (col:string,val:unknown)=>{filters.push({op:"is",col,val});return chain();};
+    builder.filter = (col:string,op:"eq"|"is",val:unknown)=>{filters.push({op,col,val});return chain();};
     builder.in = (col: string, val: unknown) => {
       filters.push({ op: "in", col, val });
       return chain();

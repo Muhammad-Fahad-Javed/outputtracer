@@ -54,6 +54,15 @@ export class Cpu8086 {
   public exitCode: number | undefined = undefined;
   public stdout: string = "";
   public stdinBuffer: string = "";
+  public interactiveInput = false;
+  /** Inspect before executing INT 21h so an unavailable read consumes no instruction. */
+  public inputRequest(): "character" | "character_no_echo" | "line" | undefined {
+    if(!this.interactiveInput||this.halted||this.terminated)return;
+    if(this.readByte(this.cs,this.ip,false)!==0xcd||this.readByte(this.cs,(this.ip+1)&0xffff,false)!==0x21)return;
+    if(this.ah===0x01&&!this.stdinBuffer.length)return "character";
+    if(this.ah===0x08&&!this.stdinBuffer.length)return "character_no_echo";
+    if(this.ah===0x0a&&this.readByte(this.ds,this.dx,false)>0&&!this.stdinBuffer.includes("\n"))return "line";
+  }
 
   // Step-level tracking
   private currentMemoryReads: MemoryAccess[] = [];
@@ -101,6 +110,7 @@ export class Cpu8086 {
     this.terminated = false;
     this.exitCode = undefined;
     this.stdout = "";
+    this.stdinBuffer = "";
     this.currentMemoryReads = [];
     this.currentMemoryWrites = [];
     this.currentStackChanges = [];
@@ -342,6 +352,7 @@ export class Cpu8086 {
       terminated: this.terminated,
       exitCode: this.exitCode,
       stdout: this.stdout,
+      stdinBuffer: this.stdinBuffer,
     };
   }
 
@@ -375,6 +386,7 @@ export class Cpu8086 {
     this.terminated = snap.terminated;
     this.exitCode = snap.exitCode;
     this.stdout = snap.stdout;
+    this.stdinBuffer = snap.stdinBuffer ?? "";
   }
 
   // Reverse step: restores the previous execution snapshot
@@ -535,7 +547,7 @@ export class Cpu8086 {
 
   // Single-step execution: executes exactly one guest instruction and returns trace step
   public step(): AsmTraceStep {
-    if (this.halted || this.terminated) {
+    if (this.halted || this.terminated || this.inputRequest()) {
       const snap = this.takeSnapshot();
       return {
         step: this.instructionCount,

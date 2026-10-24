@@ -18,7 +18,7 @@ export async function GET() {
   }
 
   const result = await listUserNotifications(user.id);
-  return NextResponse.json({ success: true, notifications: result.notifications });
+  return NextResponse.json(result, {status:result.success?200:503});
 }
 
 export async function PATCH(request: Request) {
@@ -39,6 +39,6 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: "notificationId is required." }, { status: 400 });
   }
 
-  await markNotificationAsRead(body.notificationId, user.id);
-  return NextResponse.json({ success: true });
+  const result=await markNotificationAsRead(body.notificationId, user.id);
+  return NextResponse.json(result,{status:result.success?200:503});
 }

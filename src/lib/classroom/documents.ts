@@ -150,12 +150,12 @@ export async function resolveClassroomDocument(input: {
       if (!input.groupId) {
         return { ok: false, status: 400, error: "Choose a group to open." };
       }
-      const groups = await listClassroomGroups(input.actorId, input.classroomId);
+      const groups = await listClassroomGroups(input.actorId, input.classroomId, input.assignmentId);
       const group = groups.groups?.find((item) => item.id === input.groupId);
       if (!group) return { ok: false, status: 404, error: "Group not found" };
       groupId = group.id;
     } else {
-      const ids = await listCallerGroupIds(input.actorId, input.classroomId);
+      const ids = await listCallerGroupIds(input.actorId, input.classroomId, input.assignmentId);
       if (ids.length === 0) {
         return {
           ok: false,

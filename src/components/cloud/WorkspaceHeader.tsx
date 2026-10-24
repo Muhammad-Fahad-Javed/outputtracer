@@ -17,7 +17,7 @@ export default async function WorkspaceHeader() {
         <div className="flex items-center gap-5">
           <Link href="/projects" className="text-[14px] font-semibold">OutputTracer</Link>
           <nav className="flex items-center gap-4 text-[13px]">
-            <Link href="/projects">Projects</Link>
+            <Link href="/projects/resume">Projects</Link>
             <Link href="/groups">Groups</Link>
             <Link href="/">Playground</Link>
             <Link href="/practice">Practice</Link>

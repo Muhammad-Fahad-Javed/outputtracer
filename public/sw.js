@@ -1,46 +1,7 @@
-const CACHE = "outputtracer-shell-v1";
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(self.skipWaiting());
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
-});
-
-self.addEventListener("fetch", (event) => {
-  const request = event.request;
-  if (request.method !== "GET") return;
-
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws/")) return;
-
-  const cacheable =
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname.startsWith("/p/") ||
-    url.pathname === "/" ||
-    url.pathname.startsWith("/projects") ||
-    url.pathname.startsWith("/login");
-
-  event.respondWith(
-    (async () => {
-      try {
-        const fresh = await fetch(request);
-        if (fresh.ok && cacheable) {
-          const cache = await caches.open(CACHE);
-          cache.put(request, fresh.clone());
-        }
-        return fresh;
-      } catch (error) {
-        const cached = await caches.match(request);
-        if (cached) return cached;
-        if (request.mode === "navigate") {
-          const home = await caches.match("/");
-          if (home) return home;
-        }
-        throw error;
-      }
-    })()
-  );
-});
+const CACHE = 'outputtracer-static-v2';
+self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate',event=>event.waitUntil((async()=>{for(const key of await caches.keys())if(key!==CACHE)await caches.delete(key);await self.clients.claim();})()));
+// Never cache HTML, authentication, project files or private API responses.
+self.addEventListener('fetch',event=>{const r=event.request,u=new URL(r.url);if(r.method!=='GET'||u.origin!==self.location.origin||!u.pathname.startsWith('/_next/static/'))return;event.respondWith((async()=>{const c=await caches.open(CACHE);const hit=await c.match(r);if(hit)return hit;const fresh=await fetch(r);if(fresh.ok)await c.put(r,fresh.clone());return fresh;})());});
+self.addEventListener('push',event=>{event.waitUntil((async()=>{let data;try{data=event.data?.json();}catch{return;}if(!data?.notificationId)return;const link=typeof data.link==='string'&&data.link.startsWith('/classroom/')&&!data.link.startsWith('//')?data.link:'/classroom';await self.registration.showNotification('OutputTracer',{body:'You have a new classroom message.',tag:data.notificationId,data:{link},icon:'/brand/logo-tile.svg'});})());});
+self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil((async()=>{const url=new URL(event.notification.data?.link||'/classroom',self.location.origin);if(url.origin!==self.location.origin)return;const tabs=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const tab of tabs){if(new URL(tab.url).origin===url.origin){await tab.navigate(url.href);return tab.focus();}}return self.clients.openWindow(url.href);})());});

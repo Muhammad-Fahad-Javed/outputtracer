@@ -1,5 +1,5 @@
 import { CLASSROOM_LANGUAGES } from "./languages";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { base64ToBytes, bytesToBase64 } from "@/lib/cloud/base64";
 import { getHub } from "@/lib/cloud/collabHub";
@@ -176,6 +176,7 @@ describe("classroom collaboration", () => {
         title: "Team",
         isPublished: true,
         groupMode: true,
+        groupScope: "legacy_class",
       });
       const group = await createClassroomGroup(teacherA, classId, "Pair");
       await assignStudentToGroup(teacherA, classId, group.group!.id, student1);
@@ -417,6 +418,7 @@ describe("classroom collaboration", () => {
         language,
         isPublished: true,
         groupMode: true,
+        groupScope: "legacy_class",
       });
       const assignmentId = assignment.assignment!.id;
       const docKey = classroomDocumentKey(assignmentId, { groupId: group.group!.id })!;
@@ -500,6 +502,24 @@ describe("classroom collaboration", () => {
       await new Promise((resolve) => setTimeout(resolve, 40));
       expect(getHub().peekClassroomFiles(docKey)?.[entryFile]).not.toContain("/*nope*/");
     });
+  });
+
+  it("disconnects an active teacher watch session when approval is suspended",async()=>{
+    const created=await createClassroom(teacherA,{name:'Revocation'});
+    const classId=created.classroom!.id;
+    await joinClassroomByCode(student1,created.classroom!.joinCode);
+    const assignment=(await createAssignment(teacherA,classId,{title:'Watch',isPublished:true})).assignment!;
+    vi.useFakeTimers({toFake:['setInterval','clearInterval']});
+    const socket=fakeSocket();
+    try{
+      getHub().attach(socket as never);
+      socket.emit('message',JSON.stringify({type:'join',kind:'classroom',token:signClassroomCollabToken({userId:teacherA,displayName:'Teacher',classId,assignmentId:assignment.id,studentId:student1}),clientId:44}));
+      await waitForType(socket,'init');
+      const now=new Date().toISOString();
+      _setMemoryTeacherProfile(teacherA,{userId:teacherA,status:'suspended',createdAt:now,updatedAt:now,verifiedAt:now});
+      await vi.advanceTimersByTimeAsync(30001);
+      expect(socket.readyState).toBe(3);
+    }finally{socket.emit('close');vi.useRealTimers();}
   });
 
   it("does not let a configured teacher pretend to be the sample student", () => {

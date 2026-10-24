@@ -7,6 +7,8 @@
  * 3. Message read status tracking and unread counts
  */
 
+import { isUuid } from "@/lib/cloud/roles";
+import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAuthConfigured } from "@/lib/supabase/env";
 import { getClassroom } from "./classroomService";
@@ -41,7 +43,8 @@ export async function sendMessage(
   senderId: string,
   input: SendMessageInput
 ): Promise<{ success: boolean; message?: ClassroomMessage; error?: string }> {
-  const content = input.content?.trim();
+  const content = typeof input.content==="string"?input.content.trim():"";
+  if(isAuthConfigured()&&input.clientRequestId&&!isUuid(input.clientRequestId))return {success:false,error:"Invalid message request ID."};
   if (!content || content.length > 5000) {
     return { success: false, error: "Message content must be between 1 and 5000 characters." };
   }
@@ -70,42 +73,20 @@ export async function sendMessage(
   if (isAuthConfigured()) {
     const admin = createAdminClient();
     if (admin) {
-      const { data, error } = await admin
-        .from("classroom_messages")
-        .insert({
-          classroom_id: classroomId,
-          sender_id: senderId,
-          recipient_id: input.recipientId || null,
-          content,
-          is_group_message: isGroupMessage,
-          is_read: false,
-        })
-        .select(`
-          id,
-          classroom_id,
-          sender_id,
-          recipient_id,
-          content,
-          is_group_message,
-          is_read,
-          created_at,
-          sender:profiles!classroom_messages_sender_id_fkey(full_name, username),
-          recipient:profiles!classroom_messages_recipient_id_fkey(full_name, username)
-        `)
-        .single();
-
+      const { data, error } = await admin.rpc("send_classroom_message",{
+        actor:senderId,cid:classroomId,body:content,recipient:input.recipientId||null,request_id:input.clientRequestId||randomUUID(),
+      });
       if (!error && data) {
         const row = data as Record<string, unknown>;
         const senderProfile = row.sender as Record<string, unknown> | null;
-        const recipientProfile = row.recipient as Record<string, unknown> | null;
 
         const message: ClassroomMessage = {
           id: String(row.id),
           classroomId: String(row.classroom_id),
           senderId: String(row.sender_id),
-          senderName: String(senderProfile?.full_name || senderProfile?.username || "Unknown"),
+          senderName: String(row.senderName || senderProfile?.display_name || "Class member"),
           recipientId: row.recipient_id ? String(row.recipient_id) : undefined,
-          recipientName: recipientProfile ? String(recipientProfile.full_name || recipientProfile.username || "Unknown") : undefined,
+          recipientName: row.recipientName ? String(row.recipientName) : undefined,
           content: String(row.content),
           isGroupMessage: Boolean(row.is_group_message),
           isRead: Boolean(row.is_read),
@@ -115,6 +96,8 @@ export async function sendMessage(
       }
     }
   }
+
+  if (isAuthConfigured()) return {success:false,error:"Message could not be saved. Please retry."};
 
   // Fallback to in-memory store
   const convKey = getConversationKey(classroomId, senderId, input.recipientId);
@@ -153,8 +136,9 @@ export async function listMessages(
     return { success: false, messages: [], error: "Access denied." };
   }
 
-  const limit = Math.min(Math.max(opts?.limit || 50, 1), 100);
-  const offset = Math.max(opts?.offset || 0, 0);
+  if(opts?.recipientId&&((isAuthConfigured()&&!isUuid(opts.recipientId))||(!access.isTeacher&&opts.recipientId!==access.classroom?.teacherId)))return {success:false,messages:[],error:"Conversation access denied."};
+  const limit = Math.min(Math.max(Number.isFinite(opts?.limit)?Math.floor(opts!.limit!):50, 1), 100);
+  const offset = Math.max(Number.isFinite(opts?.offset)?Math.floor(opts!.offset!):0, 0);
 
   if (isAuthConfigured()) {
     const admin = createAdminClient();
@@ -170,8 +154,8 @@ export async function listMessages(
           is_group_message,
           is_read,
           created_at,
-          sender:profiles!classroom_messages_sender_id_fkey(full_name, username),
-          recipient:profiles!classroom_messages_recipient_id_fkey(full_name, username)
+          sender:profiles!classroom_messages_sender_id_fkey(display_name),
+          recipient:profiles!classroom_messages_recipient_id_fkey(display_name)
         `)
         .eq("classroom_id", classroomId);
 
@@ -186,11 +170,14 @@ export async function listMessages(
       }
 
       const { data, error } = await query
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (!error && data) {
-        const messages: ClassroomMessage[] = data.map((item: unknown) => {
+        const {data:readRows,error:readError}=await admin.from('classroom_notifications').select('message_id,is_read').eq('recipient_id',userId).in('message_id',data.map(row=>row.id));
+        if(readError)return {success:false,messages:[],error:'Message read state could not be loaded.'};
+        const readByMessage=new Map((readRows||[]).map(n=>[n.message_id,n.is_read]));
+        const messages: ClassroomMessage[] = [...data].reverse().map((item: unknown) => {
           const row = item as Record<string, unknown>;
           const senderProfile = row.sender as Record<string, unknown> | null;
           const recipientProfile = row.recipient as Record<string, unknown> | null;
@@ -198,12 +185,12 @@ export async function listMessages(
             id: String(row.id),
             classroomId: String(row.classroom_id),
             senderId: String(row.sender_id),
-            senderName: String(senderProfile?.full_name || senderProfile?.username || "Unknown"),
+            senderName: String(senderProfile?.display_name || "Class member"),
             recipientId: row.recipient_id ? String(row.recipient_id) : undefined,
-            recipientName: recipientProfile ? String(recipientProfile.full_name || recipientProfile.username || "Unknown") : undefined,
+            recipientName: recipientProfile ? String(recipientProfile.display_name || "Class member") : undefined,
             content: String(row.content),
             isGroupMessage: Boolean(row.is_group_message),
-            isRead: Boolean(row.is_read),
+            isRead: readByMessage.get(String(row.id))??false,
             createdAt: String(row.created_at),
           };
         });
@@ -212,6 +199,7 @@ export async function listMessages(
     }
   }
 
+  if (isAuthConfigured()) return {success:false,messages:[],error:"Messages could not be loaded."};
   // Memory fallback
   const convKey = getConversationKey(classroomId, opts?.recipientId ? userId : undefined, opts?.recipientId);
   const list = memMessages.get(convKey) || [];
@@ -272,7 +260,7 @@ export async function listConversations(
           .from("classroom_members")
           .select(`
             user_id,
-            profile:profiles(id, full_name, username)
+            profile:profiles(id, display_name)
           `)
           .eq("classroom_id", classroomId);
 
@@ -282,7 +270,7 @@ export async function listConversations(
             if (memberId === userId) continue;
 
             const profile = m.profile as Record<string, unknown> | null;
-            const partnerName = String(profile?.full_name || profile?.username || "Student");
+            const partnerName = String(profile?.display_name || "Student");
 
             const { data: lastMsg } = await admin
               .from("classroom_messages")
@@ -318,12 +306,12 @@ export async function listConversations(
         if (teacherId && teacherId !== userId) {
           const { data: teacherProfile } = await admin
             .from("profiles")
-            .select("id, full_name, username")
+            .select("id, display_name")
             .eq("id", teacherId)
             .maybeSingle();
 
           const teacherName = String(
-            teacherProfile?.full_name || teacherProfile?.username || "Instructor"
+            teacherProfile?.display_name || "Instructor"
           );
 
           const { data: lastMsg } = await admin
@@ -355,10 +343,14 @@ export async function listConversations(
         }
       }
 
+      const {data: unread,error:unreadError}=await admin.from('classroom_notifications').select('link').eq('classroom_id',classroomId).eq('recipient_id',userId).eq('is_read',false).not('message_id','is',null);
+      if(unreadError)return {success:false,conversations:[],error:'Could not load unread counts.'};
+      for(const conv of conversations){const link=`/classroom/${classroomId}/messages${conv.partnerId?'?recipientId='+conv.partnerId:''}`;conv.unreadCount=(unread||[]).filter(n=>n.link===link).length;}
       return { success: true, conversations };
     }
   }
 
+  if(isAuthConfigured())return {success:false,conversations:[],error:"Conversations could not be loaded."};
   // Memory fallback
   const conversations: ConversationSummary[] = [
     {
@@ -376,42 +368,11 @@ export async function listConversations(
 // 4. Mark Messages Read & Unread Count
 // ==============================================================================
 
-export async function markMessagesRead(
-  classroomId: string,
-  userId: string,
-  senderId: string
-): Promise<{ success: boolean; error?: string }> {
-  if (isAuthConfigured()) {
-    const admin = createAdminClient();
-    if (admin) {
-      await admin
-        .from("classroom_messages")
-        .update({ is_read: true })
-        .eq("classroom_id", classroomId)
-        .eq("recipient_id", userId)
-        .eq("sender_id", senderId)
-        .eq("is_read", false);
-
-      return { success: true };
-    }
-  }
-
-  return { success: true };
+export async function markMessagesRead(classroomId:string,userId:string,senderId?:string):Promise<{success:boolean;error?:string}>{
+ const access=await getClassroom(userId,classroomId);if(!access.success)return {success:false,error:access.error};
+ const admin=createAdminClient();
+ if(admin){const link=`/classroom/${classroomId}/messages${senderId?'?recipientId='+senderId:''}`;const {error}=await admin.from('classroom_notifications').update({is_read:true}).eq('classroom_id',classroomId).eq('recipient_id',userId).eq('link',link);return error?{success:false,error:'Could not mark messages read.'}:{success:true};}
+ return isAuthConfigured()?{success:false,error:'Notification database unavailable.'}:{success:true};
 }
 
-export async function getUnreadMessageCount(userId: string): Promise<number> {
-  if (isAuthConfigured()) {
-    const admin = createAdminClient();
-    if (admin) {
-      const { count } = await admin
-        .from("classroom_messages")
-        .select("id", { count: "exact", head: true })
-        .eq("recipient_id", userId)
-        .eq("is_read", false);
-
-      return count || 0;
-    }
-  }
-
-  return 0;
-}
+export async function getUnreadMessageCount(userId:string):Promise<number>{const admin=createAdminClient();if(!admin)return 0;const {count,error}=await admin.from('classroom_notifications').select('id',{count:'exact',head:true}).eq('recipient_id',userId).eq('is_read',false).not('message_id','is',null);if(error)throw Error('Could not load unread message count.');return count||0;}

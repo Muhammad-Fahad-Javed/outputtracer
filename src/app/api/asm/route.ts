@@ -30,6 +30,7 @@ export async function POST(request: Request) {
     code?: string;
     stdin?: string;
     limit?: number;
+    input?: string;
   };
 
   try {
@@ -53,6 +54,8 @@ export async function POST(request: Request) {
 
   try {
     let session = sessionId ? sessionManager.authorize(sessionId, sessionToken) : undefined;
+
+    if(session?.scope)return NextResponse.json({error:"Use the authenticated assignment execution endpoint."},{status:403});
 
     if (action === "create" || (action === "assemble" && !session)) {
       if (typeof source !== "string") {
@@ -140,8 +143,18 @@ export async function POST(request: Request) {
         });
       }
 
+      case "input": {
+        if(typeof body.input!=="string")return NextResponse.json({error:"Input text required"},{status:400});
+        session.provideInput(body.input);
+        await session.runUntilBlocked();
+        return NextResponse.json({success:true,sessionId:session.id,status:session.getStatus()});
+      }
+      case "stop": {
+        sessionManager.deleteSession(session.id);
+        return NextResponse.json({success:true});
+      }
       case "run": {
-        if (typeof stdin === "string") {
+        if (typeof stdin === "string" && session.executedSteps===0) {
           session.stdin = stdin;
           session.cpu.stdinBuffer = stdin;
         }

@@ -37,7 +37,7 @@ export interface TeacherApplication {
 
 export interface TeacherProfile {
   userId: string;
-  status: "approved" | "suspended" | "revoked";
+  status: "approved" | "pending_review" | "suspended" | "revoked";
   applicationId?: string;
   approvedBy?: string;
   verifiedAt: string;
@@ -118,6 +118,8 @@ export interface ClassroomMember {
 }
 
 export interface ClassroomGroup {
+  assignmentId?: string;
+  membershipFrozenAt?: string;
   id: string;
   classroomId: string;
   name: string;
@@ -156,6 +158,9 @@ export interface ClassroomAssignment {
   timeLimitMs: number;
   maxPoints: number;
   groupMode: boolean;
+  groupScope?: "legacy_class" | "assignment";
+  requiredGroupSize?: number;
+  inputPolicy?: "typing_only" | "paste_allowed";
   isPublished: boolean;
   submissionCount?: number;
   createdAt: string;
@@ -203,5 +208,8 @@ export interface CreateAssignmentInput {
   timeLimitMs?: number;
   maxPoints?: number;
   groupMode?: boolean;
+  groupScope?: "legacy_class" | "assignment";
+  requiredGroupSize?: number;
+  inputPolicy?: "typing_only" | "paste_allowed";
   isPublished?: boolean;
 }

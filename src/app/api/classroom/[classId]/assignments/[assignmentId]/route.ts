@@ -42,6 +42,7 @@ export async function PATCH(
     allowRun?: boolean;
     allowTrace?: boolean;
     timeLimitMs?: number;
+    inputPolicy?: "typing_only" | "paste_allowed";
   };
   try {
     body = await request.json();

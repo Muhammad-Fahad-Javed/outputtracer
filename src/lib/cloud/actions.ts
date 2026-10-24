@@ -1,5 +1,6 @@
 "use server";
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { DEFAULT_CODE } from "@/lib/examples";
@@ -25,6 +26,10 @@ function asError(error: { message: string } | null): ActionState {
 
 export async function signOut() {
   const supabase = await createClient();
+  const user=supabase?(await supabase.auth.getUser()).data.user:null;
+  // Server-form logout cannot address a device subscription. Retire all subscriptions
+  // for this account rather than leaving background delivery active after logout.
+  if(user){const admin=createAdminClient();if(admin){const {error}=await admin.from('push_subscriptions').delete().eq('user_id',user.id);if(error)throw Error('Could not disable browser notifications. Please retry signing out.');}}
   await supabase?.auth.signOut();
   redirect("/");
 }

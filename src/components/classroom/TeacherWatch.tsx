@@ -327,12 +327,12 @@ export default function TeacherWatch({
                     ))}
                   </div>
                 </div>
-                <ContributionLegend
+                <details className="shrink-0 text-xs text-[#ccc]"><summary className="cursor-pointer py-2">Contribution details · authorship highlights</summary><ContributionLegend
                   file={contribution.file}
                   document={contribution.document}
                   filename={collab.activeFile}
                   names={authorNames}
-                />
+                /></details>
                 <div className="min-h-[320px] flex-1 overflow-hidden rounded-xl border border-[#27272A]">
                   <CollabEditor
                     doc={collab.doc}

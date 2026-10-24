@@ -10,6 +10,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
+import { CLASSROOM_LANGUAGES, classroomLanguage } from "@/lib/classroom/languages";
 import NotificationBell from "@/components/NotificationBell";
 import {
   accountMenuFor,
@@ -20,7 +21,12 @@ import {
 
 export default function Header() {
   const pathname = usePathname();
-  const isAssembly = pathname?.startsWith("/assembly");
+  const [classContext,setClassContext]=useState({id:"",label:""});
+  const classId=pathname?.match(/^\/classroom\/([0-9a-f-]{36})(?:\/|$)/)?.[1];
+  const assignmentId=pathname?.match(/\/assignments\/([^/]+)(?:\/|$)/)?.[1];
+  const contextId=assignmentId||classId;
+  useEffect(()=>{let active=true;if(!classId)return;fetch(`/api/classroom/${classId}${assignmentId?'/assignments/'+assignmentId:''}`).then(r=>r.json()).then(d=>{const source=d.assignment||d.classroom;if(active&&source)setClassContext({id:contextId||'',label:CLASSROOM_LANGUAGES[classroomLanguage(source.language,source.subject)].label});}).catch(()=>{});return()=>{active=false;};},[classId,assignmentId,contextId]);
+  const languageLabel=(classContext.id===contextId?classContext.label:"") || (pathname?.startsWith("/assembly")||pathname?.includes("8086")?"8086 Assembly":pathname?.startsWith("/python")?"Python":pathname?.startsWith("/practice")||pathname?.includes("cpp-")?"C++":"");
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
@@ -86,7 +92,7 @@ export default function Header() {
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <header className="sticky top-0 z-50 border-b border-[#DCDCDC] bg-white/95 backdrop-blur-sm">
+    <header data-surface="light" className="sticky top-0 z-50 border-b border-[#DCDCDC] bg-white/95 backdrop-blur-sm">
       <div className="mx-auto flex h-12 max-w-6xl items-center justify-between px-5 sm:px-8">
         <Link href="/" className="text-[14px] font-semibold tracking-tight text-black">
           OutputTracer
@@ -107,15 +113,7 @@ export default function Header() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          {isAssembly ? (
-            <span className="rounded-[3px] border border-[#007ACC] bg-[#094771] px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-white">
-              8086 / DOS
-            </span>
-          ) : (
-            <span className="rounded-[3px] border border-[#DCDCDC] bg-[#F2F2F2] px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-black">
-              C++
-            </span>
-          )}
+          {languageLabel&&<span className="rounded border border-[#DCDCDC] bg-[#F2F2F2] px-2 py-0.5 font-mono text-[11px] text-black">{languageLabel}</span>}
 
           {!isLoading && (
             signedIn ? (

@@ -54,6 +54,7 @@ export interface CpuStateSnapshot {
   terminated: boolean;
   exitCode?: number;
   stdout: string;
+  stdinBuffer?: string;
 }
 
 export interface AsmSourceLocation {
@@ -120,7 +121,8 @@ export interface AssembleResult {
 }
 
 export interface AsmExecutionStatus {
-  state: "ready" | "running" | "paused" | "halted" | "terminated" | "error";
+  state: "ready" | "running" | "paused" | "waiting_for_input" | "halted" | "terminated" | "error";
+  inputRequest?: "character" | "character_no_echo" | "line";
   currentStep: number;
   totalSteps: number;
   currentInstruction?: AsmInstructionInfo;

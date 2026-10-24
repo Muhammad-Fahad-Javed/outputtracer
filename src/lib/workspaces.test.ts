@@ -1,0 +1,13 @@
+import {beforeEach,describe,it,expect,vi} from 'vitest';
+const state=vi.hoisted(()=>({history:[] as {kind:string;target_id:string;last_opened_at:string}[],projects:new Map<string,{id:string;title:string;owner_id:string;group_id:null;standard:string}>(),roles:new Map<string,string>(),deniedAssignment:false,queryError:false}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({from:()=>{let id='';const q={select:()=>q,eq:(_key:string,value:string)=>{id=value;return q;},maybeSingle:async()=>({data:state.projects.get(id)||null,error:state.queryError?{message:'offline'}:null})};return q;},rpc:async(_name:string,{pid}:{pid:string})=>({data:state.roles.get(pid)||null,error:null})})}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({from:(table:string)=>{const q={select:()=>q,eq:()=>q,order:()=>q,limit:async()=>({data:state.history,error:null}),maybeSingle:async()=>({data:table==='classroom_assignments'?{classroom_id:'class'}:null,error:null})};return q;}})}));
+vi.mock('@/lib/classroom/classroomService',()=>({getAssignment:async()=>state.deniedAssignment?{success:false}:{success:true,isTeacher:false,assignment:{title:'Assignment',language:'python'}},getClassroom:async()=>({classroom:{name:'Python class'}}),listAssignments:vi.fn(),listUserClassrooms:vi.fn(),listClassroomGroups:vi.fn()}));
+vi.mock('@/lib/classroom/documents',()=>({resolveClassroomDocument:async()=>({ok:!state.deniedAssignment})}));
+import {lastAccessibleWorkspace,accessibleWorkspace} from './workspaces';
+beforeEach(()=>{state.history=[];state.projects.clear();state.roles.clear();state.deniedAssignment=false;state.queryError=false;});
+describe('saved workspace resume',()=>{
+ it('skips deleted and revoked projects and resumes the next accessible shared workspace',async()=>{for(const id of ['revoked','shared'])state.projects.set(id,{id,title:id,owner_id:'other',group_id:null,standard:'c++17'});state.roles.set('shared','editor');state.history=['deleted','revoked','shared'].map(target_id=>({kind:'project',target_id,last_opened_at:'2026-10-24'}));expect((await lastAccessibleWorkspace('student'))?.href).toBe('/p/shared');});
+ it('resumes accessible assignments and falls back when access was revoked',async()=>{state.history=[{kind:'assignment',target_id:'assignment',last_opened_at:'2026-10-24'}];expect((await lastAccessibleWorkspace('student'))?.language).toContain('Python');state.deniedAssignment=true;expect(await lastAccessibleWorkspace('student')).toBeNull();});
+ it('reports a database outage rather than treating it as revoked access',async()=>{state.queryError=true;await expect(accessibleWorkspace('student','project','project')).rejects.toThrow('could not be verified');});
+});
