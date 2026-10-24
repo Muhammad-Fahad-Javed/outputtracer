@@ -62,6 +62,11 @@ if(!process.exitCode){
  await db.exec(`reset role;`);
  await q(`update classroom_notifications set is_read=true where recipient_id=$1`,[student]);
  assert((await q(`select count(*)::int n from classroom_notifications where recipient_id=$1 and not is_read`,[student2]))[0].n===1,'Read state leaked to another recipient');
+ const individual=(await q(`insert into classroom_assignments(classroom_id,title,group_mode,is_published) values($1,'Individual',false,true) returning id`,[cid]))[0].id;
+ rejected=false;try{await q(`insert into classroom_submissions(assignment_id,group_id) values($1,$2)`,[individual,gid]);}catch{rejected=true;}assert(rejected,'A foreign assignment team was accepted for individual work');
+ await q(`delete from classroom_members where classroom_id=$1 and user_id=$2`,[cid,student2]);
+ await q(`update classroom_submissions set grade=70,status='graded' where group_id=$1`,[gid]);
+ assert((await q(`select grade from classroom_submissions where group_id=$1`,[gid]))[0].grade==='70','Frozen team history cannot be graded after a student leaves');
  await q(`update teacher_profiles set status='suspended' where user_id=$1`,[teacher]);
  rejected=false;try{await create(await assignment(),'Denied',[student,student2]);}catch{rejected=true;}assert(rejected,'Suspended teacher could create teams');
  const policy=(await q(`select qual from pg_policies where policyname='Teachers can manage classroom assignments'`))[0].qual;

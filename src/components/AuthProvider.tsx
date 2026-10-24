@@ -39,6 +39,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
+    // Promptly replace an older worker that may still hold cached private pages.
+    // New subscriptions remain opt-in; this updates only an existing registration.
+    if(process.env.NODE_ENV==='production'&&'serviceWorker' in navigator){
+      void navigator.serviceWorker.getRegistration('/').then(reg=>reg?.update()).catch(()=>{});
+    }
 
     void (async () => {
       const supabase = await getSupabaseBrowser();

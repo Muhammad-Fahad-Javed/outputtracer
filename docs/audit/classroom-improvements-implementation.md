@@ -14,23 +14,28 @@ readable page/editor surfaces, contextual language labels, compact dashboards an
 resizable/collapsible editor panels, complete assignment-team rosters including offline members; private interactive NASM sessions using the
 existing 8086 engine, with waiting/resume and deterministic grading kept separate.
 
-Migrations: 0020–0024. Existing assignments retain legacy classroom groups and
+Migrations: 0020–0025. Existing assignments retain legacy classroom groups and
 paste behavior; existing identifiers, documents, submissions, snapshots and grades
 are not replaced. A submitted team's membership freeze survives reopening work.
 
 ## Verification completed
 
-- Vitest: **417 passed, 2 skipped, 57 files passed**.
+- Vitest: **421 passed, 2 skipped, 58 files passed**.
 - TypeScript: `npx tsc --noEmit` passed separately.
 - ESLint: `npx eslint src server.ts` passed without warnings.
-- Production build: Next 16.3.1/Turbopack passed, 280 static pages generated.
-  Build used `NEXT_DEPLOYMENT_ID=classroom-20261024` and skipped the in-build
-  duplicate typecheck after the separate successful check.
+- Production builds: Next 16.3.1/Turbopack passed locally and for EC2 candidate
+  source commit **09ce303**, generating 280 static pages. The candidate build
+  used a bounded systemd unit with 650 MiB memory, approximately 1.4 GB swap and
+  one CPU core, with `NEXT_DEPLOYMENT_ID=classroom-20261024-v2`. It skipped the
+  in-build duplicate typecheck after the separate successful check. This build
+  does not include the subsequent pending service-worker update change.
 - `npm run test:migrations`: isolated PostgreSQL/WASM executes new migrations
   unchanged. Checks cover legacy data/defaults, rejected/atomic team writes,
   independent assignments, permanent freeze, direct membership mutation denial,
   teacher revocation, message idempotency, recipient RLS/read state, push outbox
-  deduplication/retry exhaustion and single active comparison job.
+  deduplication/retry exhaustion, single active comparison job, rejection of
+  foreign assignment groups for individual submissions, and grading frozen-team
+  history after a student leaves the classroom roster.
   Bootstrap accommodations for historical migrations are documented in that script;
   these tests are not a live Supabase/Realtime or multi-connection load test.
 - Local browser: readable assignment form entries, NASM language/main.asm starter,
@@ -55,12 +60,22 @@ verification found all 16 original classes, 15 groups, 14 assignments, 3 documen
 one approved instructor with provenance and four profiles pending administrator
 review. No real teacher was automatically reapproved.
 
-The source branch was pushed at 4fc8420; a small follow-up adds complete offline
-team rosters and clarifies the legacy classroom-group labels. Large outbound
+Supabase also successfully applied **0025**, a submission-validation correction.
+It rejects groups attached to individual assignments and preserves the ability
+to grade previously submitted frozen-team work after a student leaves the
+classroom roster. It changes the validation function without replacing existing
+rows or changing grants and policies.
+
+The source branch was pushed at **09ce303**, including complete offline team
+rosters and clearer legacy classroom-group labels. A pending source change
+updates an existing service-worker registration on application mount so returning
+users receive the privacy-safe worker; it does not opt users into push. Large outbound
 artifact transfers stalled/truncated; the original SHA-256 check prevented use
-of the incomplete upload. A temporary unpublished GitHub draft was also attempted
-as an artifact transfer fallback. Candidate dependencies are installed separately
-from the live application. A bounded candidate build is being prepared instead. Deployment, authenticated production
+of the incomplete upload. The temporary unpublished GitHub draft used as an
+artifact-transfer fallback was deleted. Candidate dependencies and the successful
+bounded build are separate from the live application. Candidate API health is
+HTTP 200, but authenticated candidate QA is blocked at disposable-account sign-in;
+investigation is ongoing. Deployment, authenticated production
 regressions, actual Realtime delivery and browser-push opt-in/device/account-switch
 checks remain pending. No end-to-end production completion claim is made here.
 
@@ -72,4 +87,6 @@ than silently truncating the comparison corpus. Browser push requires valid VAPI
 configuration, permission and browser support. Background jobs are disabled for
 candidate smoke servers so they cannot deliver production notifications.
 
-An additional active collaboration-session suspension regression passed in the 10-test collaboration file.
+An additional active collaboration-session suspension regression passed in the
+10-test collaboration file. The three service-worker privacy tests also passed
+independently, as did the migration acceptance script through 0025.
