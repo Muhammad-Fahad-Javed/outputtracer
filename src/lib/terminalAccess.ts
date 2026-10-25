@@ -2,9 +2,6 @@ import { accessFromToken } from "./cloud/accessToken";
 import { getHub } from "./cloud/collabHub";
 import { canEdit, isUuid } from "./cloud/roles";
 import { createAdminClient } from "./supabase/admin";
-import { getClassroom } from "./classroom/classroomService";
-import { resolveClassroomDocument } from "./classroom/documents";
-import { loadCanonicalClassroomFiles } from "./classroom/classroomRun";
 import { studentRunDenial } from "./classroom/assignmentPolicy";
 import type { TerminalInitPayload } from "./wsTerminal";
 import { execConfig } from "./execConfig";
@@ -37,6 +34,11 @@ export async function resolveTerminalPayload(raw: TerminalRequestPayload): Promi
     if (!admin || typeof token !== "string" || !token || token.length > 12000) return { ok: false, message: "Sign in to run this assignment." };
     const { data, error } = await admin.auth.getUser(token);
     if (error || !data.user) return { ok: false, message: "Sign in to run this assignment." };
+    // These repositories import next/headers. Load them only after next.prepare()
+    // initializes the custom server's async request infrastructure.
+    const [{getClassroom},{resolveClassroomDocument},{loadCanonicalClassroomFiles}] = await Promise.all([
+      import("./classroom/classroomService"), import("./classroom/documents"), import("./classroom/classroomRun"),
+    ]);
     const actorId = data.user.id;
     const resolve = async () => {
       const access = await getClassroom(actorId, scope.classId);
