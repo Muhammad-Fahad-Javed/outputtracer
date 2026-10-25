@@ -1,3 +1,4 @@
+import { packProjectSnapshot } from "./projectSnapshot";
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ teacher: false, versions: {} as Record<string, object>, snapshot: null as object | null }));
 vi.mock('@/lib/classroom/requestUser', () => ({ classroomRequestUser: async () => ({ id: 'u1' }), isLocalPreviewActor: () => false }));
@@ -47,7 +48,12 @@ describe('history endpoint boundaries', () => {
   it('rejects another group snapshot and allows the caller’s group', async () => {
     state.snapshot = { assignmentId: 'a1', groupId: 'g2' };
     expect((await snapshot(new Request('http://localhost/'), context)).status).toBe(403);
-    state.snapshot = { assignmentId: 'a1', groupId: 'g1' };
-    expect((await snapshot(new Request('http://localhost/'), context)).status).toBe(200);
+    state.snapshot = { assignmentId: 'a1', groupId: 'g1', frozenCodeFiles: packProjectSnapshot({ 'main.asm': 'org 100h' }, { 'SAMPLE.BIN': { base64: 'AAEC' } }) };
+    const response = await snapshot(new Request('http://localhost/'), context);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.snapshot.frozenCodeFiles).toEqual({ 'main.asm': 'org 100h' });
+    expect(body.snapshot.inputAssets).toEqual({ 'SAMPLE.BIN': { base64: 'AAEC' } });
+    expect(body.snapshot.contentHashScope).toBe('source_and_input_assets_v1');
   });
 });

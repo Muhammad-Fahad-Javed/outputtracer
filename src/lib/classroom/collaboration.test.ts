@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { base64ToBytes, bytesToBase64 } from "@/lib/cloud/base64";
 import { getHub } from "@/lib/cloud/collabHub";
+import { readDosboxAssets } from "@/lib/dosboxAssets";
 import { classroomExecutionRequest, clampTimeLimitMs } from "./assignmentPolicy";
 import { actorForClassroomRequest } from "./classroomActor";
 import { executeResolvedClassroom } from "./classroomRun";
@@ -404,6 +405,77 @@ describe("classroom collaboration", () => {
   });
 
   describe("live room", () => {
+    it("shares and persists DOS input assets, rejecting raw updates, executable imports and frozen edits", async () => {
+      const created = await createClassroom(teacherA, { name: "DOS files" });
+      const classId = created.classroom!.id;
+      await joinClassroomByCode(student1, created.classroom!.joinCode);
+      const assignment = (await createAssignment(teacherA, classId, { title: "Files", language: "asm8086", isPublished: true })).assignment!;
+      const docKey = classroomDocumentKey(assignment.id, { studentId: student1 })!;
+      const socket = fakeSocket(); getHub().attach(socket as never);
+      socket.emit("message", JSON.stringify({ type: "join", kind: "classroom", token: signClassroomCollabToken({ userId: student1, displayName: "Student", classId, assignmentId: assignment.id }), clientId: 51 }));
+      await waitForType(socket, "init");
+      socket.emit("message", JSON.stringify({ type: "asset-upload", name: "SAMPLE.BIN", base64: "AP8=" }));
+      await waitForType(socket, "update");
+      expect(getHub().peekClassroomAssets(docKey)).toEqual({ "SAMPLE.BIN": { base64: "AP8=" } });
+      socket.emit("message", JSON.stringify({ type: "asset-upload", name: "APP.COM", base64: "AP8=" }));
+      await waitForType(socket, "error");
+      expect(getHub().peekClassroomAssets(docKey)).not.toHaveProperty("APP.COM");
+      const init = JSON.parse(socket.sent.find((raw) => JSON.parse(raw).type === "init")!);
+      const forged = new Y.Doc(); Y.applyUpdate(forged, base64ToBytes(init.state));
+      let update: Uint8Array | null = null; forged.on("update", (bytes: Uint8Array) => { update = bytes; });
+      forged.getMap("dosAssets").set("BYPASS.BIN", { base64: "AP8=" });
+      socket.emit("message", JSON.stringify({ type: "update", update: bytesToBase64(update!) }));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(getHub().peekClassroomAssets(docKey)).not.toHaveProperty("BYPASS.BIN");
+      for (const inject of [
+        (doc: Y.Doc) => doc.getMap("files").set("JUNK.INC", { ignored: "not source text" }),
+        (doc: Y.Doc) => doc.getMap("files").set("JUNK.INC", new Y.Map()),
+        (doc: Y.Doc) => doc.getMap("unvalidatedAssets").set("SNEAK.BIN", "bypass"),
+        (doc: Y.Doc) => (doc.getMap("files").get("main.asm") as Y.Text).insertEmbed(0, { ignored: "binary object" }),
+        (doc: Y.Doc) => doc.getMap("files").delete("main.asm"),
+      ]) {
+        const malicious = new Y.Doc(); Y.applyUpdate(malicious, base64ToBytes(init.state));
+        let maliciousUpdate: Uint8Array | null = null;
+        malicious.on("update", (bytes: Uint8Array) => { maliciousUpdate = bytes; });
+        inject(malicious);
+        const errorsBefore = socket.sent.filter((raw) => JSON.parse(raw).type === "error").length;
+        socket.emit("message", JSON.stringify({ type: "update", update: bytesToBase64(maliciousUpdate!) }));
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        expect(socket.sent.filter((raw) => JSON.parse(raw).type === "error")).toHaveLength(errorsBefore + 1);
+        malicious.destroy();
+      }
+      socket.emit("message", JSON.stringify({ type: "file-create", name: "HELPER.INC", content: "" }));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(getHub().peekClassroomFiles(docKey)).toHaveProperty("HELPER.INC");
+      socket.emit("message", JSON.stringify({ type: "file-create", name: "IMPORT.ASM", content: "mov ax, 1" }));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(getHub().peekClassroomFiles(docKey)).not.toHaveProperty("IMPORT.ASM");
+      await new Promise((resolve) => setTimeout(resolve, 850));
+      const persisted = await readClassroomDocument(docKey);
+      const restored = new Y.Doc(); Y.applyUpdate(restored, base64ToBytes(persisted!.stateB64));
+      expect(restored.getMap("files").has("JUNK.INC")).toBe(false);
+      expect(restored.share.has("unvalidatedAssets")).toBe(false);
+      expect(readDosboxAssets(restored)).toEqual({ "SAMPLE.BIN": { base64: "AP8=" } });
+      await updateAssignmentPolicy(teacherA, classId, assignment.id, { locked: true });
+      socket.emit("message", JSON.stringify({ type: "asset-delete", name: "SAMPLE.BIN" }));
+      await waitForType(socket, "locked");
+      expect(getHub().peekClassroomAssets(docKey)).toHaveProperty("SAMPLE.BIN");
+      await updateAssignmentPolicy(teacherA, classId, assignment.id, { locked: false });
+      const viewer = fakeSocket(); getHub().attach(viewer as never);
+      viewer.emit("message", JSON.stringify({ type: "join", kind: "classroom", token: signClassroomCollabToken({ userId: teacherA, displayName: "Teacher", classId, assignmentId: assignment.id, studentId: student1 }), clientId: 52 }));
+      await waitForType(viewer, "init");
+      viewer.emit("message", JSON.stringify({ type: "asset-upload", name: "VIEWER.BIN", base64: "AP8=" }));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(getHub().peekClassroomAssets(docKey)).not.toHaveProperty("VIEWER.BIN");
+      await removeClassroomMember(teacherA, classId, student1);
+      socket.emit("message", JSON.stringify({ type: "asset-upload", name: "REVOKED.BIN", base64: "AP8=" }));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(socket.readyState).toBe(3);
+      expect(getHub().peekClassroomAssets(docKey)).not.toHaveProperty("REVOKED.BIN");
+      viewer.emit("close");
+      socket.emit("close"); forged.destroy(); restored.destroy();
+    });
+
     it.each(["cpp", "python", "asm8086"] as const)("shares a %s group document and rejects edits after lock", async (language) => {
       const entryFile = CLASSROOM_LANGUAGES[language].file;
       const created = await createClassroom(teacherA, { name: "Live" });

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import DosTerminal from "@/components/asm/DosTerminal";
+import BrowserDosbox from "@/components/asm/BrowserDosbox";
+import DosboxFiles from "@/components/asm/DosboxFiles";
+import {bytesToBase64} from "@/lib/cloud/base64";
 import dynamic from "next/dynamic";
-import { Play, Send, ArrowLeft, Download, FileCode, Terminal, BookOpen, Users, CheckCheck, Save, Square, Cpu } from "lucide-react";
+import { Play, Send, ArrowLeft, Download, FileCode, Terminal, BookOpen, Users, CheckCheck, Save, Square } from "lucide-react";
 import WorkspaceVisit from "@/components/WorkspaceVisit";
 import Link from "next/link";
 import { CLASSROOM_LANGUAGES, classroomLanguage } from "@/lib/classroom/languages";
@@ -62,13 +64,10 @@ export default function AssignmentWorkspace({
     void load();const refresh=setInterval(()=>{if(document.visibilityState==='visible')void load();},30000);
     return()=>{active=false;clearInterval(refresh);};
   },[tab,collab.groupMode,collab.groupId,classId,assignmentId]);
-  const [terminal,setTerminal]=useState<AsmExecutionStatus|null>(null);
-  const [terminalBusy,setTerminalBusy]=useState(false);
-  const [terminalError,setTerminalError]=useState<string|null>(null);
-  const terminalRef=useRef<{sessionId:string;sessionToken:string;sourceRevision:string}|null>(null);
+  const [filesOpen,setFilesOpen]=useState(true);
+  const [dosOutputs,setDosOutputs]=useState<Record<string,Uint8Array>>({});
   const [currentInputPolicy,setCurrentInputPolicy]=useState(assignment?.inputPolicy||'paste_allowed');
   useEffect(()=>{const t=setInterval(()=>{if(document.visibilityState==='visible')void fetch(`/api/classroom/${classId}/assignments/${assignmentId}`).then(r=>r.json()).then(d=>{if(d.assignment)setCurrentInputPolicy(d.assignment.inputPolicy||'paste_allowed');}).catch(()=>{});},15000);return()=>clearInterval(t);},[classId,assignmentId]);
-  useEffect(()=>()=>{if(terminalRef.current)void fetch(`/api/classroom/${classId}/assignments/${assignmentId}/interactive`,{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'stop',...terminalRef.current})});},[classId,assignmentId]);
   const [machine, setMachine] = useState<AsmExecutionStatus | null>(null);
   const [split, setSplit] = useState(70);
   const [outputCollapsed,setOutputCollapsed]=useState(false);
@@ -104,13 +103,11 @@ export default function AssignmentWorkspace({
   const editable = canEdit(collab.role) && !collab.frozen;
   const canRun = editable && collab.allowRun;
 
-  const interactive = async(action:string,input?:string)=>{setTerminalBusy(true);setTerminalError(null);if(action==='start'){setTab('console');setOutputCollapsed(false);}try{const r=await fetch(`/api/classroom/${classId}/assignments/${assignmentId}/interactive`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,input,...terminalRef.current,groupId:collab.groupId,studentId:collab.studentId})});const d=await r.json();if(!r.ok||!d.success)throw Error(d.error+(d.diagnostics?' '+d.diagnostics.map((x:{message:string})=>x.message).join('; '):''));if(action==='stop'){terminalRef.current=null;setTerminal(null);}else{terminalRef.current={sessionId:d.sessionId,sessionToken:d.sessionToken,sourceRevision:d.sourceRevision};setTerminal(d.status);setMachine(d.status);}}catch(e){setTerminalError(e instanceof Error?e.message:'Execution failed.');}finally{setTerminalBusy(false);}};
   const runConsole = () => {
-    if (!canRun || busy || terminalBusy || consoleRunning) return;
+    if (!canRun || busy || consoleRunning) return;
     setOutputCollapsed(false);
     setTab("console");
-    if (language === "asm8086") void interactive("start");
-    else setConsoleRunRequest(value => value + 1);
+    setConsoleRunRequest(value => value + 1);
   };
   const runPublicTests = async () => {
     if (!canRun) return;
@@ -227,7 +224,6 @@ export default function AssignmentWorkspace({
     { id: "instructions", label: "Instructions", icon: BookOpen },
     { id: "tests", label: "Tests", icon: CheckCheck },
     { id: "team", label: "Collaborators", icon: Users },
-    ...(language === "asm8086" ? [{id:"dosbox",label:"DOS terminal",icon:Terminal},{ id: "registers", label: "Registers & flags", icon: Cpu }] : []),
   ];
   const toolbar = "inline-flex shrink-0 items-center gap-2 rounded px-3 py-1.5 text-xs text-[#ccc] hover:bg-[#303030] disabled:opacity-40";
   return (
@@ -242,8 +238,9 @@ export default function AssignmentWorkspace({
       <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[#333] bg-[#181818] px-3 py-2">
         <span className="mr-1 text-[11px] font-semibold uppercase text-[#888]">Language:</span>
         <span className="mr-2 min-w-32 rounded border border-[#444] bg-[#111] px-3 py-1.5 text-xs text-white">{config.label}</span>
-        <button onClick={runConsole} disabled={!canRun || busy !== null || terminalBusy || consoleRunning || collab.status !== "live"} className="inline-flex shrink-0 items-center gap-2 rounded bg-[#238636] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Play size={13} fill="currentColor" /> {consoleRunning || terminalBusy ? "Running…" : language === "asm8086" ? "Assemble & Run" : "Run program"}</button>
-        <button className={toolbar} disabled={!canRun||busy!==null||terminalBusy||consoleRunning} onClick={()=>void runPublicTests()}><CheckCheck size={13}/>Run public tests</button>
+        <button onClick={runConsole} disabled={!canRun || busy !== null || consoleRunning || collab.status !== "live"} className="inline-flex shrink-0 items-center gap-2 rounded bg-[#238636] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"><Play size={13} fill="currentColor" /> {consoleRunning ? "Running…" : language === "asm8086" ? "Assemble & Run" : "Run program"}</button>
+        <button className={toolbar} disabled={language === "asm8086" || !canRun||busy!==null||consoleRunning} onClick={()=>void runPublicTests()} title={language === "asm8086" ? "DOSBox projects use teacher review; automatic tests are not available." : undefined}><CheckCheck size={13}/>{language === "asm8086" ? "Teacher-reviewed project" : "Run public tests"}</button>
+        {language === "asm8086" && <button className={toolbar} onClick={()=>setFilesOpen(value=>!value)}>Files</button>}
         {consoleRunning && <button className={toolbar} onClick={()=>setConsoleStopRequest(value=>value+1)}><Square size={12} className="text-red-400"/>Stop program</button>}
         {busy === "run" && <button className={toolbar} onClick={() => { controller.current?.abort(); setBusy(null); }}><Square size={12} className="text-red-400" /> Stop waiting</button>}
         <button onClick={download} className={toolbar} disabled={!collab.doc}><Download size={14} /> Download</button>
@@ -255,8 +252,11 @@ export default function AssignmentWorkspace({
       <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-[#333] bg-[#181818]">
         {collab.fileNames.map(name => <button key={name} onClick={() => collab.setActiveFile(name)} className={`flex shrink-0 items-center gap-2 border-r border-[#333] px-4 font-mono text-xs ${name === collab.activeFile ? "border-t border-t-white bg-[#1e1e1e] text-white" : "text-[#888]"}`}><FileCode size={13} />{name}</button>)}
       </div>
-      <div className="min-h-0" style={{ flex: `${outputCollapsed?100:split} 1 0%` }}>
+      <div className="flex min-h-0" style={{ flex: `${outputCollapsed?100:split} 1 0%` }}>
+        {language === "asm8086" && filesOpen && <div className="w-44 shrink-0 sm:w-52"><DosboxFiles sources={collab.snapshot()} assets={collab.assets} activeFile={collab.activeFile} onSelectSource={collab.setActiveFile} onCreateSource={collab.createFile} onDeleteSource={collab.deleteFile} onUploadAsset={collab.uploadAsset} onDeleteAsset={collab.deleteAsset} outputs={dosOutputs} onSaveOutputAsInput={(name,bytes)=>collab.uploadAsset(name,bytesToBase64(bytes))} readOnly={!editable || collab.status !== "live"}/></div>}
+        <div className="min-w-0 flex-1">
         {collab.doc && collab.awareness ? <CollabEditor doc={collab.doc} awareness={collab.awareness} filename={collab.activeFile} language={config.monaco} readOnly={!editable} inputPolicy={currentInputPolicy} onPasteCode={characterCount=>{void fetch(`/api/classroom/${classId}/assignments/${assignmentId}/paste-events`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({file:collab.activeFile,characterCount})}).then(r=>{if(!r.ok)setNotice({tone:"err",text:"Paste was inserted, but its activity log could not be saved. Please tell your teacher."});}).catch(()=>setNotice({tone:"err",text:"Paste activity log could not be saved. Please tell your teacher."}));}} peers={collab.peers} onRunShortcut={runConsole} onEditor={editor => { editorSubscription.current?.dispose(); editorSubscription.current = editor.onDidChangeCursorPosition(event => setCursor(event.position)); }} /> : <div className="flex h-full items-center justify-center p-6 font-mono text-sm text-[#999]">{collab.error || "Connecting to the assignment…"}</div>}
+      </div>
       </div>
       <div role="separator" aria-label="Resize editor and output" aria-orientation="horizontal" tabIndex={0} onKeyDown={e => { if (e.key === "ArrowUp") saveSplit(Math.max(20,split-5)); if (e.key === "ArrowDown") saveSplit(Math.min(80,split+5)); }} onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={e => { if (e.currentTarget.hasPointerCapture(e.pointerId) && surface.current) { const r = surface.current.getBoundingClientRect(); saveSplit(Math.max(20,Math.min(80,(e.clientY-r.top-120)/(r.height-160)*100))); } }} className="flex h-2 shrink-0 cursor-row-resize touch-none items-center justify-center border-y border-[#303030] bg-[#181818] hover:bg-[#007acc]"><span className="h-px w-10 bg-[#555]" /></div>
       <div className="flex flex-col bg-[#111]" style={{ flex: outputCollapsed?"0 0 40px":`${100-split} 1 0%`, minHeight:outputCollapsed?40:220 }}>
@@ -264,19 +264,19 @@ export default function AssignmentWorkspace({
           <button className="shrink-0 px-3 text-[#ccc]" onClick={()=>setOutputCollapsed(v=>!v)}>{outputCollapsed?"Expand output":"Collapse output"}</button>{tabs.map(t => <button key={t.id} onClick={() => {setTab(t.id);setOutputCollapsed(false);}} className={`flex shrink-0 items-center gap-2 border-b-2 px-4 text-xs ${tab === t.id ? "border-white text-white" : "border-transparent text-[#888] hover:text-[#ccc]"}`}><t.icon size={14}/>{t.label}</button>)}
         </div>
         <div className={`min-h-0 flex-1 overflow-hidden ${outputCollapsed || !["console","dosbox"].includes(tab)?"hidden":"flex"}`}>
-          {language === "asm8086" ? <DosTerminal status={terminal} busy={terminalBusy} error={terminalError} privateRun onInput={text=>interactive("input",text)} onStart={canRun?()=>void interactive("start"):undefined} onReset={canRun?()=>void interactive("start"):undefined} onStop={()=>void interactive("stop")}/> : <ProgramConsole language={language} files={collab.snapshot()} classroom={{classId,assignmentId,groupId:collab.groupId,studentId:collab.studentId}} runRequest={consoleRunRequest} stopRequest={consoleStopRequest} initialStdin={stdin} onRunningChange={setConsoleRunning} onStatusChange={setConsoleStatus} canRun={canRun && collab.status === "live"} privateRun/>}
+          {language === "asm8086" ? <BrowserDosbox files={collab.snapshot()} getFiles={collab.snapshot} assets={collab.assets} getAssets={collab.snapshotAssets} runRequest={consoleRunRequest} stopRequest={consoleStopRequest} canRun={canRun && collab.status === "live"} onRunningChange={setConsoleRunning} onStatusChange={setConsoleStatus} onArtifactsChange={setDosOutputs} onOutputChange={setRunOutput}/> : <ProgramConsole language={language} files={collab.snapshot()} classroom={{classId,assignmentId,groupId:collab.groupId,studentId:collab.studentId}} runRequest={consoleRunRequest} stopRequest={consoleStopRequest} initialStdin={stdin} onRunningChange={setConsoleRunning} onStatusChange={setConsoleStatus} canRun={canRun && collab.status === "live"} privateRun/>}
         </div>
         <div className={`min-h-0 flex-1 overflow-auto p-4 text-xs ${outputCollapsed || ["console","dosbox"].includes(tab)?"hidden":""}`}>
-          {tab === "output" && <pre className="whitespace-pre-wrap font-mono leading-6">{runOutput || "Run your program to see output and public test results."}{submission?.feedback && `\n\nTeacher feedback:\n${submission.feedback}`}</pre>}
-          {tab === "input" && <div className="flex h-full min-h-24 flex-col gap-2"><label htmlFor="assignment-stdin" className="text-[#999]">Standard input is sent when you run the program.</label><textarea id="assignment-stdin" value={stdin} onChange={e => setStdin(e.target.value)} className="min-h-20 flex-1 resize-none rounded border border-[#444] bg-[#1e1e1e] p-3 font-mono text-[#ddd] outline-none focus:border-[#007acc]" placeholder="Enter program input here…" /></div>}
+          {tab === "output" && <pre className="whitespace-pre-wrap font-mono leading-6">{runOutput || (language === "asm8086" ? "Use Console for the live DOS screen and keyboard input. Your teacher reviews the saved project submission." : "Run your program to see output and public test results.")}{submission?.feedback && `\n\nTeacher feedback:\n${submission.feedback}`}</pre>}
+          {tab === "input" && (language === "asm8086" ? <p className="text-[#bbb]">Enter interactive input in Console, or click the DOS screen to send individual keys. Upload project data in Files; programs can read it from INPUT\\.</p> : <div className="flex h-full min-h-24 flex-col gap-2"><label htmlFor="assignment-stdin" className="text-[#999]">Standard input is sent when you run the program.</label><textarea id="assignment-stdin" value={stdin} onChange={e => setStdin(e.target.value)} className="min-h-20 flex-1 resize-none rounded border border-[#444] bg-[#1e1e1e] p-3 font-mono text-[#ddd] outline-none focus:border-[#007acc]" placeholder="Enter program input here…" /></div>)}
           {tab === "instructions" && <div className="max-w-3xl space-y-3"><h2 className="text-base font-semibold text-white">{assignment?.title}</h2><p className="whitespace-pre-wrap leading-6">{assignment?.description || "No additional instructions provided."}</p><p className="text-[#888]">{assignment?.maxPoints} points · {assignment?.dueDate ? `Due ${new Date(assignment.dueDate).toLocaleString()}` : "No deadline"} · {allowLate ? "Late submissions allowed" : "Late submissions closed"}</p></div>}
-          {tab === "tests" && <div className="space-y-4">{assignment?.publicTestCases?.length ? assignment.publicTestCases.map(t => <div key={t.id} className="border-b border-[#333] pb-3"><h3 className="mb-2 font-semibold text-white">{t.name} · {t.points} pts</h3><div className="grid grid-cols-2 gap-4"><div><p className="mb-1 text-[#888]">Input</p><pre className="whitespace-pre-wrap">{t.stdin || "(empty)"}</pre></div><div><p className="mb-1 text-[#888]">Expected output</p><pre className="whitespace-pre-wrap">{t.expectedOutput || "(empty)"}</pre></div></div></div>) : <p className="text-[#999]">No public tests configured.</p>}<p className="text-[#888]">Hidden grading tests are evaluated by your teacher and are never shared with students.</p></div>}
+          {tab === "tests" && <div className="space-y-4">{language === "asm8086" && <p className="text-amber-200">Run and inspect your project in browser DOSBox. These cases are reference examples; your teacher reviews the saved submission.</p>}{assignment?.publicTestCases?.length ? assignment.publicTestCases.map(t => <div key={t.id} className="border-b border-[#333] pb-3"><h3 className="mb-2 font-semibold text-white">{t.name} · {t.points} pts</h3><div className="grid grid-cols-2 gap-4"><div><p className="mb-1 text-[#888]">Input</p><pre className="whitespace-pre-wrap">{t.stdin || "(empty)"}</pre></div><div><p className="mb-1 text-[#888]">Expected output</p><pre className="whitespace-pre-wrap">{t.expectedOutput || "(empty)"}</pre></div></div></div>) : <p className="text-[#999]">No public tests configured.</p>}<p className="text-[#888]">{language === "asm8086" ? "Browser execution results are private and do not automatically determine your grade." : "Hidden grading tests are evaluated by your teacher and are never shared with students."}</p></div>}
           {tab === "team" && <div className="space-y-3">{collab.groupMode&&<><h3 className="font-semibold">{teamRoster?.name||"Your assignment team"}</h3>{teamError&&<p role="alert" className="text-red-300">{teamError}</p>}{teamRoster?.members.map(member=><p key={member.userId}>{member.displayName||"Student"}</p>)}<h3 className="border-t border-[#333] pt-3 font-semibold">Live collaborators</h3></>}<p>{collab.displayName} · you</p>{collab.peers.map(p => <p key={p.clientId} className="flex items-center gap-2"><span style={{backgroundColor:p.color}} className="h-2 w-2 rounded-full" />{p.name} {p.file ? `· ${p.file}` : ""}</p>)}<p className="text-[#888]">{collab.groupMode ? "Group members share live code, named cursors, and selections." : "This is an individual assignment."}</p></div>}
-          {tab === "registers" && (machine ? <div className="space-y-4"><div className="grid grid-cols-3 gap-3 sm:grid-cols-6">{Object.entries(machine.registers).map(([key,value]) => <div key={key} className="border border-[#333] p-2 font-mono"><span className="uppercase text-[#888]">{key}</span><p className="mt-1 text-[#b5cea8]">{value.toString(16).padStart(4,"0").toUpperCase()}</p></div>)}</div><div className="flex flex-wrap gap-4 font-mono">{Object.entries(machine.flags).map(([key,value]) => <span key={key} className={value ? "text-[#b5cea8]" : "text-[#777]"}>{key.toUpperCase()} {value ? "1" : "0"}</span>)}</div></div> : <p className="text-[#999]">Assemble and run to inspect the final CPU state.</p>)}
+          {tab === "registers" && language !== "asm8086" && (machine ? <div className="space-y-4"><div className="grid grid-cols-3 gap-3 sm:grid-cols-6">{Object.entries(machine.registers).map(([key,value]) => <div key={key} className="border border-[#333] p-2 font-mono"><span className="uppercase text-[#888]">{key}</span><p className="mt-1 text-[#b5cea8]">{value.toString(16).padStart(4,"0").toUpperCase()}</p></div>)}</div><div className="flex flex-wrap gap-4 font-mono">{Object.entries(machine.flags).map(([key,value]) => <span key={key} className={value ? "text-[#b5cea8]" : "text-[#777]"}>{key.toUpperCase()} {value ? "1" : "0"}</span>)}</div></div> : <p className="text-[#999]">Assemble and run to inspect the final CPU state.</p>)}
         </div>
       </div>
       <WorkspaceVisit kind="assignment" id={assignmentId} ready={collab.status==="live" && !previewStudent}/>
-      <footer className="flex h-6 shrink-0 items-center justify-between gap-3 overflow-hidden border-t border-[#333] bg-[#181818] px-3 font-mono text-[11px] text-[#aaa]"><span className="truncate">{collab.status === "live" ? "● Synchronized" : collab.status} · {language === "asm8086" ? terminal?.state || "Console ready" : `Console ${consoleStatus}`} · {submission ? `${submission.status}${submission.isLate ? " · late" : ""}` : "Not submitted"}</span><span className="shrink-0">Ln {cursor.lineNumber}, Col {cursor.column} · {currentInputPolicy === "typing_only" ? "Typing only" : "Paste allowed (logged)"} · {config.label} · {collab.activeFile}</span></footer>
+      <footer className="flex h-6 shrink-0 items-center justify-between gap-3 overflow-hidden border-t border-[#333] bg-[#181818] px-3 font-mono text-[11px] text-[#aaa]"><span className="truncate">{collab.status === "live" ? "● Synchronized" : collab.status} · {`Console ${consoleStatus}`} · {submission ? `${submission.status}${submission.isLate ? " · late" : ""}` : "Not submitted"}</span><span className="shrink-0">Ln {cursor.lineNumber}, Col {cursor.column} · {currentInputPolicy === "typing_only" ? "Typing only" : "Paste allowed (logged)"} · {config.label} · {collab.activeFile}</span></footer>
     </div>
   );
 }

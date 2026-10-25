@@ -16,7 +16,7 @@ export interface CodeVersion {
   groupId?: string;
   versionNumber: number;
   codeFiles: Record<string, string>;
-  /** SHA-256 hex digest of canonical JSON(codeFiles) for tamper detection */
+  /** SHA-256 of canonical stored payload, including the reserved input-asset manifest when present. */
   contentHash: string;
   language: string;
   createdAt: string;
@@ -153,6 +153,10 @@ export interface SubmissionGrade {
 
 export interface GradeInput {
   submissionId: string;
+  /** Refuse to grade a newer hand-in than the one reviewed. */
+  expectedSnapshotId?: string;
+  /** Trusted assignment maximum supplied by the server, never the request body. */
+  maxPoints?: number;
   rubricScores?: Record<string, number>;
   manualPoints?: number;
   gradeMode?: GradeMode;

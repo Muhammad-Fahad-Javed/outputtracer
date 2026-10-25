@@ -2,6 +2,7 @@ import * as Y from "yjs";
 import { execConfig } from "@/lib/execConfig";
 import { inspectSourceFiles, isValidSourceFilename } from "@/lib/sourceFiles";
 import { base64ToBytes, bytesToBase64 } from "./base64";
+import type { ClassroomLanguage } from "@/lib/classroom/languages";
 
 export function fileMap(doc: Y.Doc): Y.Map<Y.Text> {
   return doc.getMap("files");
@@ -39,9 +40,10 @@ export function applyEncoded(doc: Y.Doc, encoded: string, origin?: unknown): voi
 export function createFile(
   doc: Y.Doc,
   name: string,
-  content: string
+  content: string,
+  language: ClassroomLanguage = "cpp"
 ): { ok: true } | { ok: false; message: string } {
-  if (!isValidSourceFilename(name)) {
+  if (!isValidSourceFilename(name, language)) {
     return { ok: false, message: "Use a simple name like main.cpp or helper.h." };
   }
   const map = fileMap(doc);
@@ -51,7 +53,7 @@ export function createFile(
   const inspected = inspectSourceFiles(next, {
     maxFiles: execConfig.maxSourceFiles,
     maxSourceBytes: execConfig.maxSourceBytes,
-  });
+  }, language);
   if (!inspected.ok) return { ok: false, message: inspected.message };
 
   doc.transact(() => {
@@ -64,7 +66,8 @@ export function createFile(
 
 export function deleteFile(
   doc: Y.Doc,
-  name: string
+  name: string,
+  language: ClassroomLanguage = "cpp"
 ): { ok: true } | { ok: false; message: string } {
   const map = fileMap(doc);
   if (!map.has(name)) return { ok: false, message: "File not found." };
@@ -73,7 +76,7 @@ export function deleteFile(
   const inspected = inspectSourceFiles(next, {
     maxFiles: execConfig.maxSourceFiles,
     maxSourceBytes: execConfig.maxSourceBytes,
-  });
+  }, language);
   if (!inspected.ok) return { ok: false, message: inspected.message };
   doc.transact(() => {
     map.delete(name);

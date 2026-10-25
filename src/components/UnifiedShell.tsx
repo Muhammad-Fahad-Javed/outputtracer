@@ -34,6 +34,10 @@ import {
 import dynamic from "next/dynamic";
 import type { OnMount } from "@monaco-editor/react";
 import { useAuth } from "@/components/AuthProvider";
+import BrowserDosbox from "@/components/asm/BrowserDosbox";
+import DosboxFiles from "@/components/asm/DosboxFiles";
+import {inspectDosboxAssets, type DosboxAssets} from "@/lib/dosboxAssets";
+import {bytesToBase64} from "@/lib/cloud/base64";
 import DosboxWorkspace from "@/components/asm/DosboxWorkspace";
 import AssemblyInspector from "@/components/asm/AssemblyInspector";
 import AssemblyMemory from "@/components/asm/AssemblyMemory";
@@ -333,7 +337,18 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
     try { if (localStorage.getItem("pending_asm_code") === pendingAssembly) localStorage.removeItem("pending_asm_code"); } catch { /* Storage may be unavailable. */ }
   }, [pendingAssembly]);
   const [lang, setLang] = useState<SupportedLanguage>(initialLanguage);
-  const [labOpen, setLabOpen] = useState(assemblyLab);
+  const [labOpen, setLabOpen] = useState(false);
+  const [asmRuntime,setAsmRuntime] = useState<"dosbox"|"learning">("dosbox");
+  const [filesOpen,setFilesOpen] = useState(true);
+  const [storedDosProject] = useState<{files?:Record<string,string>;assets?:DosboxAssets}>(()=>{
+    if (pendingAssembly !== null) return {};
+    try {const data=JSON.parse(localStorage.getItem("outputtracer-dos-project-v1")||"{}");return typeof data.files?.["main.asm"]==="string" && inspectDosboxAssets(data.assets||{}).ok ? data : {};} catch {return {};}
+  });
+  const [asmExtras,setAsmExtras] = useState<Record<string,string>>(()=>Object.fromEntries(Object.entries(storedDosProject.files||{}).filter(([name,value])=>name!=="main.asm"&&/^[a-z0-9_][a-z0-9_-]{0,7}\.(asm|inc)$/i.test(name)&&typeof value==="string")));
+  const [asmActiveFile,setAsmActiveFile] = useState("main.asm");
+  const [dosAssets,setDosAssets] = useState<DosboxAssets>(storedDosProject.assets||{});
+  const [dosOutputs,setDosOutputs] = useState<Record<string,Uint8Array>>({});
+  const [dosSaveError,setDosSaveError] = useState("");
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>("console");
   const [panelHeight, setPanelHeight] = useState(280);
   const [panelCollapsed,setPanelCollapsed]=useState(false);
@@ -353,7 +368,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
   const [codeBuffers, setCodeBuffers] = useState<Record<SupportedLanguage, string>>(() => ({
     cpp: pendingExample ?? CPP_SAMPLE,
     python: PYTHON_SAMPLE,
-    assembly: pendingAssembly ?? (assemblyLab ? DEFAULT_ASM_CODE : ASM_SAMPLE),
+    assembly: pendingAssembly ?? storedDosProject.files?.["main.asm"] ?? (assemblyLab ? DEFAULT_ASM_CODE : ASM_SAMPLE),
   }));
 
   // Stdin & interactive output state
@@ -398,6 +413,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
   const [consoleRunRequest, setConsoleRunRequest] = useState(0);
   const [consoleStopRequest, setConsoleStopRequest] = useState(0);
   const [consoleStatus, setConsoleStatus] = useState("Ready");
+  const [dosOutput, setDosOutput] = useState("");
 
   // Monaco editor references & active line decorations
   const editorRef = useRef<Parameters<NonNullable<OnMount>>[0] | null>(null);
@@ -407,12 +423,24 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
   // File metadata based on active language
   const config = WORKSPACE_CONFIG[lang];
   const fileMeta = {
-    name: config.defaultFile,
+    name: lang === "assembly" ? asmActiveFile : config.defaultFile,
     label: config.label,
     monacoLang: config.monacoLanguage === "nasm" ? "nasm" : config.monacoLanguage,
   };
 
-  const currentCode = codeBuffers[lang];
+  const asmFiles = useMemo<Record<string,string>>(()=>({"main.asm":codeBuffers.assembly,...asmExtras}),[codeBuffers.assembly,asmExtras]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem("outputtracer-dos-project-v1", JSON.stringify({ files: asmFiles, assets: dosAssets }));
+        setDosSaveError("");
+      } catch {
+        setDosSaveError("Browser storage is full or unavailable. Download your project before leaving.");
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [asmFiles, dosAssets]);
+  const currentCode = lang === "assembly" ? asmFiles[asmActiveFile] || "" : codeBuffers[lang];
   const consoleFiles = useMemo(() => ({ [WORKSPACE_CONFIG[lang].defaultFile]: codeBuffers[lang] }), [lang, codeBuffers]);
   const handleConsoleOutput = useCallback((output: string) => {
     if (lang === "cpp") setCppOutput(output);
@@ -679,6 +707,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
     setActiveTab("console");
     setPanelCollapsed(false);
     if (lang === "assembly") {
+      if(asmRuntime === "dosbox") {setConsoleRunRequest(request=>request+1);return;}
       if (labOpen && asmSourceRef.current === codeBuffers.assembly && asmStatus.canStepForward && asmStatus.currentStep > 0) void handleAsmContinue();
       else void handleAsmRun();
     } else {
@@ -687,7 +716,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
   };
 
   const handleStop = () => {
-    if (lang === "assembly") {
+    if (lang === "assembly" && asmRuntime === "learning") {
       void handleAsmStop();
     } else {
       setConsoleStopRequest((request) => request + 1);
@@ -695,6 +724,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
   };
 
   const handleNewFile = () => {
+    if(lang === "assembly") {setFilesOpen(true);return;}
     const filename = window.prompt("Enter new file name:", "solution.cpp");
     if (filename) {
       alert(`Created ${filename}`);
@@ -719,6 +749,8 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
   const handleSelectExample = (ex: ExampleItem) => {
     if (lang === "assembly") {
       void handleAsmStop();
+      setConsoleStopRequest(request=>request+1);
+      setAsmActiveFile("main.asm");
       setCodeBuffers(previous => ({...previous, assembly: ex.code}));
       setAsmTraceHistory([]);
       setAsmDiagnostics([]);
@@ -745,7 +777,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
       if (e.key === "F5") {
         e.preventDefault();
         handleRunDebug();
-      } else if (e.key === "F10" && lang === "assembly") {
+      } else if (e.key === "F10" && lang === "assembly" && asmRuntime === "learning") {
         e.preventDefault();
         if (e.shiftKey) void handleAsmBack();
         else void handleAsmStep();
@@ -771,7 +803,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
   const handleDownloadOutput = () => {
     let content = "";
     if (lang === "assembly") {
-      content = asmStatus.stdout;
+      content = asmRuntime === "dosbox" ? dosOutput : asmStatus.stdout;
     } else if (lang === "cpp") {
       content = cppOutput;
     } else {
@@ -1114,16 +1146,20 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
           className="flex h-6 items-center gap-1.5 rounded-[2px] bg-[#238636] px-2.5 text-[12px] font-semibold text-white transition-colors hover:bg-[#2EA043] disabled:opacity-50 cursor-pointer shadow-sm"
         >
           <Play size={12} fill="white" />
-          <span>{lang === "assembly" && labOpen && assembledSource === codeBuffers.assembly && asmStatus.canStepForward && asmStatus.currentStep > 0 ? "Continue" : "Run & Debug"}</span>
+          <span>{lang === "assembly" && asmRuntime === "learning" && labOpen && assembledSource === codeBuffers.assembly && asmStatus.canStepForward && asmStatus.currentStep > 0 ? "Continue" : "Run & Debug"}</span>
           <span className="rounded bg-black/30 px-1 py-0.2 font-mono text-[9px] font-bold">
             F5
           </span>
         </button>
 
         {lang === "assembly" && <>
+          <select aria-label="Assembly runtime" value={asmRuntime} onChange={e=>{setConsoleStopRequest(value=>value+1);void handleAsmStop();setIsExecuting(false);setAsmRuntime(e.target.value as "dosbox"|"learning");setLabOpen(e.target.value === "learning");setActiveTab("console");}} className="rounded border border-[#444] bg-[#181818] px-2 py-1 text-white"><option value="dosbox">Browser DOSBox · full runtime</option><option value="learning">Learning debugger · limited 8086</option></select>
+          <button type="button" onClick={()=>setFilesOpen(value=>!value)}>Files</button>
+          {asmRuntime === "learning" && <>
           <button type="button" onClick={() => void handleAsmStep()} disabled={asmIsLoading || (assembledSource === codeBuffers.assembly && !asmStatus.canStepForward && asmStatus.state !== "ready")} className="rounded border border-[#444] px-2 py-1 text-[#ddd] disabled:opacity-40" title="Next instruction (F10)">Step</button>
           <button type="button" onClick={() => void handleAsmBack()} disabled={asmIsLoading || !asmStatus.canStepBack || assembledSource !== codeBuffers.assembly} className="rounded border border-[#444] px-2 py-1 text-[#ddd] disabled:opacity-40" title="Previous instruction (Shift+F10)">Back</button>
           <button type="button" aria-pressed={labOpen} onClick={() => {setLabOpen(open => !open); if (window.matchMedia("(max-width: 767px)").matches) {setActiveTab("registers");setPanelCollapsed(false);} }} className={`rounded border px-2 py-1 ${labOpen ? "border-blue-500 bg-blue-950 text-blue-200" : "border-[#444] text-[#ddd]"}`}>8086 Lab</button>
+          </>}
         </>}
 
         {/* Stop Button */}
@@ -1176,7 +1212,13 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
         {/* Save Button */}
         <button
           type="button"
-          onClick={() => alert(`Saved ${fileMeta.name} locally.`)}
+          onClick={() => {
+            if (lang !== "assembly") { handleDownloadCode(); return; }
+            try {
+              localStorage.setItem("outputtracer-dos-project-v1", JSON.stringify({ files: asmFiles, assets: dosAssets }));
+              setDosSaveError("");
+            } catch { setDosSaveError("Browser storage is full or unavailable. Download your project before leaving."); }
+          }}
           className="flex h-6 items-center gap-1 rounded-[2px] border border-transparent px-2 text-[12px] font-medium text-[#CCCCCC] hover:bg-[#252526] hover:text-white transition-colors cursor-pointer"
           title="Save file locally"
         >
@@ -1187,6 +1229,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
         {/* AI Assist button is completely removed without extra space or gap */}
       </div>
 
+      {lang === "assembly" && dosSaveError && <p role="alert" className="px-3 text-xs text-red-300">{dosSaveError}</p>}
       {/* 3. Compact File Tab Bar (Height 30px) */}
       <div className="flex h-[30px] shrink-0 items-center justify-between border-b border-[#2E2E2E] bg-[#181818] px-2 select-none text-[12px]">
         <div className="flex h-full items-center">
@@ -1208,13 +1251,14 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
 
       {/* 4. Main Code Editor (Fills remaining height) */}
       <div className="relative flex min-h-[140px] flex-1 overflow-hidden bg-[#121212]">
+        {lang === "assembly" && filesOpen && <div className="w-44 shrink-0 sm:w-52"><DosboxFiles shared={false} sources={asmFiles} assets={dosAssets} activeFile={asmActiveFile} onSelectSource={setAsmActiveFile} onCreateSource={name=>{setAsmExtras(previous=>({...previous,[name]:""}));setAsmActiveFile(name);}} onDeleteSource={name=>{setAsmExtras(previous=>{const next={...previous};delete next[name];return next;});setAsmActiveFile("main.asm");}} onUploadAsset={(name,base64)=>setDosAssets(previous=>({...previous,[name]:{base64}}))} onDeleteAsset={name=>setDosAssets(previous=>{const next={...previous};delete next[name];return next;})} outputs={dosOutputs} onSaveOutputAsInput={(name,bytes)=>setDosAssets(previous=>({...previous,[name]:{base64:bytesToBase64(bytes)}}))}/></div>}
         <div className="min-w-0 flex-1">
         <Editor
           height="100%"
           language={fileMeta.monacoLang}
           theme="vs-dark"
           value={currentCode}
-          onChange={(val) => setCodeBuffers((prev) => ({ ...prev, [lang]: val || "" }))}
+          onChange={val => {if(lang === "assembly" && asmActiveFile !== "main.asm")setAsmExtras(previous=>({...previous,[asmActiveFile]:val||""}));else setCodeBuffers(previous=>({...previous,[lang]:val||""}));}}
           onMount={handleEditorDidMount}
           options={{
             fontSize: 14,
@@ -1231,7 +1275,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
           }}
         />
         </div>
-        {lang === "assembly" && labOpen && <aside className="hidden w-[320px] shrink-0 border-l border-[#333] md:block">{inspector}</aside>}
+        {lang === "assembly" && asmRuntime === "learning" && labOpen && <aside className="hidden w-[320px] shrink-0 border-l border-[#333] md:block">{inspector}</aside>}
       </div>
 
       {/* 5. Compact Drag Handle (Height 8px) */}
@@ -1355,10 +1399,10 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
               />
             </div>
           )}
-          {/* Console and legacy DOSBox controls share one 8086 terminal session. */}
+          {/* Project execution and the teaching debugger use separate runtimes. */}
           {lang === "assembly" && (
             <div className="min-h-0 min-w-0 flex-1 flex-col" style={{ display: activeTab === "console" || activeTab === "dosbox" ? "flex" : "none" }}>
-              <DosboxWorkspace
+              {asmRuntime === "dosbox" ? <BrowserDosbox files={asmFiles} assets={dosAssets} runRequest={consoleRunRequest} stopRequest={consoleStopRequest} onRunningChange={setIsExecuting} onStatusChange={setConsoleStatus} onArtifactsChange={setDosOutputs} onOutputChange={setDosOutput}/> : <DosboxWorkspace
               status={asmStatus}
               diagnostics={asmDiagnostics}
               engineUsed={asmEngineUsed}
@@ -1374,17 +1418,18 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
               sourceCode={codeBuffers.assembly}
               isLoading={asmIsLoading}
               errorMessage={asmErrorMessage}
-              />
+              />}
             </div>
           )}
 
+          {lang === "assembly" && asmRuntime === "dosbox" && ["registers","memory","stack","trace"].includes(activeTab) && <div className="p-4 text-sm text-[#bbb]">This project runs in real DOSBox in your browser. The separate limited learning debugger provides instruction tracing and CPU inspection. <button className="mt-3 block text-blue-300" onClick={()=>{setConsoleStopRequest(value=>value+1);setAsmRuntime("learning");setLabOpen(true);setActiveTab("console");}}>Open learning debugger</button></div>}
           {/* Output Tab */}
           {activeTab === "output" && (
             <div className="flex flex-1 flex-col justify-between p-3 font-mono text-[13px] leading-5 overflow-hidden">
               <div className="space-y-1 overflow-y-auto flex-1">
                 {lang === "assembly" ? (
                   <pre className="text-[#CCCCCC] whitespace-pre-wrap font-mono">
-                    {asmStatus.stdout || "Run your program to see output."}
+                    {(asmRuntime === "dosbox" ? dosOutput : asmStatus.stdout) || (asmRuntime === "dosbox" ? "Use the Console tab for the live DOS screen. Text output, when available, also appears here." : "Run your program to see output.")}
                   </pre>
                 ) : lang === "cpp" ? (
                   <pre className="text-[#CCCCCC] whitespace-pre-wrap font-mono">
@@ -1404,7 +1449,8 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
           )}
 
           {/* Input Tab */}
-          {activeTab === "input" && (
+          {activeTab === "input" && lang === "assembly" && asmRuntime === "dosbox" && <div className="p-4 text-sm text-[#bbb]">Enter interactive input in Console, or click the DOS screen to send individual keys. Upload data using Files; programs can read it from INPUT\\.</div>}
+          {activeTab === "input" && (lang !== "assembly" || asmRuntime === "learning") && (
             <div className="flex flex-1 flex-col p-3 font-mono text-[12px] bg-[#121212]">
               <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#2E2E2E]">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-[#858585]">
@@ -1425,7 +1471,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
           )}
 
           {/* Trace Tab */}
-          {activeTab === "trace" && (
+          {activeTab === "trace" && (lang !== "assembly" || asmRuntime === "learning") && (
             lang === "assembly" ? (
               <div className="flex flex-1 flex-col overflow-hidden bg-black text-[#CCCCCC] font-mono text-[12px]">
                 <div className="flex items-center justify-between border-b border-[#2E2E2E] bg-[#141414] px-3 py-1.5">
@@ -1609,9 +1655,9 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
           )}
 
           {/* Registers and CPU controls share the same live session as Console. */}
-          {activeTab === "registers" && lang === "assembly" && <div className="min-h-0 flex-1 overflow-auto">{inspector}</div>}
+          {activeTab === "registers" && lang === "assembly" && asmRuntime === "learning" && <div className="min-h-0 flex-1 overflow-auto">{inspector}</div>}
 
-          {lang === "assembly" && (activeTab === "memory" || activeTab === "stack") && <AssemblyMemory sessionId={asmSessionId} sessionToken={asmSessionToken} status={asmStatus} mode={activeTab}/>}
+          {lang === "assembly" && asmRuntime === "learning" && (activeTab === "memory" || activeTab === "stack") && <AssemblyMemory sessionId={asmSessionId} sessionToken={asmSessionToken} status={asmStatus} mode={activeTab}/>}
 
           {/* Instruction Help Tab (Assembly only) */}
           {activeTab === "instructionHelp" && lang === "assembly" && (
@@ -1649,7 +1695,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
           <span className="h-2 w-2 rounded-full bg-[#3FB950] shadow-[0_0_5px_rgba(63,185,80,0.8)]" />
           <span className="truncate">
             {lang === "assembly"
-              ? asmIsLoading ? "Assembly · Executing…" : `Assembly · ${asmStatus.state.replaceAll("_", " ")}`
+              ? asmRuntime === "dosbox" ? `DOSBox · ${consoleStatus}` : asmIsLoading ? "Assembly · Executing…" : `Assembly · ${asmStatus.state.replaceAll("_", " ")}`
               : consoleStatus}
           </span>
         </div>

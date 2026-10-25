@@ -11,6 +11,8 @@ import { colorForUser } from "@/components/collab/useProjectCollab";
 import { authorshipOfDoc, authorshipOfText, type AuthorshipReport } from "@/lib/classroom/authorship";
 import { useClassroomCollab } from "./useClassroomCollab";
 import TeacherConsole from "./TeacherConsole";
+import TeacherSubmissionReview from "./TeacherSubmissionReview";
+import DosboxFiles from "@/components/asm/DosboxFiles";
 
 interface WatchParticipant {
   kind: "group" | "student";
@@ -53,6 +55,7 @@ export default function TeacherWatch({
   const [query, setQuery] = useState("");
   const [consoleRunRequest, setConsoleRunRequest] = useState(0);
   const [consoleRunning, setConsoleRunning] = useState(false);
+  const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
   const load = useCallback(() => {
     fetch(`/api/classroom/${classId}/assignments/${assignmentId}/watch`)
@@ -171,7 +174,8 @@ export default function TeacherWatch({
             Pick a {watch?.groupMode ? "group" : "student"}. You can read and run. Your typing does not change their code.
           </p>
         </div>
-        {selected && (
+        {selected && <button type="button" onClick={() => { setReviewSubmitted(value => !value); setConsoleRunning(false); }} className="rounded border border-[#555] px-3 py-2 text-xs text-white">{reviewSubmitted ? "Back to live work" : "Review submitted work"}</button>}
+        {selected && !reviewSubmitted && (
           <button
             type="button"
             onClick={()=>setConsoleRunRequest(value=>value+1)}
@@ -306,6 +310,8 @@ export default function TeacherWatch({
           <div className="flex min-h-0 min-w-0 flex-col gap-3 p-3 sm:p-4">
             {!selected ? (
               <p className="py-16 text-center text-sm text-[#aaa]">Choose someone on the left to open their code.</p>
+            ) : reviewSubmitted ? (
+              <TeacherSubmissionReview key={`${assignmentId}:${selected.id}`} classId={classId} assignmentId={assignmentId} owner={{ groupId: selected.kind === "group" ? selected.id : undefined, studentId: selected.kind === "student" ? selected.id : undefined }} ownerName={selected.name} language={classroomLanguage(language)}/>
             ) : collab.status === "blocked" ? (
               <p className="text-sm text-rose-700">{collab.error}</p>
             ) : collab.status === "connecting" && !collab.doc ? (
@@ -338,21 +344,24 @@ export default function TeacherWatch({
                   filename={collab.activeFile}
                   names={authorNames}
                 /></details>
-                <div className="min-h-[160px] flex-[7] overflow-hidden border border-[#333]">
+                <div className="flex min-h-[160px] flex-[7] overflow-hidden border border-[#333]">
+                  {language === "asm8086" && <div className="w-40 shrink-0 sm:w-48"><DosboxFiles readOnly sources={collab.snapshot()} assets={collab.assets} activeFile={collab.activeFile} onSelectSource={collab.setActiveFile}/></div>}
+                  <div className="min-w-0 flex-1">
                   <CollabEditor
                     doc={collab.doc}
                     awareness={collab.awareness}
                     filename={collab.activeFile}
                     readOnly
                     peers={collab.peers}
-                    onRunShortcut={() => void run()}
+                    onRunShortcut={() => { if (language === "asm8086") setConsoleRunRequest(value => value + 1); else void run(); }}
                     language={CLASSROOM_LANGUAGES[classroomLanguage(language)].monaco}
                     showAuthorship
                   />
+                  </div>
                 </div>
                 <div className="flex min-h-[200px] flex-[3] flex-col overflow-hidden border border-[#333]">
-                  <div className="flex shrink-0 items-center justify-between border-b border-[#333] bg-[#181818] px-3 py-1 text-xs"><span className="font-semibold text-white">Console</span><button className="px-2 py-1 text-[#aaa] hover:text-white disabled:opacity-50" onClick={()=>void run()} disabled={busy||consoleRunning}>{busy?"Running tests…":"Run public tests"}</button></div>
-                  <TeacherConsole key={`${assignmentId}:${selected.id}`} scope={{classId,assignmentId,groupId:selected.kind==="group"?selected.id:undefined,studentId:selected.kind==="student"?selected.id:undefined}} language={classroomLanguage(language)} runRequest={consoleRunRequest} onRunningChange={setConsoleRunning}/>
+                  <div className="flex shrink-0 items-center justify-between border-b border-[#333] bg-[#181818] px-3 py-1 text-xs"><span className="font-semibold text-white">Console</span><button className="px-2 py-1 text-[#aaa] hover:text-white disabled:opacity-50" onClick={()=>void run()} disabled={language === "asm8086" || busy||consoleRunning}>{language === "asm8086" ? "Teacher review · browser execution" : busy?"Running tests…":"Run public tests"}</button></div>
+                  <TeacherConsole key={`${assignmentId}:${selected.id}`} scope={{classId,assignmentId,groupId:selected.kind==="group"?selected.id:undefined,studentId:selected.kind==="student"?selected.id:undefined}} language={classroomLanguage(language)} files={collab.snapshot()} assets={collab.assets} getFiles={collab.snapshot} getAssets={collab.snapshotAssets} runRequest={consoleRunRequest} onRunningChange={setConsoleRunning}/>
                 </div>
                 {runNote && <p className="text-xs text-[#ccc]">{runNote}</p>}
                 {runOutput && (

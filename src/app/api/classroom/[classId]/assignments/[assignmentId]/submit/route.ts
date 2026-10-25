@@ -1,3 +1,4 @@
+import { packProjectSnapshot } from "@/lib/classroom/projectSnapshot";
 /**
  * POST /api/classroom/[classId]/assignments/[assignmentId]/submit
  *
@@ -8,7 +9,7 @@
 import { NextResponse } from "next/server";
 import { actorForClassroomRequest } from "@/lib/classroom/classroomActor";
 import { isPastDue, studentEditDenial } from "@/lib/classroom/assignmentPolicy";
-import { loadCanonicalClassroomFiles } from "@/lib/classroom/classroomRun";
+import { loadCanonicalClassroomProject } from "@/lib/classroom/classroomRun";
 import { resolveClassroomDocument } from "@/lib/classroom/documents";
 import { createSubmissionSnapshot } from "@/lib/classroom/gradingService";
 import { LOCAL_PREVIEW_STUDENT_ID } from "@/lib/classroom/localTeacherPreview";
@@ -79,7 +80,7 @@ export async function POST(
     return NextResponse.json({ success: false, error: denial.error, code: denial.code }, { status: denial.status });
   }
 
-  const files = await loadCanonicalClassroomFiles(resolved.doc);
+  const { files, inputAssets } = await loadCanonicalClassroomProject(resolved.doc);
   const inspected = inspectSourceFiles(files, { maxFiles: 16, maxSourceBytes: 200 * 1024 }, resolved.doc.language);
   if (!inspected.ok) {
     return NextResponse.json({ success: false, error: inspected.message }, { status: 400 });
@@ -89,9 +90,10 @@ export async function POST(
   const studentId = groupId ? undefined : resolved.doc.studentId;
   const isLate = isPastDue(resolved.doc.dueDate);
 
+  const immutableFiles = packProjectSnapshot(files, resolved.doc.language === "asm8086" ? inputAssets : {});
   const version = await saveCodeVersion({
     assignmentId,
-    codeFiles: files,
+    codeFiles: immutableFiles,
     language: resolved.doc.language,
     studentId,
     groupId,
@@ -104,7 +106,7 @@ export async function POST(
       const submissionData: Record<string, unknown> = {
         assignment_id: assignmentId,
         status: "submitted",
-        code_files: files,
+        code_files: immutableFiles,
         submitted_at: new Date().toISOString(),
         is_late: isLate,
         updated_at: new Date().toISOString(),
@@ -138,7 +140,7 @@ export async function POST(
         studentId,
         groupId,
         status: "submitted",
-        codeFiles: files,
+        codeFiles: immutableFiles,
         submittedAt: new Date().toISOString(),
         isLate,
       });
@@ -154,7 +156,7 @@ export async function POST(
       studentId,
       groupId,
       status: "submitted",
-      codeFiles: files,
+      codeFiles: immutableFiles,
       submittedAt: new Date().toISOString(),
       isLate,
     });
@@ -166,7 +168,7 @@ export async function POST(
     assignmentId,
     studentId,
     groupId,
-    codeFiles: files,
+    codeFiles: immutableFiles,
     isLate,
   });
 

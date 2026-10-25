@@ -12,7 +12,7 @@ import { canAccessSubmission } from "@/lib/classroom/historyAccess";
 
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { assignmentBelongsToClassroom, getClassroom } from "@/lib/classroom/classroomService";
+import { assignmentBelongsToClassroom, getClassroom, getAssignment } from "@/lib/classroom/classroomService";
 import { autoGradeSubmission, manualGradeSubmission, getGrade } from "@/lib/classroom/gradingService";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AssignmentTestCase } from "@/lib/classroom/types";
@@ -90,7 +90,9 @@ export async function POST(
     return NextResponse.json({ success: false, error: "Invalid JSON." }, { status: 400 });
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ success: false, error: "Invalid grading request." }, { status: 400 });
   const mode = body.mode ?? "manual";
+  if (!["manual", "auto"].includes(mode) || (body.gradeMode !== undefined && !["manual", "mixed"].includes(body.gradeMode))) return NextResponse.json({ success: false, error: "Invalid grading mode." }, { status: 400 });
 
   if (mode === "auto") {
     // Auto-grading: fetch hidden test cases from DB (server-side only)
@@ -106,6 +108,10 @@ export async function POST(
         .single();
 
       if (!asgn) return NextResponse.json({ success: false, error: "Assignment not found." }, { status: 404 });
+
+      if (asgn.language === "asm8086") {
+        return NextResponse.json({ success: false, code: "manual_review_required", error: "Browser DOSBox submissions require manual teacher review. Automatic Assembly grading is unavailable." }, { status: 409 });
+      }
 
       const result = await autoGradeSubmission({
         submissionId,
@@ -132,10 +138,15 @@ export async function POST(
     }
   }
 
-  // Manual grading
+  // Manual grading uses the assignment maximum and the exact reviewed hand-in.
+  const assignment = await getAssignment(user.id, classId, assignmentId);
+  if (!assignment.success || !assignment.assignment) return NextResponse.json({ success: false, error: "Assignment access denied." }, { status: 403 });
+  if (body.expectedSnapshotId !== undefined && (typeof body.expectedSnapshotId !== "string" || !body.expectedSnapshotId || body.expectedSnapshotId.length > 100)) return NextResponse.json({ success: false, error: "Invalid reviewed snapshot." }, { status: 400 });
   try {
     const grade = await manualGradeSubmission(user.id, {
       submissionId,
+      expectedSnapshotId: body.expectedSnapshotId,
+      maxPoints: assignment.assignment.maxPoints,
       rubricScores: body.rubricScores,
       manualPoints: body.manualPoints,
       gradeMode: body.gradeMode ?? "manual",

@@ -25,6 +25,7 @@ import { ALLOWED_STANDARDS, type AllowedStandard, execConfig } from "@/lib/execC
 import { inspectSourceFiles, isValidSourceFilename } from "@/lib/sourceFiles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DEFAULT_CODE } from "@/lib/examples";
+import { inspectDosboxAssets, readDosboxAssets, sameDosboxAssets, type DosboxAssets } from "@/lib/dosboxAssets";
 
 const HUB_KEY = "__outputtracerCollabHub";
 const SAVE_DELAY_MS = 800;
@@ -37,8 +38,15 @@ function updateKeepsFilesValid(doc: Y.Doc, bytes: Uint8Array, language: Classroo
   try {
     Y.applyUpdate(probe, Y.encodeStateAsUpdate(doc));
     Y.applyUpdate(probe, bytes);
+    // Only code and validated input assets belong in a persisted project document.
+    // readFiles intentionally skips non-text values, so validate the raw map first.
+    if ([...probe.share.keys()].some((name) => name !== "files" && name !== "dosAssets")) return false;
+    if (!sameDosboxAssets(doc, probe)) return false;
+    const sourceMap = probe.getMap("files");
+    if ([...sourceMap.values()].some((value) => !(value instanceof Y.Text))) return false;
+    if ([...sourceMap.values()].some((value) => (value as Y.Text).toDelta().some((op: { insert?: unknown }) => typeof op.insert !== "string"))) return false;
     const files = readFiles(probe);
-    if (Object.keys(files).length === 0) return true;
+    if (Object.keys(files).length === 0) return false;
     for (const name of Object.keys(files)) {
       if (!isValidSourceFilename(name, language)) return false;
     }
@@ -85,6 +93,8 @@ type ClientMessage =
   | { type: "awareness"; update?: string }
   | { type: "file-create"; name?: string; content?: string }
   | { type: "file-delete"; name?: string }
+  | { type: "asset-upload"; name?: string; base64?: string }
+  | { type: "asset-delete"; name?: string }
   | { type: "standard"; value?: string };
 
 function send(ws: WebSocket, message: Record<string, unknown>) {
@@ -126,6 +136,11 @@ class CollabHub {
     if (!room || room.kind !== "classroom") return null;
     const files = readFiles(room.doc);
     return Object.keys(files).length > 0 ? files : null;
+  }
+
+  peekClassroomAssets(docKey: string): DosboxAssets | null {
+    const room = this.rooms.get(docKey);
+    return room?.kind === "classroom" ? readDosboxAssets(room.doc) : null;
   }
 
   classroomPresence(docKey: string): { userId: string; name: string; file: string | null }[] {
@@ -294,17 +309,37 @@ class CollabHub {
 
     if (message.type === "file-create") {
       if (!canEdit(state.role) || typeof message.name !== "string") return;
-      if (await this.classroomEditBlocked(ws, room)) return;
-      const created = createFile(room.doc, message.name, message.content || "");
+      if (await this.classroomFileEditBlocked(ws, room, state)) return;
+      // Classroom source imports must not bypass the editor's typing policy.
+      if (room.kind === "classroom" && message.content) {
+        send(ws, { type: "error", message: "Create an empty source file and edit it in the shared editor." });
+        return;
+      }
+      const created = createFile(room.doc, message.name, message.content || "", room.language);
       if (!created.ok) send(ws, { type: "error", message: created.message });
       return;
     }
 
     if (message.type === "file-delete") {
       if (!canEdit(state.role) || typeof message.name !== "string") return;
-      if (await this.classroomEditBlocked(ws, room)) return;
-      const removed = deleteFile(room.doc, message.name);
+      if (await this.classroomFileEditBlocked(ws, room, state)) return;
+      const removed = deleteFile(room.doc, message.name, room.language);
       if (!removed.ok) send(ws, { type: "error", message: removed.message });
+      return;
+    }
+
+    if (message.type === "asset-upload" || message.type === "asset-delete") {
+      if (room.kind !== "classroom" || room.language !== "asm8086" || !canEdit(state.role) || typeof message.name !== "string") return;
+      if (await this.classroomFileEditBlocked(ws, room, state)) return;
+      const assets = readDosboxAssets(room.doc);
+      if (message.type === "asset-upload") {
+        if (typeof message.base64 !== "string") return;
+        const checked = inspectDosboxAssets({ ...assets, [message.name]: { base64: message.base64 } });
+        if (!checked.ok) { send(ws, { type: "error", message: checked.message }); return; }
+        room.doc.getMap("dosAssets").set(message.name, { base64: message.base64 });
+      } else {
+        room.doc.getMap("dosAssets").delete(message.name);
+      }
       return;
     }
 
@@ -480,6 +515,21 @@ class CollabHub {
     const freeze = assignmentFreezeState(policy);
     if (!freeze.frozen) return false;
     send(ws, { type: "locked", message: freeze.reason || "This assignment is locked." });
+    return true;
+  }
+
+  /** File mutations recheck membership now, rather than waiting for the periodic session audit. */
+  private async classroomFileEditBlocked(ws: WebSocket, room: Room, state: ClientState): Promise<boolean> {
+    if (await this.classroomEditBlocked(ws, room)) return true;
+    if (!room.classroom) return false;
+    const { getClassroom } = await import("@/lib/classroom/classroomService");
+    const { resolveClassroomDocument } = await import("@/lib/classroom/documents");
+    const scope = room.classroom;
+    const access = await getClassroom(state.userId, scope.classId);
+    const resolved = access.success ? await resolveClassroomDocument({ actorId: state.userId, classroomId: scope.classId, assignmentId: scope.assignmentId, isTeacher: Boolean(access.isTeacher), groupId: scope.groupId, studentId: scope.studentId }) : null;
+    if (resolved?.ok && resolved.doc.role === "editor") return false;
+    send(ws, { type: "error", message: "You no longer have permission to change this document's files." });
+    ws.close(1008, "Document access changed");
     return true;
   }
 

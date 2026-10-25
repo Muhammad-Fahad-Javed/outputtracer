@@ -1,3 +1,4 @@
+import { sourceFilesOnly } from "./projectSnapshot";
 /**
  * versioningService.ts
  *
@@ -595,12 +596,14 @@ function stripHiddenTestCounts(logs: ExecutionLog[]): StudentExecutionLog[] {
  * This is a pure server-side utility; no untrusted code runs.
  */
 export function computeVersionDiff(from: CodeVersion, to: CodeVersion): VersionDiff {
-  const allFiles = new Set([...Object.keys(from.codeFiles), ...Object.keys(to.codeFiles)]);
+  const fromFiles = sourceFilesOnly(from.codeFiles);
+  const toFiles = sourceFilesOnly(to.codeFiles);
+  const allFiles = new Set([...Object.keys(fromFiles), ...Object.keys(toFiles)]);
   const fileDiffs: CodeFileDiff[] = [];
 
   for (const fileName of allFiles) {
-    const fromLines = (from.codeFiles[fileName] ?? "").split("\n");
-    const toLines = (to.codeFiles[fileName] ?? "").split("\n");
+    const fromLines = (fromFiles[fileName] ?? "").split("\n");
+    const toLines = (toFiles[fileName] ?? "").split("\n");
     const hunks = computeLineDiff(fromLines, toLines);
     const addedLines = hunks.filter((h) => h.type === "insert").reduce((s, h) => s + h.lines.length, 0);
     const removedLines = hunks.filter((h) => h.type === "delete").reduce((s, h) => s + h.lines.length, 0);

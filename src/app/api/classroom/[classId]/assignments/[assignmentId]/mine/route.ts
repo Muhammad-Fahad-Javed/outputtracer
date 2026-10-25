@@ -1,3 +1,4 @@
+import { projectSnapshotView } from "@/lib/classroom/projectSnapshot";
 /**
  * GET the signed-in student's own submission for this assignment.
  * Hidden tests and other students' rows are not included.
@@ -36,7 +37,8 @@ export async function GET(
   if (!admin) {
     const groupIds = await listCallerGroupIds(user.id, classId, assignmentId);
     const submission = readMemorySubmission(assignmentId, user.id, groupIds);
-    return NextResponse.json({ success: true, submission });
+    const view = submission ? projectSnapshotView(submission.codeFiles) : null;
+    return NextResponse.json({ success: true, submission: submission && view ? { ...submission, codeFiles: view.files, inputAssets: view.inputAssets, contentHashScope: view.contentHashScope } : null });
   }
 
   const columns = "id, status, code_files, submitted_at, is_late, grade, feedback, graded_at, student_id, group_id";
@@ -68,13 +70,16 @@ export async function GET(
     }
   }
 
+  const view = row ? projectSnapshotView(row.code_files || {}) : null;
   return NextResponse.json({
     success: true,
     submission: row
       ? {
           id: row.id,
           status: row.status,
-          codeFiles: row.code_files || {},
+          codeFiles: view!.files,
+          inputAssets: view!.inputAssets,
+          contentHashScope: view!.contentHashScope,
           submittedAt: row.submitted_at,
           isLate: row.is_late,
           grade: row.grade,

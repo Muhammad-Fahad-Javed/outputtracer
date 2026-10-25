@@ -1,4 +1,3 @@
-import { AsmSession } from "@/lib/asm/session";
 import { runPythonCode } from "@/lib/python/pythonRunner";
 import { inspectSourceFiles } from "@/lib/sourceFiles";
 /**
@@ -63,14 +62,7 @@ export async function runInSandbox(req: SandboxRequest): Promise<SandboxResult> 
     return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode ?? 1, durationMs: result.executionTimeMs, timedOut: result.status === "timeout", compilationError: result.status === "syntax_error" ? result.stderr : undefined };
   }
   if (req.language === "asm8086") {
-    if (Object.keys(req.files).length !== 1 || !req.files["main.asm"]) throw new ExecutionError("Assembly assignments currently require a single main.asm file.", "compile_error");
-    const started = Date.now();
-    const session = new AsmSession("classroom", "", req.files["main.asm"], 5000, req.stdin ?? "");
-    const assembled = await session.assemble();
-    if (!assembled.success) return { stdout: "", stderr: "", exitCode: 1, durationMs: Date.now() - started, timedOut: false, compilationError: assembled.diagnostics.map(d => d.message).join("\n") };
-    session.run(5000);
-    const machine = session.getStatus();
-    return { stdout: machine.stdout, stderr: machine.canStepForward ? "Instruction limit reached." : "", exitCode: machine.exitCode ?? (machine.canStepForward ? 1 : 0), durationMs: Date.now() - started, timedOut: machine.canStepForward, machine };
+    throw new ExecutionError("Assembly projects execute in browser DOSBox. Server tests and automatic Assembly grading are unavailable; ask your teacher for review.", "sandbox_unavailable");
   }
 
   const sandboxUrl = process.env.SANDBOX_EXECUTION_URL;

@@ -1,3 +1,6 @@
+import * as Y from "yjs";
+import { applyEncoded } from "@/lib/cloud/collabDoc";
+import { inspectDosboxAssets, type DosboxAssets } from "@/lib/dosboxAssets";
 import { getHub } from "@/lib/cloud/collabHub";
 import { inspectSourceFiles } from "@/lib/sourceFiles";
 import {
@@ -20,6 +23,31 @@ export async function loadCanonicalClassroomFiles(doc: {
   const live = getHub().peekClassroomFiles(doc.docKey);
   const stored = await readClassroomDocument(doc.docKey);
   return chooseCanonicalFiles(live, stored?.files, doc.starterCode);
+}
+
+/** Capture source and input files from the same canonical shared revision. */
+export async function loadCanonicalClassroomProject(doc: {
+  docKey: string;
+  starterCode: Record<string, string>;
+}): Promise<{ files: Record<string, string>; inputAssets: DosboxAssets }> {
+  const hub = getHub();
+  // Both reads are synchronous: no document updates can interleave them.
+  const live = hub.peekClassroomFiles(doc.docKey);
+  const liveAssets = hub.peekClassroomAssets(doc.docKey);
+  if (live) return { files: { ...live }, inputAssets: JSON.parse(JSON.stringify(liveAssets ?? {})) as DosboxAssets };
+  const stored = await readClassroomDocument(doc.docKey);
+  let inputAssets: DosboxAssets = {};
+  if (stored?.stateB64) {
+    const state = new Y.Doc();
+    try {
+      applyEncoded(state, stored.stateB64, "snapshot");
+      const assets = state.getMap("dosAssets").toJSON();
+      const inspected = inspectDosboxAssets(assets);
+      if (!inspected.ok) throw new Error(inspected.message);
+      inputAssets = assets as DosboxAssets;
+    } finally { state.destroy(); }
+  }
+  return { files: chooseCanonicalFiles(null, stored?.files, doc.starterCode), inputAssets };
 }
 
 /**
@@ -54,6 +82,10 @@ export async function executeResolvedClassroom(input: {
   const denial = studentRunDenial(resolved.doc, input.isTeacher);
   if (denial) {
     return { status: denial.status, body: { success: false, error: denial.error, code: denial.code } };
+  }
+
+  if (resolved.doc.language === "asm8086") {
+    return { status: 409, body: { success: false, code: "browser_execution_required", error: "Assembly projects run in your browser DOSBox console. Server public tests are unavailable; submitted work is reviewed by your teacher." } };
   }
 
   const files = await loadCanonicalClassroomFiles(resolved.doc);

@@ -1,3 +1,4 @@
+import { packProjectSnapshot, projectSnapshotView } from "@/lib/classroom/projectSnapshot";
 /**
  * POST /api/classroom/[classId]/assignments/[assignmentId]/versions
  *   Save a new code version (student draft autosave or explicit save).
@@ -13,7 +14,7 @@
 import { NextResponse } from "next/server";
 import { studentEditDenial } from "@/lib/classroom/assignmentPolicy";
 import { actorForClassroomRequest } from "@/lib/classroom/classroomActor";
-import { loadCanonicalClassroomFiles } from "@/lib/classroom/classroomRun";
+import { loadCanonicalClassroomProject } from "@/lib/classroom/classroomRun";
 import { resolveClassroomDocument } from "@/lib/classroom/documents";
 import { LOCAL_PREVIEW_STUDENT_ID } from "@/lib/classroom/localTeacherPreview";
 import { classroomRequestUser, isLocalPreviewActor } from "@/lib/classroom/requestUser";
@@ -71,7 +72,7 @@ export async function GET(
   const ownerId = access.isTeacher && targetStudentId ? targetStudentId : user.id;
   const versions = await listCodeVersions(assignmentId, ownerId);
 
-  return NextResponse.json({ success: true, versions });
+  return NextResponse.json({ success: true, versions: versions.map(version => { const view = projectSnapshotView(version.codeFiles); return { ...version, codeFiles: view.files, inputAssets: view.inputAssets, contentHashScope: view.contentHashScope }; }) });
 }
 
 export async function POST(
@@ -126,15 +127,16 @@ export async function POST(
     }
   }
 
-  const files = await loadCanonicalClassroomFiles(resolved.doc);
+  const { files, inputAssets } = await loadCanonicalClassroomProject(resolved.doc);
   const inspected = inspectSourceFiles(files, { maxFiles: 16, maxSourceBytes: 200 * 1024 }, resolved.doc.language);
   if (!inspected.ok) {
     return NextResponse.json({ success: false, error: inspected.message }, { status: 400 });
   }
 
+  const immutableFiles = packProjectSnapshot(files, resolved.doc.language === "asm8086" ? inputAssets : {});
   const version = await saveCodeVersion({
     assignmentId,
-    codeFiles: files,
+    codeFiles: immutableFiles,
     language: resolved.doc.language,
     studentId: resolved.doc.groupId ? undefined : resolved.doc.studentId,
     groupId: resolved.doc.groupId,
@@ -149,5 +151,6 @@ export async function POST(
     metadata: { versionNumber: version.versionNumber, language: version.language },
   });
 
-  return NextResponse.json({ success: true, version });
+  const view = projectSnapshotView(version.codeFiles);
+  return NextResponse.json({ success: true, version: { ...version, codeFiles: view.files, inputAssets: view.inputAssets, contentHashScope: view.contentHashScope } });
 }

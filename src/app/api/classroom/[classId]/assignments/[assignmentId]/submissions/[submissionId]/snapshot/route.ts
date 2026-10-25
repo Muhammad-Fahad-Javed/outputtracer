@@ -1,3 +1,4 @@
+import { projectSnapshotView } from "@/lib/classroom/projectSnapshot";
 /**
  * GET /api/classroom/[classId]/assignments/[assignmentId]/submissions/[submissionId]/snapshot
  *   Returns the immutable submission snapshot. Students see their own; teachers see any.
@@ -35,5 +36,6 @@ export async function GET(
     return NextResponse.json({ success: false, error: "Access denied." }, { status: 403 });
   }
 
-  return NextResponse.json({ success: true, snapshot });
+  const view = projectSnapshotView(snapshot.frozenCodeFiles);
+  return NextResponse.json({ success: true, snapshot: { ...snapshot, frozenCodeFiles: view.files, inputAssets: view.inputAssets, contentHashScope: view.contentHashScope } });
 }

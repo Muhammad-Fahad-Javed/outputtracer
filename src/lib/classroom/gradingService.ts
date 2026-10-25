@@ -17,6 +17,7 @@ import {
   recordActivityEvent,
   recordExecutionLog,
   getSubmissionSnapshot,
+  getCodeVersion,
 } from "./versioningService";
 import type {
   AssignmentRubric,
@@ -140,12 +141,19 @@ export async function autoGradeSubmission(input: {
   language?: string;
   maxPoints: number;
 }): Promise<{ grade: SubmissionGrade; autoTestPoints: number; publicPassed: number; hiddenPassed: number }> {
+  if (input.language === "asm8086") {
+    throw new Error("Browser DOSBox submissions require manual teacher review. Automatic server grading is unavailable for Assembly projects.");
+  }
   // 1. Load the immutable snapshot
   const snapshot = await getSubmissionSnapshot(input.submissionId);
   if (!snapshot) {
     throw new Error(`No submission snapshot found for submission ${input.submissionId}`);
   }
 
+  const submittedVersion = await getCodeVersion(snapshot.versionId);
+  if (submittedVersion?.language === "asm8086") {
+    throw new Error("Browser DOSBox submissions require manual teacher review. Automatic server grading is unavailable for Assembly projects.");
+  }
   const files = snapshot.frozenCodeFiles;
   const language = input.language ?? "cpp";
   let publicPassed = 0;
@@ -243,14 +251,22 @@ export async function manualGradeSubmission(
     throw new Error(`No submission snapshot found for submission ${input.submissionId}`);
   }
 
-  // Load existing grade if any (for auto test points)
+  if (input.expectedSnapshotId && snapshot.id !== input.expectedSnapshotId) {
+    throw new Error("This student has submitted newer work. Refresh the hand-in and review it before grading.");
+  }
+  // Load existing grade if any (for mixed grading).
+
   const existing = await getGrade(input.submissionId);
-  const autoTestPoints = existing?.autoTestPoints ?? 0;
+  const autoTestPoints = input.gradeMode === "manual" ? 0 : existing?.autoTestPoints ?? 0;
 
   // Sum rubric scores
   const rubricTotal = Object.values(input.rubricScores ?? {}).reduce((s, p) => s + p, 0);
   const manualPoints = input.manualPoints ?? rubricTotal;
   const totalPoints = autoTestPoints + manualPoints;
+  const maxPoints = input.maxPoints ?? existing?.maxPoints ?? 100;
+  if (!Number.isFinite(maxPoints) || maxPoints < 0 || !Number.isFinite(manualPoints) || manualPoints < 0 || !Number.isFinite(totalPoints) || totalPoints > maxPoints || Object.values(input.rubricScores ?? {}).some(score => !Number.isFinite(score) || score < 0)) {
+    throw new Error(`Grade must be between 0 and ${maxPoints}.`);
+  }
 
   const grade = await writeGrade({
     submissionId: input.submissionId,
@@ -259,7 +275,7 @@ export async function manualGradeSubmission(
     autoTestPoints,
     manualPoints,
     totalPoints,
-    maxPoints: existing?.maxPoints ?? 100,
+    maxPoints,
     gradedBy: teacherId,
     gradeMode: input.gradeMode ?? (autoTestPoints > 0 ? "mixed" : "manual"),
     rubricScores: input.rubricScores ?? {},

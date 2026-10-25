@@ -12,6 +12,7 @@ import { base64ToBytes, bytesToBase64 } from "@/lib/cloud/base64";
 import { readFiles, seedDoc } from "@/lib/cloud/collabDoc";
 import { canEdit, type ProjectRole } from "@/lib/cloud/roles";
 import { watchLocalAuthorship } from "@/lib/classroom/authorship";
+import { readDosboxAssets, type DosboxAssets } from "@/lib/dosboxAssets";
 
 export interface ClassroomCollabState {
   status: "idle" | "connecting" | "live" | "offline" | "blocked";
@@ -33,6 +34,12 @@ export interface ClassroomCollabState {
   groupMode: boolean;
   displayName: string;
   snapshot: () => Record<string, string>;
+  assets: DosboxAssets;
+  snapshotAssets: () => DosboxAssets;
+  createFile: (name: string) => void;
+  deleteFile: (name: string) => void;
+  uploadAsset: (name: string, base64: string) => void;
+  deleteAsset: (name: string) => void;
 }
 
 export function useClassroomCollab(opts: {
@@ -49,6 +56,7 @@ export function useClassroomCollab(opts: {
   const [blockedCode, setBlockedCode] = useState<string | null>(null);
   const [role, setRole] = useState<ProjectRole>("viewer");
   const [fileNames, setFileNames] = useState<string[]>([]);
+  const [assets, setAssets] = useState<DosboxAssets>({});
   const [peers, setPeers] = useState<CollabPeer[]>([]);
   const [activeFile, setActiveFileState] = useState("main.cpp");
   const [session, setSession] = useState<{ doc: Y.Doc; awareness: Awareness } | null>(null);
@@ -110,6 +118,7 @@ export function useClassroomCollab(opts: {
     const refreshFiles = (current = doc) => {
       const names = Object.keys(readFiles(current)).sort();
       setFileNames(names);
+      setAssets(readDosboxAssets(current));
       setActiveFileState((file) => (names.includes(file) ? file : names[0] || "main.cpp"));
     };
 
@@ -161,6 +170,7 @@ export function useClassroomCollab(opts: {
       awareness.on("update", onAwareness);
       awareness.on("change", refreshPeers);
       doc.getMap("files").observe(() => refreshFiles(doc));
+      doc.getMap("dosAssets").observe(() => refreshFiles(doc));
       const stopAuthorship = watchLocalAuthorship(doc, () =>
         canEdit(roleRef.current) ? identityRef.current.userId || null : null
       );
@@ -394,6 +404,20 @@ export function useClassroomCollab(opts: {
     return current ? readFiles(current) : {};
   }, []);
 
+  const snapshotAssets = useCallback(() => docRef.current ? readDosboxAssets(docRef.current) : {}, []);
+  const sendCommand = useCallback((message: Record<string, string>) => {
+    if (!joinedRef.current || !canEdit(roleRef.current) || socketRef.current?.readyState !== WebSocket.OPEN) {
+      setError("Connect to the editable shared workspace before changing files.");
+      return;
+    }
+    setError(null);
+    socketRef.current.send(JSON.stringify(message));
+  }, []);
+  const createFile = useCallback((name: string) => sendCommand({ type: "file-create", name }), [sendCommand]);
+  const deleteFile = useCallback((name: string) => sendCommand({ type: "file-delete", name }), [sendCommand]);
+  const uploadAsset = useCallback((name: string, base64: string) => sendCommand({ type: "asset-upload", name, base64 }), [sendCommand]);
+  const deleteAsset = useCallback((name: string) => sendCommand({ type: "asset-delete", name }), [sendCommand]);
+
   return {
     status: enabled ? status : "idle",
     error: enabled ? error : null,
@@ -414,5 +438,11 @@ export function useClassroomCollab(opts: {
     groupMode,
     displayName,
     snapshot,
+    assets,
+    snapshotAssets,
+    createFile,
+    deleteFile,
+    uploadAsset,
+    deleteAsset,
   };
 }

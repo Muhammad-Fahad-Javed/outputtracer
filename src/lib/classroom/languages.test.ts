@@ -26,12 +26,11 @@ describe("classroom language boundaries", () => {
     expect(inspectSourceFiles({ "main.cpp": "x" }, limits, "asm8086").ok).toBe(false);
     expect(inspectSourceFiles({ "../main.py": "x" }, limits, "python").ok).toBe(false);
   });
-  it("assembles and executes NASM without sending it to the C++ endpoint", async () => {
+  it("requires browser DOSBox for NASM without sending source to the C++ endpoint", async () => {
     const spy = vi.spyOn(globalThis, "fetch");
-    const result = await runInSandbox({ language: "asm8086", files: { "main.asm": "org 100h\nmov ax, 4c00h\nint 21h\n" } });
-    expect(result.exitCode).toBe(0);
-    expect(result.machine?.state).toBe("terminated");
-    expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
+    try {
+      await expect(runInSandbox({ language: "asm8086", files: { "main.asm": "org 100h\nmov ax, 4c00h\nint 21h\n" } })).rejects.toMatchObject({ kind: "sandbox_unavailable", message: expect.stringContaining("browser DOSBox") });
+      expect(spy).not.toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
   });
 });
