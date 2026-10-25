@@ -849,7 +849,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
       style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}
     >
       {/* 1. Compact Top Bar (Height 34px, Visual Studio Style) */}
-      <nav className="flex h-[34px] shrink-0 items-center justify-between border-b border-[#2E2E2E] bg-[#181818] px-3 select-none text-[12px]">
+      <nav className="flex min-h-[34px] shrink-0 flex-wrap items-center justify-between gap-y-1 border-b border-[#2E2E2E] bg-[#181818] px-3 py-1 select-none text-[12px]">
         {/* Left: Original Uploaded OutputTracer Logo + Brand Tagline */}
         <div className="flex items-center gap-2.5">
           <Link href="/" className="flex items-center gap-2 group">
@@ -891,7 +891,7 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
 
             {/* Examples Dropdown Menu */}
             {examplesOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 w-80 sm:w-88 rounded border border-[#2E2E2E] bg-[#181818] p-2.5 shadow-2xl text-left">
+              <div className="absolute left-0 top-full mt-1 z-50 w-80 max-w-[calc(100vw-1rem)] sm:left-auto sm:right-0 sm:w-88 rounded border border-[#2E2E2E] bg-[#181818] p-2.5 shadow-2xl text-left">
                 <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#2E2E2E]">
                   <span className="font-semibold text-xs text-white">Example Programs</span>
                   <span className="text-[10px] text-[#858585]">{exampleCategories.length} Categories</span>
@@ -1644,29 +1644,31 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
       </div>
 
       {/* 7. Status Bar (Height 24px) */}
-      <footer className="flex h-[24px] shrink-0 items-center justify-between border-t border-[#2E2E2E] bg-[#181818] px-3 font-medium text-[#CCCCCC] text-[12px] select-none">
-        <div className="flex items-center gap-2">
+      <footer className="flex h-[24px] shrink-0 items-center justify-between gap-3 whitespace-nowrap border-t border-[#2E2E2E] bg-[#181818] px-3 font-medium text-[#CCCCCC] text-[10px] sm:text-[12px] select-none">
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <span className="h-2 w-2 rounded-full bg-[#3FB950] shadow-[0_0_5px_rgba(63,185,80,0.8)]" />
-          <span>
+          <span className="truncate">
             {lang === "assembly"
               ? asmIsLoading ? "Assembly · Executing…" : `Assembly · ${asmStatus.state.replaceAll("_", " ")}`
               : consoleStatus}
           </span>
         </div>
 
-        <div className="flex items-center gap-2.5 font-mono text-[12px]">
+        <div className="flex shrink-0 items-center gap-2.5 font-mono">
+          <div className="hidden items-center gap-2.5 sm:flex">
           <span>{lineCount} lines</span>
           <span className="opacity-40">|</span>
           <span>
             {activeTab === "trace"
               ? lang === "assembly"
-                ? "Ln 6, Col 5"
+                ? `Ln ${asmStatus.currentInstruction?.sourceLine ?? asmTraceHistory.at(-1)?.sourceLine ?? 1}`
                 : `Ln ${currentTraceSteps.find((s) => s.step === selectedTraceStep)?.line || 1}, Col 5`
               : `Ln ${lineCount}, Col 1`}
           </span>
           <span className="opacity-40">|</span>
           <span>{fileMeta.label}</span>
           <span className="opacity-40">|</span>
+          </div>
           <span>{fileMeta.name}</span>
         </div>
       </footer>
