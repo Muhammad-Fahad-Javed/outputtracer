@@ -26,7 +26,9 @@ export async function POST(
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
-  if (typeof body.state !== "string" || body.state.length === 0 || body.state.length > 2_000_000) {
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+    typeof body.state !== "string" || body.state.length === 0 || body.state.length > 3_000_000 ||
+    (body.standard !== undefined && body.standard !== null && typeof body.standard !== "string")) {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
@@ -38,7 +40,7 @@ export async function POST(
     );
   } catch (error) {
     const err = error as Error;
-    return NextResponse.json({ ok: false, message: err.message }, { status: 500 });
+    return NextResponse.json({ ok: false, message: err.message }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true });

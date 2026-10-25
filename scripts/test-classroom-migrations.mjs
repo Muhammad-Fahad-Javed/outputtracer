@@ -11,6 +11,9 @@ for(const file of readdirSync('supabase/migrations').filter(f=>f.endsWith('.sql'
  if(file.startsWith('0020_')){
   await db.exec(`insert into auth.users(id,email) values('90000000-0000-4000-8000-000000000001','legacy@example.test'); insert into teacher_profiles(user_id,status) values('90000000-0000-4000-8000-000000000001','approved'); insert into classrooms(id,teacher_id,name,join_code) values('90000000-0000-4000-8000-000000000002','90000000-0000-4000-8000-000000000001','Legacy class','LEGACY1'); insert into classroom_assignments(id,classroom_id,title,group_mode) values('90000000-0000-4000-8000-000000000003','90000000-0000-4000-8000-000000000002','Legacy assignment',true);`);
  }
+ if(file.startsWith('0027_')){
+  await db.exec(`insert into projects(id,title,owner_id,standard) values('90000000-0000-4000-8000-000000000004','Existing C++ project','90000000-0000-4000-8000-000000000001','c++20'); insert into project_members(project_id,user_id,role) values('90000000-0000-4000-8000-000000000004','90000000-0000-4000-8000-000000000001','owner'); insert into project_files(project_id,path,content) values('90000000-0000-4000-8000-000000000004','main.cpp','// Existing student work'); insert into project_documents(project_id,state_b64) values('90000000-0000-4000-8000-000000000004','existing-yjs-document');`);
+ }
  try{await db.exec(readFileSync('supabase/migrations/'+file,'utf8').replace(/create extension if not exists pgcrypto;/gi,'').replace(/starter_code jsonb not null default '[^\n]*'::jsonb/,"starter_code jsonb not null default '{}'::jsonb"));console.log('PASS',file);}
  catch(e){console.error('FAIL',file,e.message,e.detail,e.where);process.exitCode=1;break;}
 }
@@ -83,6 +86,37 @@ if(!process.exitCode){
  assert(policy.includes('is_verified_teacher'),'Owner RLS did not gain approval check');
  const granted=(await q(`select has_function_privilege('authenticated','public.activate_teacher_profile()','execute') allowed`))[0].allowed;
  assert(!granted,'Self activation remains callable');
+ const oldProject=(await q(`select p.language,p.standard,f.path,f.content,d.state_b64 from projects p join project_files f on f.project_id=p.id join project_documents d on d.project_id=p.id where p.id='90000000-0000-4000-8000-000000000004'`))[0];
+ assert(oldProject.language==='cpp'&&oldProject.standard==='c++20'&&oldProject.path==='main.cpp'&&oldProject.content==='// Existing student work'&&oldProject.state_b64==='existing-yjs-document','Saved-project language migration rewrote legacy work');
+ await db.exec(`set request.jwt.claim.sub='${student}'; set role authenticated;`);
+ const legacyPid=(await q(`select create_project('Legacy RPC','c++17',null,'// Four-argument client') id`))[0].id;
+ assert((await q(`select language from projects where id=$1`,[legacyPid]))[0].language==='cpp','Four-argument create_project compatibility failed');
+ const ownGroup=(await q(`select create_group('Shared language projects') id`))[0].id;
+ assert((await q(`select name from groups where id=$1`,[ownGroup]))[0].name==='Shared language projects','Group members cannot read their shared-project group');
+ assert((await q(`select user_id from group_members where group_id=$1`,[ownGroup])).length===1,'Group membership read failed or recursed');
+ for(const [language,path,fragment] of [['cpp','main.cpp','int main'],['python','main.py','def main'],['asm8086','main.asm','org 100h']]){
+  const pid=(await q(`select create_project($1,$2,$3,null,$4) id`,[language+' project',language==='cpp'?'c++23':null,ownGroup,language]))[0].id;
+  const saved=(await q(`select p.language,p.standard,p.group_id,f.path,f.content from projects p join project_files f on f.project_id=p.id where p.id=$1`,[pid]))[0];
+  assert(saved.language===language&&saved.path===path&&saved.content.includes(fragment)&&saved.group_id===ownGroup,'Project language, starter or shared group was not saved atomically');
+  assert(saved.standard===(language==='cpp'?'c++23':null),'Non-C++ project leaked a C++ standard');
+  assert((await q(`select role from project_members where project_id=$1 and user_id=$2`,[pid,student]))[0].role==='owner','New project owner membership missing');
+  if(language!=='cpp'){
+   rejected=false;try{await q(`select set_project_standard($1,'c++20')`,[pid]);}catch{rejected=true;}assert(rejected,'C++ standard could be set on another project language');
+  }
+ }
+ const visibleBefore=(await q(`select count(*)::int n from projects`))[0].n;
+ rejected=false;try{await q(`select create_project('Bad language',null,null,null,'javascript')`);}catch{rejected=true;}assert(rejected,'Unknown project language silently became C++');
+ assert((await q(`select count(*)::int n from projects`))[0].n===visibleBefore,'Invalid creation left an orphan project');
+ await db.exec(`set request.jwt.claim.sub='${student2}';`);
+ assert((await q(`select name from groups where id=$1`,[ownGroup])).length===0,'Unrelated student can read a shared-project group');
+ assert((await q(`select user_id from group_members where group_id=$1`,[ownGroup])).length===0,'Unrelated student can read group members');
+ assert(!(await q(`select group_has_current_member($1) allowed`,[ownGroup]))[0].allowed,'Caller-bound membership lookup leaks another user access');
+ rejected=false;try{await q(`select create_project('Foreign group',null,$1,null,'python')`,[ownGroup]);}catch{rejected=true;}assert(rejected,'Project creation accepted a foreign group');
+ assert((await q(`select id from projects where id=$1`,[legacyPid])).length===0,'Unrelated user can read a personal project');
+ await db.exec(`reset role;`);
+ rejected=false;try{await q(`update projects set language='python',standard=null where id=$1`,[legacyPid]);}catch{rejected=true;}assert(rejected,'Existing project language could be changed');
+ assert(!(await q(`select has_function_privilege('anon','public.create_project(text,text,uuid,text,text)','execute') allowed`))[0].allowed,'Anonymous users can create language projects');
+ console.log('PASS saved project language defaults, legacy preservation, four/five-argument RPCs, shared ownership, settings immutability and access boundaries');
  console.log('PASS database team atomicity, independent assignments, freeze, enrollment, direct mutation, message idempotency, recipient read state, teacher revocation and RLS contracts');
 }
 await db.close();

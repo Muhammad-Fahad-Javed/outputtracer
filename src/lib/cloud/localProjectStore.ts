@@ -1,7 +1,10 @@
+import { isProjectLanguage, type ProjectLanguage } from "./projectLanguage";
+
 export interface LocalProjectRecord {
   projectId: string;
   stateB64: string;
   standard: string;
+  language?: ProjectLanguage;
   savedAt: number;
   syncedAt: number | null;
   boot: "yjs" | "seed";
@@ -34,6 +37,7 @@ export function parseLocalProject(value: unknown): LocalProjectRecord | null {
   return {
     projectId: row.projectId,
     stateB64: row.stateB64,
+    language: isProjectLanguage(row.language) ? row.language : "cpp",
     standard: typeof row.standard === "string" && row.standard ? row.standard : "c++17",
     savedAt: row.savedAt,
     syncedAt: typeof row.syncedAt === "number" ? row.syncedAt : null,

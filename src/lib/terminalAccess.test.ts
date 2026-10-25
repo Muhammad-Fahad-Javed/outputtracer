@@ -25,6 +25,47 @@ beforeEach(() => {
   mocks.getClassroom.mockResolvedValue({ success: true, isTeacher: false });
   mocks.resolveDoc.mockResolvedValue({ ok: true, doc: { ...doc } });
   mocks.loadFiles.mockResolvedValue(canonical);
+  mocks.projectAccess.mockResolvedValue({ userId: actorId, role: "editor" });
+  mocks.readFiles.mockResolvedValue({ files: { "main.cpp": "int main(){}" }, standard: "c++17", language: "cpp", assets: {} });
+});
+
+describe("saved project terminal language authorization", () => {
+  const projectId = "44444444-4444-4444-8444-444444444444";
+  it("runs the canonical Python project snapshot, ignoring forged client source", async () => {
+    mocks.readFiles.mockResolvedValue({ files: canonical, standard: null, language: "python", assets: {} });
+    const result = await resolveTerminalPayload({ projectId, accessToken: "t", language: "python", files: { "main.py": "forged" } });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload).toMatchObject({ language: "python", files: canonical, ownerKey: actorId });
+    expect(result.payload.standard).toBeUndefined();
+    expect(mocks.setStandard).not.toHaveBeenCalled();
+    expect(await result.payload.validateAccess!()).toBe(true);
+    mocks.projectAccess.mockResolvedValue(null);
+    expect(await result.payload.validateAccess!()).toBe(false);
+  });
+  it("rejects mismatched project runtimes and every server NASM terminal request", async () => {
+    expect((await resolveTerminalPayload({ projectId, accessToken: "t", language: "python" })).ok).toBe(false);
+    mocks.readFiles.mockResolvedValue({ files: canonical, standard: null, language: "python", assets: {} });
+    expect((await resolveTerminalPayload({ projectId, accessToken: "t", language: "cpp" })).ok).toBe(false);
+    expect((await resolveTerminalPayload({ projectId, accessToken: "t", standard: "c++17" })).ok).toBe(false);
+    mocks.readFiles.mockResolvedValue({ files: { "main.asm": "org 100h" }, standard: null, language: "asm8086", assets: {} });
+    const result = await resolveTerminalPayload({ projectId, accessToken: "t" });
+    expect(result).toEqual({ ok: false, message: "Run this Assembly project in browser DOSBox." });
+    expect(mocks.setStandard).not.toHaveBeenCalled();
+  });
+  it("retains C++ settings and revokes access if the actor changes", async () => {
+    const result = await resolveTerminalPayload({ projectId, accessToken: "t", language: "cpp", standard: "c++20" });
+    expect(result.ok).toBe(true);
+    expect(mocks.setStandard).toHaveBeenCalledWith(projectId, "c++20");
+    if (!result.ok) return;
+    mocks.projectAccess.mockResolvedValue({ userId: "another-actor", role: "editor" });
+    expect(await result.payload.validateAccess!()).toBe(false);
+  });
+  it("never loads canonical source for an inaccessible project", async () => {
+    mocks.projectAccess.mockResolvedValue(null);
+    expect((await resolveTerminalPayload({ projectId, accessToken: "forged" })).ok).toBe(false);
+    expect(mocks.readFiles).not.toHaveBeenCalled();
+  });
 });
 afterEach(() => vi.useRealTimers());
 

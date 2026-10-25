@@ -7,6 +7,7 @@ import WorkspaceHeader from "@/components/cloud/WorkspaceHeader";
 import { isUuid } from "@/lib/cloud/roles";
 import { isCloudConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
+import { projectLanguageLabel } from "@/lib/cloud/projectLanguage";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
 
   const [{ data: members }, { data: projects }, { data: invites }] = await Promise.all([
     supabase.from("group_members").select("user_id, role, profiles(display_name, email)").eq("group_id", id),
-    supabase.from("projects").select("id, title, standard").eq("group_id", id).order("updated_at", { ascending: false }),
+    supabase.from("projects").select("id, title, standard, language").eq("group_id", id).order("updated_at", { ascending: false }),
     supabase.from("invites").select("email").eq("group_id", id),
   ]);
 
@@ -71,7 +72,7 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
               <li key={project.id}>
                 <Link href={`/p/${project.id}`} className="flex items-center justify-between py-3">
                   <span className="font-medium">{project.title}</span>
-                  <span className="text-sm text-[#666666]">{project.standard}</span>
+                  <span className="text-sm text-[#666666]">{projectLanguageLabel(project.language, project.standard)}</span>
                 </Link>
               </li>
             ))}

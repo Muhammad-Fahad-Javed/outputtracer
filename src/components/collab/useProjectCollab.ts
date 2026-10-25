@@ -19,6 +19,8 @@ import {
 } from "@/lib/cloud/localProjectStore";
 import { canEdit, type ProjectRole } from "@/lib/cloud/roles";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
+import { inspectDosboxAssets, readDosboxAssets, type DosboxAssets } from "@/lib/dosboxAssets";
+import { PROJECT_LANGUAGES, type ProjectLanguage } from "@/lib/cloud/projectLanguage";
 
 const COLORS = ["#E06C75", "#61AFEF", "#98C379", "#E5C07B", "#C678DD", "#56B6C2", "#D19A66", "#BE5046"];
 
@@ -43,7 +45,9 @@ export interface ProjectCollab {
   error: string | null;
   role: ProjectRole;
   fileNames: string[];
-  standard: string;
+  language: ProjectLanguage;
+  standard: string | null;
+  assets: DosboxAssets;
   peers: CollabPeer[];
   saved: SaveState;
   activeFile: string;
@@ -53,9 +57,12 @@ export interface ProjectCollab {
   setStandard: (value: string) => void;
   createFile: (name: string) => string | null;
   renameFile: (from: string, to: string) => string | null;
-  deleteFile: (name: string) => void;
+  deleteFile: (name: string) => string | null;
+  uploadAsset: (name: string, base64: string) => string | null;
+  deleteAsset: (name: string) => string | null;
   setRunning: (running: boolean) => void;
   snapshot: () => Record<string, string>;
+  snapshotAssets: () => DosboxAssets;
 }
 
 function encodeState(doc: Y.Doc): string {
@@ -66,27 +73,32 @@ export function useProjectCollab(opts: {
   projectId: string;
   userId: string;
   displayName: string;
-  initialStandard: string;
+  initialStandard: string | null;
+  language?: ProjectLanguage;
   initialRole: ProjectRole;
   initialFiles: Record<string, string>;
+  initialAssets?: DosboxAssets;
 }): ProjectCollab {
+  const language = opts.language ?? "cpp";
+  const entryFile = PROJECT_LANGUAGES[language].file;
   const [status, setStatus] = useState<ProjectCollab["status"]>("connecting");
   const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState<ProjectRole>(opts.initialRole);
   const [fileNames, setFileNames] = useState<string[]>([]);
-  const [standard, setStandardState] = useState(opts.initialStandard);
+  const [standard, setStandardState] = useState(language === "cpp" ? opts.initialStandard ?? "c++17" : null);
+  const [assets, setAssets] = useState<DosboxAssets>(opts.initialAssets ?? {});
   const [peers, setPeers] = useState<CollabPeer[]>([]);
   const [saved, setSaved] = useState<SaveState>("saved");
-  const [activeFile, setActiveFileState] = useState("main.cpp");
+  const [activeFile, setActiveFileState] = useState<string>(entryFile);
   const [session, setSession] = useState<{ doc: Y.Doc; awareness: Awareness } | null>(null);
 
   const docRef = useRef<Y.Doc | null>(null);
   const awarenessRef = useRef<Awareness | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const roleRef = useRef<ProjectRole>(opts.initialRole);
-  const activeFileRef = useRef("main.cpp");
+  const activeFileRef = useRef<string>(entryFile);
   const optsRef = useRef(opts);
-  const standardRef = useRef(opts.initialStandard);
+  const standardRef = useRef<string | null>(language === "cpp" ? opts.initialStandard ?? "c++17" : null);
   const bootRef = useRef<"yjs" | "seed">("seed");
   const syncedAtRef = useRef<number | null>(null);
   const joinedRef = useRef(false);
@@ -119,7 +131,8 @@ export function useProjectCollab(opts: {
       doc.getMap("files").forEach((_value, key) => names.push(String(key)));
       names.sort();
       setFileNames(names);
-      setActiveFileState((current) => (names.includes(current) ? current : names[0] || "main.cpp"));
+      setActiveFileState((current) => (names.includes(current) ? current : names.includes(entryFile) ? entryFile : names[0] || entryFile));
+      setAssets(readDosboxAssets(doc));
     };
 
     const refreshPeers = () => {
@@ -141,7 +154,8 @@ export function useProjectCollab(opts: {
     const currentRecord = (savedAt = Date.now()): LocalProjectRecord => ({
       projectId: optsRef.current.projectId,
       stateB64: encodeState(doc),
-      standard: standardRef.current,
+      standard: standardRef.current ?? "",
+      language: optsRef.current.language ?? "cpp",
       savedAt,
       syncedAt: syncedAtRef.current,
       boot: bootRef.current,
@@ -160,7 +174,7 @@ export function useProjectCollab(opts: {
       if (!record || !needsCloudSync(record) || !canEdit(roleRef.current)) return;
       if (typeof navigator === "undefined" || !navigator.onLine) return;
       const body = new Blob(
-        [JSON.stringify({ state: record.stateB64, standard: record.standard })],
+        [JSON.stringify({ state: record.stateB64, ...(language === "cpp" ? { standard: record.standard } : {}) })],
         { type: "application/json" }
       );
       navigator.sendBeacon(`/api/projects/${optsRef.current.projectId}/sync`, body);
@@ -204,9 +218,12 @@ export function useProjectCollab(opts: {
       awareness.on("update", onAwareness);
       awareness.on("change", refreshPeers);
       doc.getMap("files").observe(refreshFiles);
+      doc.getMap("dosAssets").observe(refreshFiles);
       detachPeers = () => {
         awareness.off("update", onAwareness);
         awareness.off("change", refreshPeers);
+        doc.getMap("files").unobserve(refreshFiles);
+        doc.getMap("dosAssets").unobserve(refreshFiles);
       };
     };
 
@@ -216,10 +233,11 @@ export function useProjectCollab(opts: {
     };
 
     const applyLocal = (record: LocalProjectRecord) => {
+      if ((record.language ?? "cpp") !== language) return;
       Y.applyUpdate(doc, base64ToBytes(record.stateB64), "hydrate");
       bootRef.current = record.boot;
       syncedAtRef.current = record.syncedAt;
-      if (record.standard) {
+      if (language === "cpp" && record.standard) {
         standardRef.current = record.standard;
         setStandardState(record.standard);
       }
@@ -243,14 +261,21 @@ export function useProjectCollab(opts: {
       }
       const files = optsRef.current.initialFiles;
       if (Object.keys(files).length > 0) seedDoc(doc, files);
+      if (language === "asm8086" && optsRef.current.initialAssets && inspectDosboxAssets(optsRef.current.initialAssets).ok) {
+        for (const [name, asset] of Object.entries(optsRef.current.initialAssets)) doc.getMap("dosAssets").set(name, asset);
+      }
       bootRef.current = "seed";
       remember(true);
       show();
     };
 
-    const pushState = () => {
+    const pushState = (serverState: string) => {
       if (!canEdit(roleRef.current) || socket?.readyState !== WebSocket.OPEN) return;
-      socket.send(JSON.stringify({ type: "update", update: encodeState(doc) }));
+      const remote = new Y.Doc();
+      try {
+        Y.applyUpdate(remote, base64ToBytes(serverState));
+        socket.send(JSON.stringify({ type: "update", update: bytesToBase64(Y.encodeStateAsUpdate(doc, Y.encodeStateVector(remote))) }));
+      } finally { remote.destroy(); }
     };
 
     const connect = async () => {
@@ -297,6 +322,7 @@ export function useProjectCollab(opts: {
           update?: string;
           role?: ProjectRole;
           standard?: string;
+          language?: ProjectLanguage;
           value?: string;
           message?: string;
         };
@@ -307,6 +333,11 @@ export function useProjectCollab(opts: {
         }
 
         if (msg.type === "init" && typeof msg.state === "string") {
+          if (msg.language && msg.language !== language) {
+            setError("This project's language changed. Reload the workspace.");
+            current.close();
+            return;
+          }
           if (bootRef.current === "seed" && doc.getMap("files").size > 0) {
             const localFiles = readFiles(doc);
             const fresh = new Y.Doc();
@@ -352,7 +383,7 @@ export function useProjectCollab(opts: {
             color: colorForUser(optsRef.current.userId),
           });
           awareness.setLocalStateField("file", activeFileRef.current);
-          pushState();
+          pushState(msg.state);
           remember(false);
           setStatus("live");
           setError(null);
@@ -440,7 +471,7 @@ export function useProjectCollab(opts: {
       wsRef.current = null;
       setSession(null);
     };
-  }, [opts.projectId]);
+  }, [opts.projectId, language, entryFile]);
 
   const setRunning = useCallback((running: boolean) => {
     awarenessRef.current?.setLocalStateField("running", running);
@@ -451,7 +482,9 @@ export function useProjectCollab(opts: {
     error,
     role,
     fileNames,
+    language,
     standard,
+    assets,
     peers,
     saved,
     activeFile,
@@ -462,6 +495,7 @@ export function useProjectCollab(opts: {
       awarenessRef.current?.setLocalStateField("file", name);
     },
     setStandard: (value: string) => {
+      if (language !== "cpp" || !canEdit(roleRef.current)) return;
       standardRef.current = value;
       setStandardState(value);
       if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -469,26 +503,46 @@ export function useProjectCollab(opts: {
       }
     },
     createFile: (name: string) => {
+      if (!canEdit(roleRef.current)) return "This project is read-only.";
       const doc = docRef.current;
       if (!doc) return "The project is still opening.";
-      const result = createSharedFile(doc, name, "");
+      const result = createSharedFile(doc, name, "", language);
       return result.ok ? null : result.message;
     },
     renameFile: (from: string, to: string) => {
+      if (!canEdit(roleRef.current)) return "This project is read-only.";
       const doc = docRef.current;
       if (!doc) return "The project is still opening.";
-      const result = renameSharedFile(doc, from, to);
+      const result = renameSharedFile(doc, from, to, language);
       return result.ok ? null : result.message;
     },
     deleteFile: (name: string) => {
+      if (!canEdit(roleRef.current)) return "This project is read-only.";
       const doc = docRef.current;
-      if (!doc) return;
-      deleteSharedFile(doc, name);
+      if (!doc) return "The project is still opening.";
+      const result = deleteSharedFile(doc, name, language);
+      return result.ok ? null : result.message;
+    },
+    uploadAsset: (name: string, base64: string) => {
+      if (language !== "asm8086") return "Input files are supported in NASM projects.";
+      if (!canEdit(roleRef.current)) return "This project is read-only.";
+      if (!joinedRef.current || wsRef.current?.readyState !== WebSocket.OPEN) return "Reconnect before uploading input files.";
+      const checked = inspectDosboxAssets({ ...readDosboxAssets(docRef.current!), [name]: { base64 } });
+      if (!checked.ok) return checked.message;
+      wsRef.current.send(JSON.stringify({ type: "asset-upload", name, base64 }));
+      return null;
+    },
+    deleteAsset: (name: string) => {
+      if (language !== "asm8086" || !canEdit(roleRef.current)) return "This project is read-only.";
+      if (!joinedRef.current || wsRef.current?.readyState !== WebSocket.OPEN) return "Reconnect before removing input files.";
+      wsRef.current.send(JSON.stringify({ type: "asset-delete", name }));
+      return null;
     },
     setRunning,
     snapshot: () => {
       const doc = docRef.current;
       return doc ? readFiles(doc) : {};
     },
+    snapshotAssets: () => docRef.current ? readDosboxAssets(docRef.current) : {},
   };
 }

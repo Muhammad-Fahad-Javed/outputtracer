@@ -68,11 +68,17 @@ export async function resolveTerminalPayload(raw: TerminalRequestPayload): Promi
   if (raw.projectId) {
     const access = await accessFromToken(raw.accessToken || "", raw.projectId);
     if (!access) return { ok: false, message: "You do not have access to run this project." };
-    if (raw.language === "python") return { ok: false, message: "This project uses the C++ terminal." };
-    if (raw.standard && canEdit(access.role)) await getHub().setStandard(raw.projectId, raw.standard);
-    const shared = await getHub().readFiles(raw.projectId);
-    return { ok: true, payload: { language: "cpp", files: shared.files, standard: shared.standard, ownerKey: access.userId,
-      validateAccess: async () => Boolean(await accessFromToken(raw.accessToken || "", raw.projectId!)),
+    let shared = await getHub().readFiles(raw.projectId);
+    const language = shared.language;
+    if (language === "asm8086") return { ok: false, message: "Run this Assembly project in browser DOSBox." };
+    if (raw.language && raw.language !== language) return { ok: false, message: "This terminal does not match the project language." };
+    if (language === "python" && raw.standard) return { ok: false, message: "Python projects do not use a C++ standard." };
+    if (raw.standard && canEdit(access.role)) {
+      await getHub().setStandard(raw.projectId, raw.standard);
+      shared = await getHub().readFiles(raw.projectId);
+    }
+    return { ok: true, payload: { language, files: shared.files, standard: shared.standard ?? undefined, ownerKey: access.userId,
+      validateAccess: async () => (await accessFromToken(raw.accessToken || "", raw.projectId!))?.userId === access.userId,
     } };
   }
   if (!raw.files || typeof raw.files !== "object" || Array.isArray(raw.files)) return { ok: false, message: "Invalid init payload: missing files." };

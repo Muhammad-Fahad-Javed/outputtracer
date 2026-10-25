@@ -69,7 +69,7 @@ export function inspectSourceFiles(
       return {
         ok: false,
         title: "Invalid filename",
-        message: `Rejected filename "${filename}". Use a simple name like main.cpp or helper.h.`,
+        message: `Rejected filename "${filename}". Use a simple name like ${language === "python" ? "main.py or helper.py" : language === "asm8086" ? "main.asm or HELPER.INC" : "main.cpp or helper.h"}.`,
       };
     }
     if (typeof content !== "string") {
@@ -79,7 +79,7 @@ export function inspectSourceFiles(
         message: `File "${filename}" is not valid text.`,
       };
     }
-    totalBytes += Buffer.byteLength(content, "utf8");
+    totalBytes += new TextEncoder().encode(content).byteLength;
     const lower = filename.toLowerCase();
     if (
       lower.endsWith(".cpp") ||
@@ -101,7 +101,7 @@ export function inspectSourceFiles(
   if (cppFiles.length === 0) {
     return {
       ok: false,
-      title: "No C++ source",
+      title: language === "cpp" ? "No C++ source" : "No entry source",
       message: "Add an entry source file for the assignment language.",
     };
   }

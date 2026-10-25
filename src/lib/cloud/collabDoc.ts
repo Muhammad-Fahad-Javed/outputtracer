@@ -4,6 +4,18 @@ import { inspectSourceFiles, isValidSourceFilename } from "@/lib/sourceFiles";
 import { base64ToBytes, bytesToBase64 } from "./base64";
 import type { ClassroomLanguage } from "@/lib/classroom/languages";
 
+function entryRequired(files: Record<string, string>, language: ClassroomLanguage): boolean {
+  return language === "cpp" || Object.keys(files).some((name) => name === (language === "python" ? "main.py" : "main.asm"));
+}
+
+function collides(files: Record<string, string>, name: string, language: ClassroomLanguage): boolean {
+  return Object.keys(files).some((existing) => language === "asm8086" ? existing.toLowerCase() === name.toLowerCase() : existing === name);
+}
+
+function filenameHint(language: ClassroomLanguage): string {
+  return language === "python" ? "Use a simple name like main.py or helper.py." : language === "asm8086" ? "Use a simple name like main.asm or HELPER.INC." : "Use a simple name like main.cpp or helper.h.";
+}
+
 export function fileMap(doc: Y.Doc): Y.Map<Y.Text> {
   return doc.getMap("files");
 }
@@ -44,10 +56,10 @@ export function createFile(
   language: ClassroomLanguage = "cpp"
 ): { ok: true } | { ok: false; message: string } {
   if (!isValidSourceFilename(name, language)) {
-    return { ok: false, message: "Use a simple name like main.cpp or helper.h." };
+    return { ok: false, message: filenameHint(language) };
   }
   const map = fileMap(doc);
-  if (map.has(name)) return { ok: false, message: "That file already exists." };
+  if (collides(readFiles(doc), name, language)) return { ok: false, message: "That file already exists." };
 
   const next = { ...readFiles(doc), [name]: content };
   const inspected = inspectSourceFiles(next, {
@@ -73,6 +85,7 @@ export function deleteFile(
   if (!map.has(name)) return { ok: false, message: "File not found." };
   const next = readFiles(doc);
   delete next[name];
+  if (!entryRequired(next, language)) return { ok: false, message: `Keep the ${language === "python" ? "main.py" : "main.asm"} entry file.` };
   const inspected = inspectSourceFiles(next, {
     maxFiles: execConfig.maxSourceFiles,
     maxSourceBytes: execConfig.maxSourceBytes,
@@ -87,26 +100,28 @@ export function deleteFile(
 export function renameFile(
   doc: Y.Doc,
   from: string,
-  to: string
+  to: string,
+  language: ClassroomLanguage = "cpp"
 ): { ok: true } | { ok: false; message: string } {
   const nextName = to.trim();
   if (from === nextName) return { ok: true };
-  if (!isValidSourceFilename(nextName)) {
-    return { ok: false, message: "Use a simple name like main.cpp or helper.h." };
+  if (!isValidSourceFilename(nextName, language)) {
+    return { ok: false, message: filenameHint(language) };
   }
   const map = fileMap(doc);
   const current = map.get(from);
   if (!(current instanceof Y.Text)) return { ok: false, message: "File not found." };
-  if (map.has(nextName)) return { ok: false, message: "That file already exists." };
+  if (collides(readFiles(doc), nextName, language)) return { ok: false, message: "That file already exists." };
 
   const text = current.toString();
   const next = readFiles(doc);
   delete next[from];
   next[nextName] = text;
+  if (!entryRequired(next, language)) return { ok: false, message: `Keep the ${language === "python" ? "main.py" : "main.asm"} entry file.` };
   const inspected = inspectSourceFiles(next, {
     maxFiles: execConfig.maxSourceFiles,
     maxSourceBytes: execConfig.maxSourceBytes,
-  });
+  }, language);
   if (!inspected.ok) return { ok: false, message: inspected.message };
 
   doc.transact(() => {

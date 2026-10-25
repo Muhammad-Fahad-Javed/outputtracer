@@ -3,7 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { DEFAULT_CODE } from "@/lib/examples";
+import { PROJECT_LANGUAGES, isProjectLanguage, projectStandard } from "@/lib/cloud/projectLanguage";
 import { isUuid } from "@/lib/cloud/roles";
 import { createClient } from "@/lib/supabase/server";
 
@@ -38,11 +38,21 @@ export async function createProject(_prev: ActionState, formData: FormData): Pro
   const supabase = await clientOrLogin();
   if (!supabase) return { error: "Cloud storage is not configured." };
   const groupRaw = String(formData.get("groupId") || "");
+  if (groupRaw && !isUuid(groupRaw)) return { error: "Choose a valid group." };
+  const language = formData.get("language") || "cpp";
+  if (!isProjectLanguage(language)) return { error: "Choose C++, Python or 8086 Assembly." };
+  let standard: string | null;
+  try {
+    standard = projectStandard(language, formData.get("standard"));
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
   const { data, error } = await supabase.rpc("create_project", {
     p_title: String(formData.get("title") || ""),
-    p_standard: String(formData.get("standard") || "c++17"),
+    p_standard: standard,
     p_group: groupRaw && isUuid(groupRaw) ? groupRaw : null,
-    p_main: DEFAULT_CODE,
+    p_main: PROJECT_LANGUAGES[language].starter,
+    p_language: language,
   });
   if (error || !data) return asError(error || { message: "Could not create the project." });
   revalidatePath("/projects");

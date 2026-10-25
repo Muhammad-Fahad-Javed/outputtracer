@@ -123,13 +123,18 @@ export async function POST(request: Request) {
           { status: 403 }
         );
       }
+      let shared = await getHub().readFiles(projectId);
+      if (shared.language !== "cpp") {
+        return NextResponse.json({ status: "error", error: { kind: "invalid_request", title: "Use the project console",
+          message: shared.language === "asm8086" ? "Run this Assembly project in browser DOSBox." : "Run this Python project in its Python console." } }, { status: 409 });
+      }
       if (runStandard && canEdit(access.role)) {
         await getHub().setStandard(projectId, runStandard);
+        shared = await getHub().readFiles(projectId);
       }
-      const shared = await getHub().readFiles(projectId);
       runFiles = shared.files;
       runSource = "";
-      runStandard = shared.standard;
+      runStandard = shared.standard ?? undefined;
       ownerKey = access.userId;
     } catch (error) {
       const err = error as Error;

@@ -22,10 +22,11 @@ import { assignmentFreezeState } from "@/lib/classroom/assignmentPolicy";
 import { verifyClassroomCollabToken } from "@/lib/classroom/collabToken";
 import type { ResolvedClassroomDocument } from "@/lib/classroom/documents";
 import { ALLOWED_STANDARDS, type AllowedStandard, execConfig } from "@/lib/execConfig";
-import { inspectSourceFiles, isValidSourceFilename } from "@/lib/sourceFiles";
+import { inspectSourceFiles } from "@/lib/sourceFiles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DEFAULT_CODE } from "@/lib/examples";
 import { inspectDosboxAssets, readDosboxAssets, sameDosboxAssets, type DosboxAssets } from "@/lib/dosboxAssets";
+import { projectLanguage, PROJECT_LANGUAGES, type ProjectLanguage } from "./projectLanguage";
 
 const HUB_KEY = "__outputtracerCollabHub";
 const SAVE_DELAY_MS = 800;
@@ -33,29 +34,37 @@ const IDLE_EVICT_MS = 10 * 60 * 1000;
 const MAX_UPDATE_BYTES = 512 * 1024;
 const MAX_ROOM_CLIENTS = 24;
 
-function updateKeepsFilesValid(doc: Y.Doc, bytes: Uint8Array, language: ClassroomLanguage = "cpp"): boolean {
+export function projectDocumentIsValid(doc: Y.Doc, language: ClassroomLanguage = "cpp", requireEntry = true): boolean {
+  try {
+    if ([...doc.share.keys()].some((name) => name !== "files" && name !== "dosAssets")) return false;
+    const sourceMap = doc.getMap("files");
+    if ([...sourceMap.values()].some((value) => !(value instanceof Y.Text))) return false;
+    if ([...sourceMap.values()].some((value) => (value as Y.Text).toDelta().some((op: { insert?: unknown }) => typeof op.insert !== "string"))) return false;
+    const files = readFiles(doc);
+    if (requireEntry && language !== "cpp" && !(PROJECT_LANGUAGES[language].file in files)) return false;
+    if (language === "asm8086" && new Set(Object.keys(files).map((name) => name.toUpperCase())).size !== Object.keys(files).length) return false;
+    const assets = Object.fromEntries(doc.getMap("dosAssets").entries());
+    if (language !== "asm8086" && Object.keys(assets).length > 0) return false;
+    if (!inspectDosboxAssets(assets).ok) return false;
+    return inspectSourceFiles(files, { maxFiles: execConfig.maxSourceFiles, maxSourceBytes: execConfig.maxSourceBytes }, language).ok;
+  } catch {
+    return false;
+  }
+}
+
+function inspectProjectUpdate(doc: Y.Doc, bytes: Uint8Array, language: ClassroomLanguage = "cpp", requireEntry = true): { valid: false } | { valid: true; changesFiles: boolean } {
   const probe = new Y.Doc();
   try {
     Y.applyUpdate(probe, Y.encodeStateAsUpdate(doc));
     Y.applyUpdate(probe, bytes);
     // Only code and validated input assets belong in a persisted project document.
     // readFiles intentionally skips non-text values, so validate the raw map first.
-    if ([...probe.share.keys()].some((name) => name !== "files" && name !== "dosAssets")) return false;
-    if (!sameDosboxAssets(doc, probe)) return false;
-    const sourceMap = probe.getMap("files");
-    if ([...sourceMap.values()].some((value) => !(value instanceof Y.Text))) return false;
-    if ([...sourceMap.values()].some((value) => (value as Y.Text).toDelta().some((op: { insert?: unknown }) => typeof op.insert !== "string"))) return false;
-    const files = readFiles(probe);
-    if (Object.keys(files).length === 0) return false;
-    for (const name of Object.keys(files)) {
-      if (!isValidSourceFilename(name, language)) return false;
-    }
-    return inspectSourceFiles(files, {
-      maxFiles: execConfig.maxSourceFiles,
-      maxSourceBytes: execConfig.maxSourceBytes,
-    }, language).ok;
+    if (!sameDosboxAssets(doc, probe) || !projectDocumentIsValid(probe, language, requireEntry)) return { valid: false };
+    const before = [...doc.getMap("files").keys()].sort();
+    const after = [...probe.getMap("files").keys()].sort();
+    return { valid: true, changesFiles: JSON.stringify(before) !== JSON.stringify(after) };
   } catch {
-    return false;
+    return { valid: false };
   } finally {
     probe.destroy();
   }
@@ -65,6 +74,7 @@ interface ClientState {
   userId: string;
   role: ProjectRole;
   clientId: number;
+  token?: string;
 }
 
 interface Room {
@@ -79,7 +89,7 @@ interface Room {
   };
   doc: Y.Doc;
   awareness: Awareness;
-  standard: string;
+  standard: string | null;
   clients: Map<WebSocket, ClientState>;
   saveTimer: ReturnType<typeof setTimeout> | null;
   evictTimer: ReturnType<typeof setTimeout> | null;
@@ -113,10 +123,14 @@ class CollabHub {
   private opening = new Map<string, Promise<Room>>();
 
   async ingestSnapshot(projectId: string, stateB64: string, standard?: string): Promise<void> {
-    if (!stateB64 || stateB64.length > 2_000_000) return;
+    if (!stateB64 || stateB64.length > 3_000_000) throw new Error("Invalid project snapshot.");
     const room = await this.room(projectId);
-    applyEncoded(room.doc, stateB64);
+    const bytes = base64ToBytes(stateB64);
+    if (!inspectProjectUpdate(room.doc, bytes, room.language).valid) throw new Error("Invalid project files. Input files must use the validated upload action.");
+    if (standard !== undefined && room.language !== "cpp") throw new Error("Only C++ projects have a compiler standard.");
     const nextStandard = asStandard(standard);
+    if (standard !== undefined && !nextStandard) throw new Error("Invalid C++ standard.");
+    Y.applyUpdate(room.doc, bytes);
     if (nextStandard) room.standard = nextStandard;
     if (room.saveTimer) {
       clearTimeout(room.saveTimer);
@@ -125,9 +139,9 @@ class CollabHub {
     await this.persist(room);
   }
 
-  async readFiles(projectId: string): Promise<{ files: Record<string, string>; standard: string }> {
+  async readFiles(projectId: string): Promise<{ files: Record<string, string>; standard: string | null; language: ProjectLanguage; assets: DosboxAssets }> {
     const room = await this.room(projectId);
-    return { files: readFiles(room.doc), standard: room.standard };
+    return { files: readFiles(room.doc), standard: room.standard, language: room.language ?? "cpp", assets: readDosboxAssets(room.doc) };
   }
 
   /** Live classroom files when that room is already open. Does not create a room. */
@@ -174,6 +188,7 @@ class CollabHub {
     const standard = asStandard(value);
     if (!standard) return;
     const room = await this.room(projectId);
+    if (room.language !== "cpp") throw new Error("Only C++ projects have a compiler standard.");
     room.standard = standard;
     const admin = createAdminClient();
     if (admin) {
@@ -197,12 +212,32 @@ class CollabHub {
       }
     }, 10_000);
 
-    let checkingAccess=false;
-    const accessTimer=setInterval(()=>{if(checkingAccess||!room?.classroom||!state)return;checkingAccess=true;const cls=room.classroom;const actor=state.userId;
-      void import("@/lib/classroom/classroomService").then(async({getClassroom})=>{const access=await getClassroom(actor,cls.classId);if(!access.success){ws.close(1008,"Classroom access changed");return;}
-       const {resolveClassroomDocument}=await import("@/lib/classroom/documents");const resolved=await resolveClassroomDocument({actorId:actor,classroomId:cls.classId,assignmentId:cls.assignmentId,isTeacher:Boolean(access.isTeacher),groupId:cls.groupId,studentId:cls.studentId});if(!resolved.ok)ws.close(1008,"Document access changed");
-      }).catch(()=>ws.close(1011,"Could not verify access")).finally(()=>{checkingAccess=false;});
-    },30000);
+    let checkingAccess = false;
+    const accessTimer = setInterval(() => {
+      if (checkingAccess || !room || !state) return;
+      checkingAccess = true;
+      const currentRoom = room;
+      const client = state;
+      void (async () => {
+        if (currentRoom.kind === "project") {
+          const access = await accessFromToken(client.token || "", currentRoom.projectId);
+          if (!access || access.userId !== client.userId || (canEdit(client.role) && !canEdit(access.role))) {
+            ws.close(1008, "Project access changed");
+            return;
+          }
+          client.role = access.role;
+          return;
+        }
+        const cls = currentRoom.classroom;
+        if (!cls) return;
+        const { getClassroom } = await import("@/lib/classroom/classroomService");
+        const access = await getClassroom(client.userId, cls.classId);
+        if (!access.success) { ws.close(1008, "Classroom access changed"); return; }
+        const { resolveClassroomDocument } = await import("@/lib/classroom/documents");
+        const resolved = await resolveClassroomDocument({ actorId: client.userId, classroomId: cls.classId, assignmentId: cls.assignmentId, isTeacher: Boolean(access.isTeacher), groupId: cls.groupId, studentId: cls.studentId });
+        if (!resolved.ok) ws.close(1008, "Document access changed");
+      })().catch(() => ws.close(1011, "Could not verify access")).finally(() => { checkingAccess = false; });
+    }, 30_000);
     accessTimer.unref?.();
     const leave = () => {
       clearInterval(accessTimer);
@@ -292,9 +327,20 @@ class CollabHub {
       if (await this.classroomEditBlocked(ws, room)) return;
       const bytes = base64ToBytes(message.update);
       if (bytes.byteLength > MAX_UPDATE_BYTES) return;
-      if (!updateKeepsFilesValid(room.doc, bytes, room.language)) {
+      const inspected = inspectProjectUpdate(room.doc, bytes, room.language, room.kind === "project");
+      if (!inspected.valid) {
         send(ws, { type: "error", message: "That edit is not allowed." });
         return;
+      }
+      // Normal typing uses the periodic session audit. Structural changes check
+      // permission immediately, including clients that send raw Yjs file changes.
+      if (inspected.changesFiles) {
+        if (await this.classroomFileEditBlocked(ws, room, state)) return;
+        // Other editors may have changed the document during authorization.
+        if (!inspectProjectUpdate(room.doc, bytes, room.language, room.kind === "project").valid) {
+          send(ws, { type: "error", message: "That edit is not allowed." });
+          return;
+        }
       }
       Y.applyUpdate(room.doc, bytes, ws);
       return;
@@ -329,7 +375,7 @@ class CollabHub {
     }
 
     if (message.type === "asset-upload" || message.type === "asset-delete") {
-      if (room.kind !== "classroom" || room.language !== "asm8086" || !canEdit(state.role) || typeof message.name !== "string") return;
+      if (room.language !== "asm8086" || !canEdit(state.role) || typeof message.name !== "string") return;
       if (await this.classroomFileEditBlocked(ws, room, state)) return;
       const assets = readDosboxAssets(room.doc);
       if (message.type === "asset-upload") {
@@ -344,7 +390,8 @@ class CollabHub {
     }
 
     if (message.type === "standard" && typeof message.value === "string") {
-      if (!canEdit(state.role) || room.kind === "classroom") return;
+      if (!canEdit(state.role) || room.kind === "classroom" || room.language !== "cpp") return;
+      if (await this.projectEditBlocked(ws, room, state)) return;
       await this.setStandard(room.projectId, message.value);
     }
   }
@@ -399,7 +446,7 @@ class CollabHub {
       return;
     }
 
-    const state: ClientState = { userId: access.userId, role: access.role, clientId };
+    const state: ClientState = { userId: access.userId, role: access.role, clientId, token };
     room.clients.set(ws, state);
     ctx.bind(room, state);
     ctx.markJoined();
@@ -408,6 +455,7 @@ class CollabHub {
       type: "init",
       role: access.role,
       standard: room.standard,
+      language: room.language,
       state: encodeDoc(room.doc),
     });
 
@@ -520,6 +568,7 @@ class CollabHub {
 
   /** File mutations recheck membership now, rather than waiting for the periodic session audit. */
   private async classroomFileEditBlocked(ws: WebSocket, room: Room, state: ClientState): Promise<boolean> {
+    if (await this.projectEditBlocked(ws, room, state)) return true;
     if (await this.classroomEditBlocked(ws, room)) return true;
     if (!room.classroom) return false;
     const { getClassroom } = await import("@/lib/classroom/classroomService");
@@ -530,6 +579,18 @@ class CollabHub {
     if (resolved?.ok && resolved.doc.role === "editor") return false;
     send(ws, { type: "error", message: "You no longer have permission to change this document's files." });
     ws.close(1008, "Document access changed");
+    return true;
+  }
+
+  private async projectEditBlocked(ws: WebSocket, room: Room, state: ClientState): Promise<boolean> {
+    if (room.kind !== "project") return false;
+    const access = await accessFromToken(state.token || "", room.projectId);
+    if (access?.userId === state.userId && canEdit(access.role)) {
+      state.role = access.role;
+      return false;
+    }
+    send(ws, { type: "error", message: "You no longer have permission to edit this project." });
+    ws.close(1008, "Project access changed");
     return true;
   }
 
@@ -557,11 +618,12 @@ class CollabHub {
 
     const { data: project, error: projectError } = await admin
       .from("projects")
-      .select("standard")
+      .select("standard, language")
       .eq("id", projectId)
       .maybeSingle();
     if (projectError) throw new Error(projectError.message);
     if (!project) throw new Error("Project not found.");
+    const language = projectLanguage(project.language);
 
     const doc = new Y.Doc();
     const { data: snapshot } = await admin
@@ -579,16 +641,18 @@ class CollabHub {
         .eq("project_id", projectId);
       const files: Record<string, string> = {};
       for (const row of rows || []) files[row.path] = row.content;
-      if (Object.keys(files).length === 0) files["main.cpp"] = DEFAULT_CODE;
+      if (Object.keys(files).length === 0) files[PROJECT_LANGUAGES[language].file] = language === "cpp" ? DEFAULT_CODE : PROJECT_LANGUAGES[language].starter;
       seedDoc(doc, files);
     }
+    if (!projectDocumentIsValid(doc, language)) { doc.destroy(); throw new Error("The saved project contains invalid files for its language."); }
 
     const room: Room = {
       projectId,
       kind: "project",
+      language,
       doc,
       awareness: new Awareness(doc),
-      standard: typeof project.standard === "string" ? project.standard : "c++17",
+      standard: language === "cpp" ? asStandard(project.standard ?? undefined) ?? "c++17" : null,
       clients: new Map(),
       saveTimer: null,
       evictTimer: null,

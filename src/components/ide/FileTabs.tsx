@@ -14,6 +14,7 @@ export function FileTabs({
   onCreate,
   onRename,
   onDelete,
+  createPlaceholder = "helper.cpp",
 }: {
   names: string[];
   active: string;
@@ -23,6 +24,7 @@ export function FileTabs({
   onCreate: (name: string) => string | null;
   onRename: (from: string, to: string) => string | null;
   onDelete?: (name: string) => void;
+  createPlaceholder?: string;
 }) {
   const [mode, setMode] = useState<EditMode>(null);
   const [value, setValue] = useState("");
@@ -135,8 +137,16 @@ export function FileTabs({
                 ? "bg-[#1E1E1E] text-[#F1F1F1]"
                 : "bg-[#2D2D30] text-[#969696] hover:text-[#F1F1F1]"
             }`}
-            onClick={() => startRename(name)}
-            title={canEdit ? "Click to rename" : name}
+            role="button"
+            tabIndex={0}
+            onClick={() => onSelect(name)}
+            onDoubleClick={() => startRename(name)}
+            onKeyDown={event => {
+              if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(name); }
+              if (event.key === "F2" && canEdit) { event.preventDefault(); startRename(name); }
+            }}
+            aria-label={`Open ${name}`}
+            title={canEdit ? `${name} · Double-click or F2 to rename` : name}
           >
             {active === name && <span className="absolute left-0 right-0 top-0 h-[2px] bg-[#007ACC]" />}
             <FileCode2 size={12} className={active === name ? "text-[#007ACC]" : ""} />
@@ -164,7 +174,7 @@ export function FileTabs({
         <NameField
           inputRef={inputRef}
           value={value}
-          placeholder="helper.cpp"
+          placeholder={createPlaceholder}
           onChange={(next) => {
             setValue(next);
             setError(null);

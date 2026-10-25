@@ -14,6 +14,8 @@ export interface ClassroomConsoleScope {
 interface Props {
   language: "cpp" | "python";
   files: Record<string, string>;
+  projectId?: string;
+  standard?: string;
   classroom?: ClassroomConsoleScope;
   runRequest?: number;
   stopRequest?: number;
@@ -113,10 +115,12 @@ export default function ProgramConsole(props: Props) {
         const token = (await client?.auth.getSession())?.data.session?.access_token;
         if (socket.current !== ws || ws.readyState !== WebSocket.OPEN) return;
         if (current.classroom && !token) throw Error("Sign in again to run this assignment.");
+        if (current.projectId && !token) throw Error("Sign in again to run this saved project.");
         if (current.language === "python" && !token) throw Error("Sign in to run Python in the console.");
         ws.send(JSON.stringify({
           language: current.language,
-          ...(current.classroom ? {classroom: current.classroom} : {files: current.files}),
+          ...(current.classroom ? {classroom: current.classroom} : current.projectId ? {projectId: current.projectId} : {files: current.files}),
+          ...(current.language === "cpp" && current.standard ? {standard: current.standard} : {}),
           ...(token ? {accessToken: token} : {}),
         }));
       } catch (error) {

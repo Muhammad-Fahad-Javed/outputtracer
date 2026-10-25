@@ -4,6 +4,11 @@ import SetupRequired from "@/components/cloud/SetupRequired";
 import { isProjectRole, isUuid } from "@/lib/cloud/roles";
 import { isCloudConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { projectLanguage } from "@/lib/cloud/projectLanguage";
+import { applyEncoded } from "@/lib/cloud/collabDoc";
+import { readDosboxAssets, type DosboxAssets } from "@/lib/dosboxAssets";
+import * as Y from "yjs";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +35,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, title, standard, group_id")
+    .select("id, title, standard, group_id, language")
     .eq("id", id)
     .maybeSingle();
   if (!project) notFound();
+  const language = projectLanguage(project.language);
 
   const [{ data: memberRows }, { data: inviteRows }, { data: profile }, { data: fileRows }, groupResult] = await Promise.all([
     supabase.from("project_members").select("user_id, role, profiles(display_name, email)").eq("project_id", id),
@@ -83,17 +89,37 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  let initialAssets: DosboxAssets = {};
+  if (language === "asm8086") {
+    // The Yjs blob is service-only. Access was checked with the signed-in user's
+    // project role above; only the validated input-file map reaches the client.
+    const admin = createAdminClient();
+    if (!admin) throw new Error("Project input files could not be loaded.");
+    const { data: document, error } = await admin.from("project_documents").select("state_b64").eq("project_id", id).maybeSingle();
+    if (error) throw new Error("Project input files could not be loaded.");
+    if (document?.state_b64) {
+      const doc = new Y.Doc();
+      try {
+        applyEncoded(doc, document.state_b64);
+        initialAssets = readDosboxAssets(doc);
+      } finally { doc.destroy(); }
+    }
+  }
+
   return (
     <CloudIde
+      key={project.id}
       id={project.id}
       title={project.title}
       standard={project.standard}
+      language={language}
       groupName={groupName}
       members={members}
       invites={(inviteRows || []).map((invite) => ({ email: invite.email, role: invite.role }))}
       userId={user.id}
       displayName={profile?.display_name || "Student"}
       initialFiles={initialFiles}
+      initialAssets={initialAssets}
     />
   );
 }

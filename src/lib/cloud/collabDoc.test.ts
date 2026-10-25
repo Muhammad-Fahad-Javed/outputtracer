@@ -25,4 +25,27 @@ describe("project document", () => {
     expect(renameFile(doc, "app.cpp", "app.cpp").ok).toBe(true);
     expect(renameFile(doc, "app.cpp", "../x.cpp").ok).toBe(false);
   });
+
+  it("keeps Python files and the required entry file when adding, renaming or deleting", () => {
+    const doc = new Y.Doc();
+    seedDoc(doc, { "main.py": "from helpers import answer\n", "helpers.py": "answer = 42\n" });
+    expect(createFile(doc, "bad.cpp", "", "python").ok).toBe(false);
+    expect(renameFile(doc, "helpers.py", "maths.py", "python").ok).toBe(true);
+    expect(renameFile(doc, "main.py", "app.py", "python").ok).toBe(false);
+    expect(deleteFile(doc, "main.py", "python").ok).toBe(false);
+    expect(deleteFile(doc, "maths.py", "python").ok).toBe(true);
+    doc.destroy();
+  });
+
+  it("treats DOS filenames as case-insensitive and preserves main.asm", () => {
+    const doc = new Y.Doc();
+    seedDoc(doc, { "main.asm": "org 100h\n", "IO.INC": "; include\n" });
+    expect(createFile(doc, "io.inc", "", "asm8086").ok).toBe(false);
+    expect(createFile(doc, "MAIN.ASM", "", "asm8086").ok).toBe(false);
+    expect(renameFile(doc, "IO.INC", "helpers.inc", "asm8086").ok).toBe(true);
+    expect(createFile(doc, "extra.asm", "", "asm8086").ok).toBe(true);
+    expect(renameFile(doc, "main.asm", "app.asm", "asm8086").ok).toBe(false);
+    expect(deleteFile(doc, "main.asm", "asm8086").ok).toBe(false);
+    doc.destroy();
+  });
 });
