@@ -32,7 +32,7 @@ export default function AssemblyInspector(p: Props) {
         <button type="button" className={button} onClick={p.onReset} disabled={p.busy} title="Reset CPU to the start"><RotateCcw size={12}/>Reset</button>
       </div>
       <button type="button" className={`${button} mt-2 w-full`} onClick={p.onContinue} disabled={p.busy || p.sourceChanged || !p.status.canStepForward}>Continue from current instruction</button>
-      {p.sourceChanged && <p className="mt-2 text-[11px] text-amber-200">Build or step to load the current source. Values below belong to the previous CPU state.</p>}
+      {p.sourceChanged && <p className="mt-2 text-[11px] text-amber-200">{p.engineUsed === "not-assembled" ? "Build or step to load your program." : "Source changed. Build or step to inspect the current code."}</p>}
       <p className="mt-2 break-words font-mono text-[11px] text-[#9CDCFE]">{p.status.currentInstruction?.disassembly || "Build or step to inspect your program."}</p>
       {p.status.error && <p className="mt-1 text-xs text-red-300" role="alert">{p.status.error}</p>}
     </div>

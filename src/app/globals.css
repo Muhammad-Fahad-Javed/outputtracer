@@ -33,6 +33,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Monaco normalizes decoration class names; use plain names rather than
+   Tailwind's slash/bracket syntax so highlighted code keeps its contrast. */
+.monaco-editor .outputtracer-execution-line {
+  background-color: rgba(38, 79, 120, 0.35);
+  border-left: 3px solid #75beff;
+}
+.monaco-editor .outputtracer-execution-glyph {
+  border-left: 3px solid #75beff;
+}
+
 ::selection {
   background: var(--color-ink);
   color: #ffffff;

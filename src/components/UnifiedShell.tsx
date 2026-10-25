@@ -494,8 +494,8 @@ export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = fal
         range: new monaco.Range(line, 1, line, 1),
         options: {
           isWholeLine: true,
-          className: "bg-white/10 border-l-4 border-white",
-          glyphMarginClassName: "text-white font-bold",
+          className: "outputtracer-execution-line",
+          glyphMarginClassName: "outputtracer-execution-glyph",
         },
       },
     ]);
