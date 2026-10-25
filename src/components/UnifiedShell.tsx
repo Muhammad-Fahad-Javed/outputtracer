@@ -324,7 +324,7 @@ export default function UnifiedShell() {
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>("console");
   const [panelHeight, setPanelHeight] = useState(280);
   const [panelCollapsed,setPanelCollapsed]=useState(false);
-  useEffect(()=>{const frame=requestAnimationFrame(()=>{let ratio=.3;try{const saved=Number(localStorage.getItem('workspace-output-ratio'));if(saved>=.15&&saved<=.8)ratio=saved;}catch{}setPanelHeight(Math.max(160,(window.innerHeight-120)*ratio));});return()=>cancelAnimationFrame(frame);},[]);
+  useEffect(()=>{const frame=requestAnimationFrame(()=>{let ratio=.3;try{const saved=Number(localStorage.getItem('workspace-output-ratio'));if(saved>=.15&&saved<=.8)ratio=saved;}catch{}setPanelHeight(Math.max(240,(window.innerHeight-120)*ratio));});return()=>cancelAnimationFrame(frame);},[]);
   const [isDragging, setIsDragging] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [roleHomeLink, setRoleHomeLink] = useState<{ href: string; label: string } | null>(null);

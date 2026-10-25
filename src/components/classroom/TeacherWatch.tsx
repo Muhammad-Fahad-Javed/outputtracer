@@ -352,7 +352,7 @@ export default function TeacherWatch({
                 </div>
                 <div className="flex min-h-[200px] flex-[3] flex-col overflow-hidden border border-[#333]">
                   <div className="flex shrink-0 items-center justify-between border-b border-[#333] bg-[#181818] px-3 py-1 text-xs"><span className="font-semibold text-white">Console</span><button className="px-2 py-1 text-[#aaa] hover:text-white disabled:opacity-50" onClick={()=>void run()} disabled={busy||consoleRunning}>{busy?"Running tests…":"Run public tests"}</button></div>
-                  <TeacherConsole key={selected.id} scope={{classId,assignmentId,groupId:selected.kind==="group"?selected.id:undefined,studentId:selected.kind==="student"?selected.id:undefined}} language={classroomLanguage(language)} runRequest={consoleRunRequest} onRunningChange={setConsoleRunning}/>
+                  <TeacherConsole key={`${assignmentId}:${selected.id}`} scope={{classId,assignmentId,groupId:selected.kind==="group"?selected.id:undefined,studentId:selected.kind==="student"?selected.id:undefined}} language={classroomLanguage(language)} runRequest={consoleRunRequest} onRunningChange={setConsoleRunning}/>
                 </div>
                 {runNote && <p className="text-xs text-[#ccc]">{runNote}</p>}
                 {runOutput && (
