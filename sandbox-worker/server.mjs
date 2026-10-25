@@ -8,7 +8,8 @@
 // host-execution fallback anywhere in this file.
 import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
-import { DEFAULT_CONFIG, runInContainer, checkRuntime } from "./dockerExec.mjs";
+import { WebSocketServer } from "ws";
+import { DEFAULT_CONFIG, runInContainer, checkRuntime, startInteractiveContainer } from "./dockerExec.mjs";
 
 export const LIMITS = Object.freeze({
   maxCodeBytes: 64 * 1024,
@@ -174,7 +175,7 @@ export function mapTraceOutcome(o) {
   return { ...parsed, executionTimeMs: o.executionTimeMs };
 }
 
-export function createApp({ config, exec = runInContainer, check = checkRuntime }) {
+export function createApp({ config, exec = runInContainer, check = checkRuntime, terminal = startInteractiveContainer }) {
   const gate = new Gate(config.maxConcurrency, config.maxQueue);
 
   const server = http.createServer(async (req, res) => {
@@ -221,7 +222,50 @@ export function createApp({ config, exec = runInContainer, check = checkRuntime 
       return send(res, 500, { status: "internal_error" });
     }
   });
-  return { server, gate };
+  const terminals = new WebSocketServer({ noServer: true, maxPayload: LIMITS.maxBodyBytes });
+  server.on("upgrade", (req, socket, head) => {
+    // This endpoint is for our trusted application server only. The browser
+    // never receives the worker bearer token or connects here directly.
+    if (req.url !== "/v1/terminal" || !tokenOk(req.headers.authorization, config.token)) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n"); socket.destroy(); return;
+    }
+    terminals.handleUpgrade(req, socket, head, (ws) => {
+      let initialized = false;
+      let session;
+      let release;
+      const push = (message) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message)); };
+      const cleanup = () => { clearTimeout(initTimer); session?.stop(); release?.(); release = undefined; };
+      const initTimer = setTimeout(() => { push({ type: "error", data: "No program received." }); ws.close(); }, 10000);
+      ws.once("close", cleanup);
+      ws.on("error", cleanup);
+      ws.on("message", async (raw) => {
+        let payload;
+        try { payload = JSON.parse(raw.toString()); } catch { push({ type: "error", data: "Invalid terminal message." }); ws.close(); return; }
+        if (initialized) {
+          if (payload?.type === "stdin" && typeof payload.data === "string") session?.input(payload.data);
+          else if (payload?.type === "eof") session?.eof();
+          else if (payload?.type === "stop") { cleanup(); ws.close(); }
+          return;
+        }
+        initialized = true; clearTimeout(initTimer);
+        const bad = validatePayload(payload);
+        if (bad) { push({ type: "error", data: "Invalid Python program or source too large." }); ws.close(); return; }
+        try {
+          const healthy = await check({ cfg: config.docker });
+          if (!healthy.ok) { push({ type: "error", data: "The Python sandbox is unavailable right now." }); ws.close(); return; }
+          if (ws.readyState !== ws.OPEN) return;
+          release = await gate.acquire(payload.clientId || "anonymous");
+          if (!release) { push({ type: "error", data: "The Python runner is busy. Please try again shortly." }); ws.close(); return; }
+          // A queued socket can disappear before it owns a slot.
+          if (ws.readyState !== ws.OPEN) { release(); release = undefined; return; }
+          session = terminal({ code: payload.code, timeoutMs: payload.timeoutMs, cpuTimeMs: payload.cpuTimeMs, cfg: config.docker, emit: push });
+          await session.done;
+          cleanup(); ws.close();
+        } catch { push({ type: "error", data: "Could not start the Python sandbox." }); cleanup(); ws.close(); }
+      });
+    });
+  });
+  return { server, gate, terminals };
 }
 
 export function sanitizeTraceLimits(l) {

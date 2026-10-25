@@ -2,6 +2,7 @@
 // Pure functions (buildDockerArgs) are unit-tested; runInContainer spawns docker.
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { StringDecoder } from "node:string_decoder";
 
 export const DEFAULT_CONFIG = Object.freeze({
   image: "outputtracer-python-sandbox:latest",
@@ -14,6 +15,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   traceTimeoutMs: 10000,
   maxOutputBytes: 64 * 1024,
   maxTraceBytes: 9 * 1024 * 1024,
+  interactiveTimeoutMs: 120000,
 });
 
 /** Build the `docker run` argument vector. Every isolation flag lives here. */
@@ -45,8 +47,130 @@ export function buildDockerArgs({ name, mode, cfg }) {
     "-e", "PYTHONIOENCODING=utf-8",
   ];
   if (cfg.runtime) args.push("--runtime", cfg.runtime);
-  args.push(cfg.image, "python3", "-I", script);
+  if (mode === "terminal") {
+    // CPU time stays bounded while human input can wait without burning CPU.
+    const cpuSeconds = cfg.terminalCpuSeconds || 5;
+    args.push("--ulimit", `cpu=${cpuSeconds}:${cpuSeconds + 1}`);
+    args.push(cfg.image, "python3", "-I", "-u", "-c", INTERACTIVE_BOOTSTRAP);
+  } else args.push(cfg.image, "python3", "-I", script);
   return args;
+}
+
+// The trusted wrapper reads exactly one JSON line. The very same stdin stream
+// then belongs to the user's program, so input() waits for real input/EOF.
+export const INTERACTIVE_READY = "\x1eOTPY_READY\n";
+export const INTERACTIVE_BOOTSTRAP = `import sys, json, traceback
+source = json.loads(sys.stdin.readline())["code"]
+try:
+    program = compile(source, "main.py", "exec")
+except (SyntaxError, ValueError):
+    traceback.print_exc()
+    raise SystemExit(3)
+sys.stdout.write(${JSON.stringify(INTERACTIVE_READY)})
+sys.stdout.flush()
+exec(program, {"__name__": "__main__", "__file__": "main.py"})
+`;
+
+/** Fresh isolated container with bounded streaming input/output and cleanup. */
+export function startInteractiveContainer({ code, cfg, emit, timeoutMs, cpuTimeMs, spawnFn = spawn }) {
+  const name = newContainerName();
+  const terminalCpuSeconds = Number.isFinite(cpuTimeMs) ? Math.max(1, Math.min(5, Math.ceil(cpuTimeMs / 1000))) : 5;
+  const args = buildDockerArgs({ name, mode: "terminal", cfg: {...cfg, terminalCpuSeconds} });
+  let child;
+  let settled = false;
+  let reason = null;
+  let ready = false;
+  let prefix = "";
+  let stderr = "";
+  let outputBytes = 0;
+  let stdinBytes = 0;
+  let inputEnded = false;
+  let timer;
+  const stdoutDecoder = new StringDecoder("utf8");
+  const stderrDecoder = new StringDecoder("utf8");
+  const removeContainer = () => {
+    try { spawnFn("docker", ["rm", "-f", name], { stdio: "ignore" }).on?.("error", () => {}); } catch { /* already gone */ }
+  };
+  let complete;
+  const done = new Promise((resolve) => { complete = resolve; });
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    complete();
+  };
+  const stop = (why = "stopped") => {
+    if (settled) return;
+    reason = why;
+    removeContainer();
+    try { child?.kill("SIGKILL"); } catch { /* gone */ }
+    // Release even if a broken Docker daemon never emits close.
+    finish();
+  };
+  emit({ type: "compile_start" });
+  try { child = spawnFn("docker", args, { stdio: ["pipe", "pipe", "pipe"] }); }
+  catch { emit({ type: "error", data: "The Python sandbox is unavailable right now." }); finish(); return { done, stop, input() {}, eof() {} }; }
+  const deadline = Math.max(1000, Math.min(timeoutMs || cfg.interactiveTimeoutMs || 120000, cfg.interactiveTimeoutMs || 120000));
+  timer = setTimeout(() => {
+    emit({ type: "timeout", data: `Program timed out after ${Math.round(deadline / 1000)} seconds.` });
+    stop("timeout");
+  }, deadline);
+  const output = (type, chunk) => {
+    if (settled) return;
+    outputBytes += chunk.length;
+    if (outputBytes > cfg.maxOutputBytes + Buffer.byteLength(INTERACTIVE_READY)) {
+      emit({ type: "output_limit", data: "Program output exceeded the 64 KB limit." });
+      stop("output_limit"); return;
+    }
+    const text = (type === "stdout" ? stdoutDecoder : stderrDecoder).write(chunk);
+    if (type === "stderr") { stderr += text; if (ready) emit({ type, data: text }); return; }
+    if (!ready) {
+      prefix += text;
+      if (prefix.length < INTERACTIVE_READY.length && INTERACTIVE_READY.startsWith(prefix)) return;
+      if (!prefix.startsWith(INTERACTIVE_READY)) {
+        emit({ type: "error", data: "The Python sandbox could not start the program." }); stop("protocol"); return;
+      }
+      ready = true;
+      emit({ type: "compile_success", compileTimeMs: 0 });
+      emit({ type: "ready" });
+      if (stderr) emit({ type: "stderr", data: stderr });
+      const rest = prefix.slice(INTERACTIVE_READY.length); prefix = "";
+      if (rest) emit({ type, data: rest });
+    } else if (text) emit({ type, data: text });
+  };
+  child.stdout.on("data", (chunk) => output("stdout", chunk));
+  child.stderr.on("data", (chunk) => output("stderr", chunk));
+  child.on("error", () => {
+    if (settled) return;
+    emit({ type: "error", data: "The Python sandbox is unavailable right now." });
+    removeContainer(); finish();
+  });
+  child.on("close", (code, signal) => {
+    if (settled) return;
+    const outTail = stdoutDecoder.end();
+    const errTail = stderrDecoder.end();
+    if (ready && outTail) emit({ type: "stdout", data: outTail });
+    if (errTail) { stderr += errTail; if (ready) emit({ type: "stderr", data: errTail }); }
+    if (!ready && code === 3) emit({ type: "compile_error", data: stderr || "Python syntax error." });
+    else if (!ready || [125, 126, 127].includes(code)) emit({ type: "error", data: "The Python sandbox is unavailable right now." });
+    else if (!reason) emit({ type: "exit", code, signal, ...(signal ? { data: "Program reached a resource limit or was stopped." } : {}) });
+    finish();
+  });
+  child.stdin.on("error", () => {});
+  child.stdin.write(JSON.stringify({ code }) + "\n");
+  return {
+    done, stop,
+    input(text) {
+      if (settled || inputEnded) return;
+      const bytes = Buffer.byteLength(text, "utf8");
+      stdinBytes += bytes;
+      if (bytes > 8192 || stdinBytes > 16384) {
+        emit({ type: "error", data: "Program input exceeded the allowed limit." }); stop("input_limit"); return;
+      }
+      if (child.stdin.writable) child.stdin.write(text);
+    },
+    eof() { if (!settled && !inputEnded) { inputEnded = true; child.stdin.end(); } },
+  };
 }
 
 export function newContainerName() {

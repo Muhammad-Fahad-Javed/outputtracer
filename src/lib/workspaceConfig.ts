@@ -1,6 +1,7 @@
 export type SupportedLanguage = "cpp" | "python" | "assembly";
 
 export type WorkspaceTabId =
+  | "console"
   | "output"
   | "input"
   | "trace"
@@ -33,6 +34,7 @@ export interface LanguageWorkspaceConfig {
  * - DOSBox is EXCLUSIVELY available in Assembly mode.
  * - Assembly-only inspection tabs (Registers, Memory, Stack, Instruction Help, DOSBox)
  *   are NEVER rendered or active in C++ or Python mode.
+ * - Console is the interactive program terminal in every language.
  * - C++ and Python share standard Output, Input, Trace, Debug, and Variables tabs.
  */
 export const WORKSPACE_CONFIG: Record<SupportedLanguage, LanguageWorkspaceConfig> = {
@@ -42,13 +44,14 @@ export const WORKSPACE_CONFIG: Record<SupportedLanguage, LanguageWorkspaceConfig
     defaultFile: "main.cpp",
     monacoLanguage: "cpp",
     tabs: [
+      { id: "console", label: "Console" },
       { id: "output", label: "Output" },
       { id: "input", label: "Input" },
       { id: "trace", label: "Trace" },
       { id: "debug", label: "Debug" },
       { id: "variables", label: "Variables" },
     ],
-    defaultTab: "output",
+    defaultTab: "console",
   },
   python: {
     language: "python",
@@ -56,13 +59,14 @@ export const WORKSPACE_CONFIG: Record<SupportedLanguage, LanguageWorkspaceConfig
     defaultFile: "main.py",
     monacoLanguage: "python",
     tabs: [
+      { id: "console", label: "Console" },
       { id: "output", label: "Output" },
       { id: "input", label: "Input" },
       { id: "trace", label: "Trace" },
       { id: "debug", label: "Debug" },
       { id: "variables", label: "Variables" },
     ],
-    defaultTab: "output",
+    defaultTab: "console",
   },
   assembly: {
     language: "assembly",
@@ -70,6 +74,7 @@ export const WORKSPACE_CONFIG: Record<SupportedLanguage, LanguageWorkspaceConfig
     defaultFile: "main.asm",
     monacoLanguage: "nasm",
     tabs: [
+      { id: "console", label: "Console" },
       { id: "output", label: "Output" },
       { id: "dosbox", label: "DOSBox" },
       { id: "registers", label: "Registers" },
@@ -79,7 +84,7 @@ export const WORKSPACE_CONFIG: Record<SupportedLanguage, LanguageWorkspaceConfig
       { id: "input", label: "Input" },
       { id: "instructionHelp", label: "Instruction Help" },
     ],
-    defaultTab: "dosbox",
+    defaultTab: "console",
   },
 };
 

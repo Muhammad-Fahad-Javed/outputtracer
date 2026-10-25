@@ -24,6 +24,18 @@ describe.skipIf(os.platform() === "win32")("runProcessGroup", () => {
     expect(result.stdout).toBe("hi");
   });
 
+  it("cancels the entire compilation process group on terminal disconnect", async () => {
+    const controller = new AbortController();
+    const running = runProcessGroup({
+      command: "python3", args: ["-c", "import os,time; os.fork(); time.sleep(30)"],
+      timeoutMs: 30000, maxBuffer: 1024, signal: controller.signal,
+    });
+    setTimeout(() => controller.abort(), 100);
+    const result = await running;
+    expect(result.signal).toBe("SIGKILL");
+    expect(result.timedOut).toBe(false);
+  });
+
   it("kills a forked child when the wall clock expires", async () => {
     const marker = `ot-pgroup-${process.pid}-${Date.now()}`;
     const result = await runProcessGroup({

@@ -10,6 +10,7 @@ import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { StringDecoder } from "node:string_decoder";
 
 import type { WebSocket } from "ws";
 import {
@@ -56,8 +57,13 @@ function send(ws: WebSocket, msg: WsMessage) {
 // ---------------------------------------------------------------------------
 export interface TerminalInitPayload {
   files: Record<string, string>;
+  language?: "cpp" | "python";
   standard?: string;
   ownerKey?: string;
+  timeoutMs?: number;
+  cpuTimeMs?: number;
+  validateAccess?: () => Promise<boolean>;
+  signal?: AbortSignal;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +89,7 @@ export async function handleTerminalSession(
   // available. Production can never opt into this; non-production requires an
   // explicit opt-in flag (see sandbox.unsandboxedExecutionAllowed).
   const terminalIsolation = await selectIsolation();
+  if (ws.readyState !== ws.OPEN || payload.signal?.aborted) return;
   if (!isolationPermitsUntrustedExecution(terminalIsolation)) {
     send(ws, {
       type: "error",
@@ -116,7 +123,16 @@ export async function handleTerminalSession(
 
   let tempDir = "";
   let acquired = true;
+  const compileAbort = new AbortController();
+  const abortCompile = () => compileAbort.abort();
+  ws.once("close", abortCompile);
+  payload.signal?.addEventListener("abort", abortCompile, { once: true });
+  if (payload.signal?.aborted) compileAbort.abort();
+  let cancelRun: (() => void) | undefined;
   const cleanup = () => {
+    ws.off("close", abortCompile);
+    payload.signal?.removeEventListener("abort", abortCompile);
+    if (cancelRun) payload.signal?.removeEventListener("abort", cancelRun);
     if (acquired) {
       acquired = false;
       releaseRun(payload.ownerKey);
@@ -128,6 +144,7 @@ export async function handleTerminalSession(
 
   try {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "outputtracer-ws-"));
+    if (ws.readyState !== ws.OPEN || payload.signal?.aborted) { cleanup(); return; }
   } catch {
     send(ws, { type: "error", data: "Could not create workspace." });
     ws.close();
@@ -140,6 +157,7 @@ export async function handleTerminalSession(
     for (const [filename, content] of Object.entries(files)) {
       await fs.writeFile(path.join(tempDir, filename), content, "utf8");
     }
+    if (ws.readyState !== ws.OPEN || payload.signal?.aborted) { cleanup(); return; }
 
     // --- Compile -----------------------------------------------------------
     send(ws, { type: "compile_start" });
@@ -169,7 +187,9 @@ export async function handleTerminalSession(
         env: compilePlan.env,
         timeoutMs: execConfig.compileTimeoutMs,
         maxBuffer: execConfig.maxDiagnosticBytes * 4,
+        signal: compileAbort.signal,
       });
+      if (ws.readyState !== ws.OPEN || payload.signal?.aborted) { cleanup(); return; }
 
       if (compileResult.timedOut || compileResult.signal === "SIGXCPU") {
         send(ws, {
@@ -227,7 +247,9 @@ export async function handleTerminalSession(
     send(ws, { type: "compile_success", compileTimeMs });
 
     // --- Run interactively -------------------------------------------------
-    const plan = await planUntrustedRun({ exePath, tempDir });
+    const plan = await planUntrustedRun({ exePath, tempDir,
+      maxCpuSeconds: payload.cpuTimeMs ? Math.min(execConfig.maxCpuSeconds, Math.max(1, Math.ceil(payload.cpuTimeMs / 1000))) : undefined });
+    if (ws.readyState !== ws.OPEN || payload.signal?.aborted) { cleanup(); return; }
 
     send(ws, { type: "ready" });
 
@@ -242,6 +264,8 @@ export async function handleTerminalSession(
     let timedOut = false;
     let outputBytes = 0;
     let outputExceeded = false;
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
 
     const killGroup = (signal: NodeJS.Signals) => {
       try {
@@ -254,11 +278,15 @@ export async function handleTerminalSession(
         // Already exited
       }
     };
+    cancelRun = () => killGroup("SIGKILL");
+    payload.signal?.addEventListener("abort", cancelRun, { once: true });
+    if (payload.signal?.aborted) cancelRun();
 
+    const timeoutMs = Math.min(execConfig.interactiveTimeoutMs, payload.timeoutMs || execConfig.interactiveTimeoutMs);
     const timer = setTimeout(() => {
       timedOut = true;
       killGroup("SIGKILL");
-    }, execConfig.interactiveTimeoutMs);
+    }, timeoutMs);
 
     const finish = () => {
       if (settled) return;
@@ -281,7 +309,7 @@ export async function handleTerminalSession(
         }
         return;
       }
-      send(ws, { type: "stdout", data: chunk.toString("utf8") });
+      send(ws, { type: "stdout", data: stdoutDecoder.write(chunk) });
     });
 
     // Stream stderr to client
@@ -290,11 +318,12 @@ export async function handleTerminalSession(
       if (outputBytes > execConfig.maxOutputBytes) {
         if (!outputExceeded) {
           outputExceeded = true;
+          send(ws, { type: "output_limit", data: `Output exceeded ${Math.floor(execConfig.maxOutputBytes / 1024)} KB limit.` });
           killGroup("SIGKILL");
         }
         return;
       }
-      send(ws, { type: "stderr", data: chunk.toString("utf8") });
+      send(ws, { type: "stderr", data: stderrDecoder.write(chunk) });
     });
 
     // Forward keystrokes from client to process stdin, bounded so a client
@@ -302,23 +331,36 @@ export async function handleTerminalSession(
     // session). Exceeding either cap kills the run.
     let stdinBytes = 0;
     let stdinRejected = false;
+    let inputEnded = false;
+    let inputChain = Promise.resolve();
+    let pendingMessages = 0;
+    let pendingBytes = 0;
+    child.stdin.on("error", () => {});
     ws.on("message", (data) => {
+      const frameBytes = Buffer.byteLength(data.toString(), "utf8");
+      pendingMessages++; pendingBytes += frameBytes;
+      if (pendingMessages > 32 || pendingBytes > 2 * execConfig.maxStdinBytes) {
+        stdinRejected = true;
+        send(ws, { type: "error", data: "Too much input is waiting. Start a new run." });
+        killGroup("SIGKILL"); ws.close(); return;
+      }
+      inputChain = inputChain.then(async () => {
+      if (settled || inputEnded || ws.readyState !== ws.OPEN) return;
       if (stdinRejected) return;
 
       const raw = data.toString();
-      let text = raw;
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object") {
-          if (parsed.type === "stdin" && typeof parsed.data === "string") {
-            text = parsed.data;
-          } else {
-            return; // control message we don't handle
-          }
-        }
-      } catch {
-        // Not JSON — treat the frame as raw stdin.
+      let parsed: { type?: string; data?: string } | null = null;
+      try { const value = JSON.parse(raw); if (value && typeof value === "object") parsed = value; }
+      catch { /* Legacy clients send raw stdin frames. */ }
+      if (parsed?.type === "stop") { killGroup("SIGKILL"); return; }
+      if (payload.validateAccess && !(await payload.validateAccess())) {
+        send(ws, { type: "error", data: "Workspace access or execution permission changed." });
+        killGroup("SIGKILL"); ws.close(1008); return;
       }
+      if (settled || ws.readyState !== ws.OPEN) return;
+      if (parsed?.type === "eof") { inputEnded = true; child.stdin.end(); return; }
+      if (parsed && (parsed.type !== "stdin" || typeof parsed.data !== "string")) return;
+      const text = parsed ? parsed.data! : raw;
 
       const textBytes = Buffer.byteLength(text, "utf8");
       if (textBytes > execConfig.maxWsStdinMessageBytes) {
@@ -349,6 +391,8 @@ export async function handleTerminalSession(
       if (!child.killed && child.stdin.writable) {
         child.stdin.write(text);
       }
+      }).catch(() => { killGroup("SIGKILL"); ws.close(1008, "Could not verify execution permission"); })
+        .finally(() => { pendingMessages--; pendingBytes -= frameBytes; });
     });
 
     child.on("error", (err) => {
@@ -361,10 +405,14 @@ export async function handleTerminalSession(
     });
 
     child.on("close", (code, signal) => {
+      const outTail = stdoutDecoder.end();
+      const errTail = stderrDecoder.end();
+      if (!outputExceeded && outTail) send(ws, { type: "stdout", data: outTail });
+      if (!outputExceeded && errTail) send(ws, { type: "stderr", data: errTail });
       if (timedOut) {
         send(ws, {
           type: "timeout",
-          data: `Program timed out after ${Math.floor(execConfig.interactiveTimeoutMs / 1000)} seconds.`,
+          data: `Program timed out after ${Math.floor(timeoutMs / 1000)} seconds.`,
         });
       } else if (signal) {
         send(ws, {

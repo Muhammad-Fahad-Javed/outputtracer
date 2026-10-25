@@ -28,6 +28,8 @@ export function runProcessGroup(opts: {
   stdin?: string;
   /** How long to wait after SIGTERM before SIGKILL. */
   killGraceMs?: number;
+  /** Cancel compilation when the terminal disconnects or is stopped. */
+  signal?: AbortSignal;
 }): Promise<ProcessGroupResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(opts.command, opts.args, {
@@ -50,6 +52,7 @@ export function runProcessGroup(opts: {
       settled = true;
       clearTimeout(wallTimer);
       clearTimeout(killTimer);
+      opts.signal?.removeEventListener("abort", abort);
       resolve({
         code,
         signal,
@@ -86,6 +89,9 @@ export function runProcessGroup(opts: {
         killGroup("SIGKILL");
       }, graceMs);
     }, opts.timeoutMs);
+    const abort = () => killGroup("SIGKILL");
+    opts.signal?.addEventListener("abort", abort, { once: true });
+    if (opts.signal?.aborted) abort();
 
     const append = (current: string, chunk: Buffer): string => {
       if (current.length >= opts.maxBuffer) {
@@ -110,6 +116,7 @@ export function runProcessGroup(opts: {
       settled = true;
       clearTimeout(wallTimer);
       clearTimeout(killTimer);
+      opts.signal?.removeEventListener("abort", abort);
       reject(err);
     });
 

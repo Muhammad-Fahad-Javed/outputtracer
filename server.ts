@@ -9,45 +9,13 @@ import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
-import {
-  handleTerminalSession,
-  TerminalInitPayload,
-} from "./src/lib/wsTerminal.js";
+import { handleTerminalSession } from "./src/lib/wsTerminal.js";
+import { handlePythonTerminalSession } from "./src/lib/wsPythonTerminal.js";
+import { resolveTerminalPayload, monitorTerminalAccess, type TerminalRequestPayload } from "./src/lib/terminalAccess.js";
 import { execConfig } from "./src/lib/execConfig.js";
 import { clientIpFromForwarded, globalRateLimiter } from "./src/lib/rateLimit.js";
 import { isOriginAllowed, parseAllowedOrigins } from "./src/lib/wsOrigin.js";
 import { getHub } from "./src/lib/cloud/collabHub.js";
-import { accessFromToken } from "./src/lib/cloud/accessToken.js";
-import { canEdit } from "./src/lib/cloud/roles.js";
-
-async function resolveTerminalPayload(
-  payload: TerminalInitPayload & { projectId?: string; accessToken?: string }
-): Promise<{ ok: true; payload: TerminalInitPayload } | { ok: false; message: string }> {
-  if (payload.projectId) {
-    const access = await accessFromToken(payload.accessToken || "", payload.projectId);
-    if (!access) {
-      return { ok: false, message: "You do not have access to run this project." };
-    }
-    if (payload.standard && canEdit(access.role)) {
-      await getHub().setStandard(payload.projectId, payload.standard);
-    }
-    const shared = await getHub().readFiles(payload.projectId);
-    return {
-      ok: true,
-      payload: {
-        files: shared.files,
-        standard: shared.standard,
-        ownerKey: access.userId,
-      },
-    };
-  }
-
-  if (!payload.files || typeof payload.files !== "object") {
-    return { ok: false, message: "Invalid init payload: missing files." };
-  }
-  return { ok: true, payload: { files: payload.files, standard: payload.standard } };
-}
-
 const port = parseInt(process.env.PORT || "3000", 10);
 const dev = process.env.NODE_ENV !== "production";
 const wsOriginPolicy = {
@@ -175,10 +143,12 @@ app.prepare().then(() => {
   }, 30_000);
   heartbeat.unref?.();
 
-  wss.on("connection", (ws: WebSocket) => {
+  wss.on("connection", (ws: WebSocket, req) => {
     trackSocket(ws);
     // Wait for the first message which should be the init payload
     let initialized = false;
+    const cancellation = new AbortController();
+    ws.once("close", () => cancellation.abort());
 
     const initTimeout = setTimeout(() => {
       if (!initialized) {
@@ -192,26 +162,34 @@ app.prepare().then(() => {
       }
     }, 10_000);
 
+    ws.once("close", () => clearTimeout(initTimeout));
+    ws.on("error", () => {});
     ws.on("message", (data) => {
-      if (initialized) return; // After init, messages are handled by the session
+      if (initialized) {
+        // Stop works while canonical source is loading or compilation is running.
+        try { if (JSON.parse(data.toString())?.type === "stop") { cancellation.abort(); ws.close(); } } catch { /* session parses input */ }
+        return;
+      }
 
       initialized = true;
       clearTimeout(initTimeout);
 
       try {
-        const payload = JSON.parse(data.toString()) as TerminalInitPayload & {
-          projectId?: string;
-          accessToken?: string;
-        };
-
-        void resolveTerminalPayload(payload)
+        const payload = JSON.parse(data.toString()) as TerminalRequestPayload;
+        const ip = clientIpFromForwarded(req.headers["x-forwarded-for"], req.socket.remoteAddress,
+          process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true");
+        void resolveTerminalPayload(payload, `terminal:${ip}`)
           .then((resolved) => {
             if (!resolved.ok) {
               ws.send(JSON.stringify({ type: "error", data: resolved.message }));
               ws.close();
               return;
             }
-            handleTerminalSession(ws, resolved.payload);
+            if (ws.readyState !== ws.OPEN) return;
+            monitorTerminalAccess(ws, resolved.payload.validateAccess, 5000, () => cancellation.abort());
+            resolved.payload.signal = cancellation.signal;
+            const handler = resolved.payload.language === "python" ? handlePythonTerminalSession : handleTerminalSession;
+            return handler(ws, resolved.payload);
           })
           .catch(() => {
             ws.send(

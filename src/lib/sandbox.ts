@@ -372,12 +372,13 @@ export async function planSandboxedCommand(
 export async function planUntrustedRun(opts: {
   exePath: string;
   tempDir: string;
+  maxCpuSeconds?: number;
 }): Promise<RunPlan> {
   return planSandboxedCommand({
     tempDir: opts.tempDir,
     command: opts.exePath,
     args: [],
-    limits: defaultResourceLimits(),
+    limits: { ...defaultResourceLimits(), ...(opts.maxCpuSeconds ? { maxCpuSeconds: opts.maxCpuSeconds } : {}) },
     remapTempDirPaths: true,
   });
 }

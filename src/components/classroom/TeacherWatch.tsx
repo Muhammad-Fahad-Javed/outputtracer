@@ -10,6 +10,7 @@ const CollabEditor = dynamic(() => import("@/components/collab/CollabEditor"), {
 import { colorForUser } from "@/components/collab/useProjectCollab";
 import { authorshipOfDoc, authorshipOfText, type AuthorshipReport } from "@/lib/classroom/authorship";
 import { useClassroomCollab } from "./useClassroomCollab";
+import TeacherConsole from "./TeacherConsole";
 
 interface WatchParticipant {
   kind: "group" | "student";
@@ -50,6 +51,8 @@ export default function TeacherWatch({
   const [runOutput, setRunOutput] = useState<string | null>(null);
   const [runNote, setRunNote] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [consoleRunRequest, setConsoleRunRequest] = useState(0);
+  const [consoleRunning, setConsoleRunning] = useState(false);
 
   const load = useCallback(() => {
     fetch(`/api/classroom/${classId}/assignments/${assignmentId}/watch`)
@@ -171,11 +174,11 @@ export default function TeacherWatch({
         {selected && (
           <button
             type="button"
-            onClick={run}
-            disabled={busy}
+            onClick={()=>setConsoleRunRequest(value=>value+1)}
+            disabled={busy || consoleRunning}
             className="inline-flex items-center justify-center gap-1.5 rounded-md bg-black px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-60"
           >
-            <Play size={12} /> {busy ? "Running…" : "Run their code"}
+            <Play size={12} /> {consoleRunning ? "Running…" : "Run their code"}
           </button>
         )}
       </div>
@@ -267,6 +270,8 @@ export default function TeacherWatch({
                       type="button"
                       onClick={() => {
                         setSelectedId(participant.id);
+                        setConsoleRunRequest(0);
+                        setConsoleRunning(false);
                         setRunOutput(null);
                         setRunNote(null);
                       }}
@@ -333,7 +338,7 @@ export default function TeacherWatch({
                   filename={collab.activeFile}
                   names={authorNames}
                 /></details>
-                <div className="min-h-[320px] flex-1 overflow-hidden rounded-xl border border-[#27272A]">
+                <div className="min-h-[160px] flex-[7] overflow-hidden border border-[#333]">
                   <CollabEditor
                     doc={collab.doc}
                     awareness={collab.awareness}
@@ -344,6 +349,10 @@ export default function TeacherWatch({
                     language={CLASSROOM_LANGUAGES[classroomLanguage(language)].monaco}
                     showAuthorship
                   />
+                </div>
+                <div className="flex min-h-[200px] flex-[3] flex-col overflow-hidden border border-[#333]">
+                  <div className="flex shrink-0 items-center justify-between border-b border-[#333] bg-[#181818] px-3 py-1 text-xs"><span className="font-semibold text-white">Console</span><button className="px-2 py-1 text-[#aaa] hover:text-white disabled:opacity-50" onClick={()=>void run()} disabled={busy||consoleRunning}>{busy?"Running tests…":"Run public tests"}</button></div>
+                  <TeacherConsole key={selected.id} scope={{classId,assignmentId,groupId:selected.kind==="group"?selected.id:undefined,studentId:selected.kind==="student"?selected.id:undefined}} language={classroomLanguage(language)} runRequest={consoleRunRequest} onRunningChange={setConsoleRunning}/>
                 </div>
                 {runNote && <p className="text-xs text-[#ccc]">{runNote}</p>}
                 {runOutput && (

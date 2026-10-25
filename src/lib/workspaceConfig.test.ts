@@ -10,6 +10,7 @@ describe("Language Workspace Configuration & Strict Isolation", () => {
     const cppTabs = WORKSPACE_CONFIG.cpp.tabs.map((t) => t.id);
 
     it("includes standard C++ development tabs", () => {
+      expect(cppTabs).toContain("console");
       expect(cppTabs).toContain("output");
       expect(cppTabs).toContain("input");
       expect(cppTabs).toContain("trace");
@@ -25,8 +26,8 @@ describe("Language Workspace Configuration & Strict Isolation", () => {
       expect(cppTabs).not.toContain("instructionHelp");
     });
 
-    it("has 'output' as defaultTab", () => {
-      expect(WORKSPACE_CONFIG.cpp.defaultTab).toBe("output");
+    it("opens the interactive console by default", () => {
+      expect(WORKSPACE_CONFIG.cpp.defaultTab).toBe("console");
     });
   });
 
@@ -34,6 +35,7 @@ describe("Language Workspace Configuration & Strict Isolation", () => {
     const pythonTabs = WORKSPACE_CONFIG.python.tabs.map((t) => t.id);
 
     it("includes standard Python development tabs", () => {
+      expect(pythonTabs).toContain("console");
       expect(pythonTabs).toContain("output");
       expect(pythonTabs).toContain("input");
       expect(pythonTabs).toContain("trace");
@@ -49,8 +51,8 @@ describe("Language Workspace Configuration & Strict Isolation", () => {
       expect(pythonTabs).not.toContain("instructionHelp");
     });
 
-    it("has 'output' as defaultTab", () => {
-      expect(WORKSPACE_CONFIG.python.defaultTab).toBe("output");
+    it("opens the interactive console by default", () => {
+      expect(WORKSPACE_CONFIG.python.defaultTab).toBe("console");
     });
   });
 
@@ -58,6 +60,7 @@ describe("Language Workspace Configuration & Strict Isolation", () => {
     const asmTabs = WORKSPACE_CONFIG.assembly.tabs.map((t) => t.id);
 
     it("includes DOSBox and assembly inspection tabs", () => {
+      expect(asmTabs).toContain("console");
       expect(asmTabs).toContain("dosbox");
       expect(asmTabs).toContain("registers");
       expect(asmTabs).toContain("memory");
@@ -68,8 +71,8 @@ describe("Language Workspace Configuration & Strict Isolation", () => {
       expect(asmTabs).toContain("input");
     });
 
-    it("has 'dosbox' as defaultTab", () => {
-      expect(WORKSPACE_CONFIG.assembly.defaultTab).toBe("dosbox");
+    it("opens the DOS-style console by default", () => {
+      expect(WORKSPACE_CONFIG.assembly.defaultTab).toBe("console");
     });
   });
 
@@ -88,6 +91,15 @@ describe("Language Workspace Configuration & Strict Isolation", () => {
       expect(isValidTabForLanguage("cpp", "instructionHelp")).toBe(false);
     });
 
+    it("accepts the console in every language", () => {
+      for (const language of ["cpp", "python", "assembly"] as const) {
+        expect(isValidTabForLanguage(language, "console")).toBe(true);
+        expect(sanitizeTabForLanguage(language, "console")).toBe("console");
+        expect(WORKSPACE_CONFIG[language].tabs[0].id).toBe("console");
+        expect(new Set(WORKSPACE_CONFIG[language].tabs.map((tab) => tab.id)).size).toBe(WORKSPACE_CONFIG[language].tabs.length);
+      }
+    });
+
     it("accepts shared tabs where configured", () => {
       expect(isValidTabForLanguage("cpp", "output")).toBe(true);
       expect(isValidTabForLanguage("python", "output")).toBe(true);
@@ -99,15 +111,15 @@ describe("Language Workspace Configuration & Strict Isolation", () => {
   });
 
   describe("sanitizeTabForLanguage state transition sanitization", () => {
-    it("sanitizes 'dosbox' to 'output' when switching to C++ or Python", () => {
-      expect(sanitizeTabForLanguage("cpp", "dosbox")).toBe("output");
-      expect(sanitizeTabForLanguage("python", "dosbox")).toBe("output");
+    it("sanitizes 'dosbox' to 'console' when switching to C++ or Python", () => {
+      expect(sanitizeTabForLanguage("cpp", "dosbox")).toBe("console");
+      expect(sanitizeTabForLanguage("python", "dosbox")).toBe("console");
     });
 
-    it("sanitizes 'registers', 'memory', 'stack' to 'output' when switching to C++ or Python", () => {
-      expect(sanitizeTabForLanguage("cpp", "registers")).toBe("output");
-      expect(sanitizeTabForLanguage("python", "memory")).toBe("output");
-      expect(sanitizeTabForLanguage("cpp", "stack")).toBe("output");
+    it("sanitizes assembly inspection tabs to console in C++ or Python", () => {
+      expect(sanitizeTabForLanguage("cpp", "registers")).toBe("console");
+      expect(sanitizeTabForLanguage("python", "memory")).toBe("console");
+      expect(sanitizeTabForLanguage("cpp", "stack")).toBe("console");
     });
 
     it("preserves valid tabs across languages", () => {
@@ -118,8 +130,8 @@ describe("Language Workspace Configuration & Strict Isolation", () => {
     });
 
     it("resets to defaultTab when tab does not exist in target language", () => {
-      expect(sanitizeTabForLanguage("assembly", "debug")).toBe("dosbox");
-      expect(sanitizeTabForLanguage("assembly", "variables")).toBe("dosbox");
+      expect(sanitizeTabForLanguage("assembly", "debug")).toBe("console");
+      expect(sanitizeTabForLanguage("assembly", "variables")).toBe("console");
     });
   });
 });

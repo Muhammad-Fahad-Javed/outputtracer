@@ -35,6 +35,7 @@ import dynamic from "next/dynamic";
 import type { OnMount } from "@monaco-editor/react";
 import { useAuth } from "@/components/AuthProvider";
 import DosboxWorkspace from "@/components/asm/DosboxWorkspace";
+import ProgramConsole from "@/components/ProgramConsole";
 import {
   WORKSPACE_CONFIG,
   SupportedLanguage,
@@ -320,7 +321,7 @@ export default function UnifiedShell() {
     typeof window === "undefined" ? null : consumePendingExample()
   );
   const [lang, setLang] = useState<SupportedLanguage>("cpp");
-  const [activeTab, setActiveTab] = useState<WorkspaceTabId>("output");
+  const [activeTab, setActiveTab] = useState<WorkspaceTabId>("console");
   const [panelHeight, setPanelHeight] = useState(280);
   const [panelCollapsed,setPanelCollapsed]=useState(false);
   useEffect(()=>{const frame=requestAnimationFrame(()=>{let ratio=.3;try{const saved=Number(localStorage.getItem('workspace-output-ratio'));if(saved>=.15&&saved<=.8)ratio=saved;}catch{}setPanelHeight(Math.max(160,(window.innerHeight-120)*ratio));});return()=>cancelAnimationFrame(frame);},[]);
@@ -343,7 +344,6 @@ export default function UnifiedShell() {
   }));
 
   // Stdin & interactive output state
-  const [stdinInput, setStdinInput] = useState("");
   const [typedInput, setTypedInput] = useState("");
   const [selectedTraceStep, setSelectedTraceStep] = useState<number>(5);
   const [downloadFormat, setDownloadFormat] = useState<".txt" | ".csv" | ".pdf" | ".png">(".csv");
@@ -351,6 +351,7 @@ export default function UnifiedShell() {
   // Assembly Execution State
   const [asmSessionId, setAsmSessionId] = useState<string | null>(null);
   const [asmSessionToken, setAsmSessionToken] = useState<string | null>(null);
+  const asmSourceRef = useRef<string | null>(null);
   const [asmStatus, setAsmStatus] = useState<AsmExecutionStatus>({
     state: "ready",
     currentStep: 0,
@@ -369,13 +370,12 @@ export default function UnifiedShell() {
   const [asmExecTime, setAsmExecTime] = useState<number | null>(null);
 
   // C++ and Python execution states
-  const [cppOutput, setCppOutput] = useState<string>(
-    "enter text that should be less than 100 character\nhello\nYou entered: hello\nProgram finished · exit code 0\n"
-  );
-  const [pythonOutput, setPythonOutput] = useState<string>(
-    "enter text that should be less than 100 characters: hello\nYou entered: hello\nProgram finished · exit code 0\n"
-  );
+  const [cppOutput, setCppOutput] = useState("");
+  const [pythonOutput, setPythonOutput] = useState("");
   const [isExecuting, setIsExecuting] = useState(false);
+  const [consoleRunRequest, setConsoleRunRequest] = useState(0);
+  const [consoleStopRequest, setConsoleStopRequest] = useState(0);
+  const [consoleStatus, setConsoleStatus] = useState("Ready");
 
   // Monaco editor references & active line decorations
   const editorRef = useRef<Parameters<NonNullable<OnMount>>[0] | null>(null);
@@ -391,6 +391,11 @@ export default function UnifiedShell() {
   };
 
   const currentCode = codeBuffers[lang];
+  const consoleFiles = useMemo(() => ({ [WORKSPACE_CONFIG[lang].defaultFile]: codeBuffers[lang] }), [lang, codeBuffers]);
+  const handleConsoleOutput = useCallback((output: string) => {
+    if (lang === "cpp") setCppOutput(output);
+    if (lang === "python") setPythonOutput(output);
+  }, [lang]);
   const lineCount = currentCode.split("\n").length;
   const currentTraceSteps = lang === "cpp" ? CPP_TRACE_STEPS : PYTHON_TRACE_STEPS;
 
@@ -492,7 +497,12 @@ export default function UnifiedShell() {
 
   // Language change handler with strict tab sanitization
   const handleLanguageChange = (newLang: SupportedLanguage) => {
+    if (newLang === lang) return;
     setLang(newLang);
+    setConsoleRunRequest(0);
+    setConsoleStopRequest(0);
+    setIsExecuting(false);
+    setConsoleStatus("Ready");
     const nextTab = sanitizeTabForLanguage(newLang, activeTab);
     setActiveTab(nextTab);
     updateLineHighlight(undefined);
@@ -534,109 +544,76 @@ export default function UnifiedShell() {
     };
   }, [isDragging]);
 
-  // Assembly Execution Handlers
+  // Each new run assembles the current buffer, including edits made after a prior run.
+  const prepareAsmSession = async () => {
+    if (asmSessionId) {
+      const stopped = await fetch("/api/asm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "stop", sessionId: asmSessionId, sessionToken: asmSessionToken }),
+      });
+      if (!stopped.ok && stopped.status !== 404 && stopped.status !== 410) {
+        throw new Error("Unable to stop the previous assembly session. Try Stop before starting again.");
+      }
+      setAsmSessionId(null);
+      setAsmSessionToken(null);
+    }
+    const source = codeBuffers.assembly;
+    const response = await fetch("/api/asm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "assemble", source, code: source, stdin: typedInput }),
+    });
+    const data = await response.json();
+    setAsmDiagnostics(data.assembleResult?.diagnostics || []);
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || "Assembly failed.");
+    }
+    asmSourceRef.current = source;
+    setAsmSessionId(data.sessionId);
+    setAsmSessionToken(data.sessionToken || null);
+    setAsmEngineUsed(data.assembleResult?.engineUsed || "builtin-8086");
+    setAsmStatus(data.status);
+    setAsmTraceHistory([]);
+    updateLineHighlight(data.status.currentInstruction?.sourceLine);
+    return data;
+  };
+
   const handleAsmAssemble = async () => {
     setAsmIsLoading(true);
     setAsmErrorMessage(null);
-    const startT = performance.now();
-
+    const startedAt = performance.now();
     try {
-      const res = await fetch("/api/asm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "assemble",
-          source: codeBuffers.assembly,
-          code: codeBuffers.assembly,
-          stdin: typedInput ? `${typedInput}\n` : "",
-        }),
-      });
-
-      const data = await res.json();
-      setAsmExecTime(Math.round(performance.now() - startT));
-
-      if (!res.ok || !data.success) {
-        setAsmErrorMessage(data.error || "Assembly failed.");
-        setAsmDiagnostics(data.assembleResult?.diagnostics || [{ type: "error", message: data.error || "Assembly failed" }]);
-        setAsmIsLoading(false);
-        return;
-      }
-
-      setAsmSessionId(data.sessionId);
-      if (data.sessionToken) setAsmSessionToken(data.sessionToken);
-      setAsmDiagnostics(data.assembleResult?.diagnostics || []);
-      setAsmEngineUsed(data.assembleResult?.engineUsed || "native-nasm");
-      setAsmStatus(data.status);
-      setAsmTraceHistory([]);
-      updateLineHighlight(data.status.currentInstruction?.sourceLine);
-    } catch (err: unknown) {
-      setAsmErrorMessage(`Network or execution error while assembling: ${err instanceof Error ? err.message : String(err)}`);
+      await prepareAsmSession();
+    } catch (error) {
+      setAsmErrorMessage(error instanceof Error ? error.message : "Assembly failed.");
     } finally {
+      setAsmExecTime(Math.round(performance.now() - startedAt));
       setAsmIsLoading(false);
     }
   };
 
   const handleAsmRun = async () => {
+    if (asmIsLoading) return;
     setAsmIsLoading(true);
     setAsmErrorMessage(null);
-    const startT = performance.now();
-
+    const startedAt = performance.now();
     try {
-      let currentSession = asmSessionId;
-      let currentToken = asmSessionToken;
-      if (!currentSession) {
-        const resAsm = await fetch("/api/asm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "assemble",
-            source: codeBuffers.assembly,
-            code: codeBuffers.assembly,
-            stdin: typedInput ? `${typedInput}\n` : "",
-          }),
-        });
-        const dataAsm = await resAsm.json();
-        if (!resAsm.ok || !dataAsm.success) {
-          setAsmErrorMessage(dataAsm.error || "Assembly failed.");
-          setAsmDiagnostics(dataAsm.assembleResult?.diagnostics || [{ type: "error", message: dataAsm.error || "Assembly failed" }]);
-          setAsmIsLoading(false);
-          return;
-        }
-        currentSession = dataAsm.sessionId;
-        currentToken = dataAsm.sessionToken || currentToken;
-        setAsmSessionId(currentSession);
-        if (dataAsm.sessionToken) setAsmSessionToken(dataAsm.sessionToken);
-        setAsmDiagnostics(dataAsm.assembleResult?.diagnostics || []);
-        setAsmEngineUsed(dataAsm.assembleResult?.engineUsed || "native-nasm");
-      }
-
-      const res = await fetch("/api/asm", {
+      const session = await prepareAsmSession();
+      const response = await fetch("/api/asm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "run",
-          sessionId: currentSession,
-          sessionToken: currentToken,
-          stdin: typedInput ? `${typedInput}\n` : "",
-          limit: 2000,
-        }),
+        body: JSON.stringify({ action: "run", sessionId: session.sessionId, sessionToken: session.sessionToken, limit: 2000 }),
       });
-
-      const data = await res.json();
-      setAsmExecTime(Math.round(performance.now() - startT));
-
-      if (data.success) {
-        setAsmStatus(data.status);
-        if (data.steps) {
-          setAsmTraceHistory((prev) => [...prev, ...data.steps]);
-        }
-        updateLineHighlight(data.status.currentInstruction?.sourceLine);
-      } else {
-        setAsmErrorMessage(data.error || "Execution failed.");
-      }
-    } catch (err: unknown) {
-      setAsmErrorMessage(`Network error during execution: ${err instanceof Error ? err.message : String(err)}`);
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "Execution failed.");
+      setAsmStatus(data.status);
+      setAsmTraceHistory(data.steps || []);
+      updateLineHighlight(data.status.currentInstruction?.sourceLine);
+    } catch (error) {
+      setAsmErrorMessage(error instanceof Error ? error.message : "Execution failed.");
     } finally {
+      setAsmExecTime(Math.round(performance.now() - startedAt));
       setAsmIsLoading(false);
     }
   };
@@ -645,9 +622,26 @@ export default function UnifiedShell() {
     if(!asmSessionId||!asmSessionToken)return;setAsmIsLoading(true);setAsmErrorMessage(null);
     try{const r=await fetch('/api/asm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'input',sessionId:asmSessionId,sessionToken:asmSessionToken,input})});const d=await r.json();if(!r.ok||!d.success)throw Error(d.error||'Input failed.');setAsmStatus(d.status);updateLineHighlight(d.status.currentInstruction?.sourceLine);}catch(e){setAsmErrorMessage(e instanceof Error?e.message:'Input failed.');}finally{setAsmIsLoading(false);}
   };
-  const handleAsmStop=async()=>{if(asmSessionId)await fetch('/api/asm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'stop',sessionId:asmSessionId,sessionToken:asmSessionToken})});setAsmSessionId(null);setAsmSessionToken(null);setAsmStatus(prev=>({...prev,state:'halted',canStepForward:false,inputRequest:undefined}));};
+  const handleAsmStop = async () => {
+    if (!asmSessionId) return;
+    setAsmErrorMessage(null);
+    try {
+      const response = await fetch("/api/asm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "stop", sessionId: asmSessionId, sessionToken: asmSessionToken }),
+      });
+      if (!response.ok && response.status !== 404 && response.status !== 410) throw new Error("Unable to stop the assembly session.");
+      setAsmSessionId(null);
+      setAsmSessionToken(null);
+      asmSourceRef.current = null;
+      setAsmStatus((previous) => ({ ...previous, state: "halted", canStepForward: false, inputRequest: undefined }));
+    } catch (error) {
+      setAsmErrorMessage(error instanceof Error ? error.message : "Unable to stop the assembly session.");
+    }
+  };
   const handleAsmStep = async () => {
-    if (!asmSessionId) {
+    if (!asmSessionId || asmSourceRef.current !== codeBuffers.assembly) {
       await handleAsmAssemble();
       return;
     }
@@ -682,7 +676,10 @@ export default function UnifiedShell() {
   };
 
   const handleAsmReset = async () => {
-    if (!asmSessionId) return;
+    if (!asmSessionId || asmSourceRef.current !== codeBuffers.assembly) {
+      await handleAsmAssemble();
+      return;
+    }
     setAsmIsLoading(true);
 
     try {
@@ -713,102 +710,24 @@ export default function UnifiedShell() {
     setAsmStatus((prev) => ({ ...prev, stdout: "" }));
   };
 
-  // C++ and Python Execution Handlers
-  const handleCppRun = async () => {
-    setIsExecuting(true);
-    try {
-      const res = await fetch("/api/predict", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          files: { "main.cpp": codeBuffers.cpp },
-          stdin: typedInput,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.status === "success") {
-          setCppOutput(data.output || "Program finished with exit code 0.");
-        } else if (data.status === "error") {
-          setCppOutput(`Compilation/Runtime Error:\n${data.error?.message || data.error || "Unknown error"}`);
-        } else {
-          setCppOutput(data.output || JSON.stringify(data, null, 2));
-        }
-      } else {
-        let errText = "Execution failed.";
-        try {
-          const errData = await res.json();
-          errText = errData.error?.message || errData.error || errData.message || JSON.stringify(errData);
-        } catch {
-          errText = await res.text();
-        }
-        setCppOutput(`Execution Failed (${res.status}):\n${errText}`);
-      }
-    } catch (err: unknown) {
-      setCppOutput(`Network/Client Error:\n${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setIsExecuting(false);
-    }
-  };
-
-  const handlePythonRun = async () => {
-    setIsExecuting(true);
-    try {
-      const res = await fetch("/api/python", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: codeBuffers.python,
-          stdin: typedInput ? `${typedInput}\n` : "",
-          language: "python",
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.ok && data.result) {
-          const out = data.result.stdout || "";
-          const err = data.result.stderr ? `\n[STDERR]\n${data.result.stderr}` : "";
-          const exitMsg = data.result.exitCode !== null ? `\nProgram finished · exit code ${data.result.exitCode}` : `\nStatus: ${data.result.status}`;
-          setPythonOutput(out + err + exitMsg);
-        } else {
-          setPythonOutput(`Execution Error:\n${data.error || JSON.stringify(data)}`);
-        }
-      } else {
-        let errText = "Execution failed.";
-        try {
-          const errData = await res.json();
-          errText = errData.error || errData.message || JSON.stringify(errData);
-        } catch {
-          errText = await res.text();
-        }
-        setPythonOutput(`Execution Failed (${res.status}):\n${errText}`);
-      }
-    } catch (err: unknown) {
-      setPythonOutput(`Network/Client Error:\n${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setIsExecuting(false);
-    }
-  };
-
-  // Primary Run & Debug Trigger
+  // Run opens a real interactive terminal. Other tools retain their own panels.
   const handleRunDebug = () => {
+    if (isExecuting || asmIsLoading) return;
+    setActiveTab("console");
+    setPanelCollapsed(false);
     if (lang === "assembly") {
-      setActiveTab("dosbox");
       void handleAsmRun();
-    } else if (lang === "python") {
-      setActiveTab("output");
-      void handlePythonRun();
     } else {
-      setActiveTab("output");
-      void handleCppRun();
+      setConsoleRunRequest((request) => request + 1);
     }
   };
 
   const handleStop = () => {
-    setIsExecuting(false);
-    setAsmIsLoading(false);
+    if (lang === "assembly") {
+      void handleAsmStop();
+    } else {
+      setConsoleStopRequest((request) => request + 1);
+    }
   };
 
   const handleNewFile = () => {
@@ -874,7 +793,7 @@ export default function UnifiedShell() {
   const handleDownloadOutput = () => {
     let content = "";
     if (lang === "assembly") {
-      content = asmStatus.stdout || "Z:\\>mount c C:\\OutputTracer\nDrive C is mounted as local directory C:\\OutputTracer\\\nZ:\\>c:\nC:\\>nasm -f bin main.asm -o main.com\nC:\\>main.com\nenter text (max 99 chars): hello\n";
+      content = asmStatus.stdout;
     } else if (lang === "cpp") {
       content = cppOutput;
     } else {
@@ -916,8 +835,10 @@ export default function UnifiedShell() {
   // Helper icon selector for dynamic tabs
   const getTabIcon = (tabId: WorkspaceTabId) => {
     switch (tabId) {
-      case "output":
+      case "console":
         return <Terminal size={13} />;
+      case "output":
+        return <FileText size={13} />;
       case "dosbox":
         return <Cpu size={13} />;
       case "registers":
@@ -1390,7 +1311,7 @@ export default function UnifiedShell() {
                 <span>Reset</span>
               </button>
             </div>
-          ) : (
+          ) : activeTab !== "console" ? (
             <div className="flex items-center gap-1.5">
               <select
                 value={downloadFormat}
@@ -1423,14 +1344,31 @@ export default function UnifiedShell() {
                 </button>
               )}
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Panel Content Area */}
-        <div className="flex flex-1 overflow-hidden bg-[#121212]">
-          {/* DOSBox Tab (Strictly Assembly only) */}
-          {lang === "assembly" && activeTab === "dosbox" && (
-            <DosboxWorkspace
+        <div className="flex min-h-0 flex-1 overflow-hidden bg-[#121212]">
+          {/* Keep the terminal mounted when inspecting output, input, or trace. */}
+          {lang !== "assembly" && (
+            <div className="min-h-0 min-w-0 flex-1 flex-col" style={{ display: activeTab === "console" ? "flex" : "none" }}>
+              <ProgramConsole
+                key={lang}
+                language={lang}
+                files={consoleFiles}
+                runRequest={consoleRunRequest}
+                stopRequest={consoleStopRequest}
+                initialStdin={typedInput}
+                onRunningChange={setIsExecuting}
+                onOutputChange={handleConsoleOutput}
+                onStatusChange={setConsoleStatus}
+              />
+            </div>
+          )}
+          {/* Console and legacy DOSBox controls share one 8086 terminal session. */}
+          {lang === "assembly" && (
+            <div className="min-h-0 min-w-0 flex-1 flex-col" style={{ display: activeTab === "console" || activeTab === "dosbox" ? "flex" : "none" }}>
+              <DosboxWorkspace
               status={asmStatus}
               diagnostics={asmDiagnostics}
               engineUsed={asmEngineUsed}
@@ -1446,7 +1384,8 @@ export default function UnifiedShell() {
               sourceCode={codeBuffers.assembly}
               isLoading={asmIsLoading}
               errorMessage={asmErrorMessage}
-            />
+              />
+            </div>
           )}
 
           {/* Output Tab */}
@@ -1459,32 +1398,18 @@ export default function UnifiedShell() {
                   </pre>
                 ) : lang === "cpp" ? (
                   <pre className="text-[#CCCCCC] whitespace-pre-wrap font-mono">
-                    {cppOutput}
+                    {cppOutput || "Run your program in Console to see output."}
                   </pre>
                 ) : (
                   <pre className="text-[#CCCCCC] whitespace-pre-wrap font-mono">
-                    {pythonOutput}
+                    {pythonOutput || "Run your program in Console to see output."}
                   </pre>
                 )}
               </div>
 
-              {/* Input row at bottom */}
-              <div className="flex items-center gap-2 rounded border border-[#2E2E2E] bg-[#181818] px-2.5 py-1 mt-2">
-                <span className="text-[14px] font-bold text-[#238636]">›</span>
-                <input
-                  type="text"
-                  value={stdinInput}
-                  onChange={(e) => setStdinInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && stdinInput.trim()) {
-                      setTypedInput(stdinInput.trim());
-                      setStdinInput("");
-                    }
-                  }}
-                  placeholder="Type here when the program asks for input"
-                  className="flex-1 bg-transparent font-mono text-[12px] text-white outline-none placeholder:text-[#858585]"
-                />
-              </div>
+              <p className="mt-2 border-t border-[#2E2E2E] pt-2 text-[11px] text-[#858585]">
+                Captured program output. Open Console to enter input while the program is running.
+              </p>
             </div>
           )}
 
@@ -1500,11 +1425,11 @@ export default function UnifiedShell() {
               <textarea
                 value={typedInput}
                 onChange={(e) => setTypedInput(e.target.value)}
-                placeholder="Enter input here for cin / input() / DOS 0Ah buffer..."
+                placeholder="Optional input for the next run. Preserve newlines between answers…"
                 className="flex-1 w-full rounded border border-[#2E2E2E] bg-[#181818] p-2.5 text-white outline-none focus:border-[#555555] resize-none font-mono text-[12px]"
               />
               <p className="mt-1.5 text-[11px] text-[#858585]">
-                Supplied to the execution engine when stdin is requested.
+                Sent once at the start of the next run. Use Console for interactive input during execution.
               </p>
             </div>
           )}
@@ -1520,7 +1445,7 @@ export default function UnifiedShell() {
                 <div className="flex-1 overflow-y-auto p-2">
                   {asmTraceHistory.length === 0 ? (
                     <div className="text-[#858585] p-4 text-center">
-                      No trace steps recorded yet. Click &quot;Run &amp; Debug&quot; (F5) or use the DOSBox tab.
+                      No trace steps recorded yet. Run the program in Console or use the DOSBox step controls.
                     </div>
                   ) : (
                     <table className="w-full text-left font-mono text-xs">
@@ -1838,12 +1763,8 @@ export default function UnifiedShell() {
           <span className="h-2 w-2 rounded-full bg-[#3FB950] shadow-[0_0_5px_rgba(63,185,80,0.8)]" />
           <span>
             {lang === "assembly"
-              ? activeTab === "dosbox"
-                ? "Running in DOSBox"
-                : `Assembly · ${asmStatus.state.toUpperCase()}`
-              : activeTab === "trace"
-              ? `Trace complete · ${currentTraceSteps.length} steps`
-              : "Ready · exit code 0"}
+              ? asmIsLoading ? "Assembly · Executing…" : `Assembly · ${asmStatus.state.replaceAll("_", " ")}`
+              : consoleStatus}
           </span>
         </div>
 
