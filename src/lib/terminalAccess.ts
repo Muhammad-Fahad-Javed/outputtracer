@@ -21,7 +21,7 @@ export interface TerminalRequestPayload {
 type Resolution = { ok: true; payload: TerminalInitPayload } | { ok: false; message: string };
 
 /** Server authorization and canonical source selection for both terminal runtimes. */
-export async function resolveTerminalPayload(raw: TerminalRequestPayload, fallbackOwnerKey?: string): Promise<Resolution> {
+export async function resolveTerminalPayload(raw: TerminalRequestPayload): Promise<Resolution> {
   if (!raw || typeof raw !== "object" || (raw.language !== undefined && raw.language !== "cpp" && raw.language !== "python")) {
     return { ok: false, message: "Choose a C++ or Python terminal." };
   }
@@ -75,9 +75,9 @@ export async function resolveTerminalPayload(raw: TerminalRequestPayload, fallba
   }
   if (!raw.files || typeof raw.files !== "object" || Array.isArray(raw.files)) return { ok: false, message: "Invalid init payload: missing files." };
   const language = raw.language || "cpp";
-  // Anonymous C++ keeps its existing shared global budget. Python guests keep
-  // the worker's IP identity; signed-in users own their slot across runtimes.
-  let ownerKey = language === "python" ? fallbackOwnerKey?.slice(0, 64) : undefined;
+  // Keep Python's existing sign-in requirement; anonymous C++ remains available.
+  if (language === "python" && raw.accessToken === undefined) return { ok: false, message: "Sign in to run Python in the console." };
+  let ownerKey: string | undefined;
   let validateAccess: (() => Promise<boolean>) | undefined;
   if (raw.accessToken !== undefined) {
     const token = raw.accessToken;

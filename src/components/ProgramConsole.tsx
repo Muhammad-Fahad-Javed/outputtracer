@@ -113,6 +113,7 @@ export default function ProgramConsole(props: Props) {
         const token = (await client?.auth.getSession())?.data.session?.access_token;
         if (socket.current !== ws || ws.readyState !== WebSocket.OPEN) return;
         if (current.classroom && !token) throw Error("Sign in again to run this assignment.");
+        if (current.language === "python" && !token) throw Error("Sign in to run Python in the console.");
         ws.send(JSON.stringify({
           language: current.language,
           ...(current.classroom ? {classroom: current.classroom} : {files: current.files}),

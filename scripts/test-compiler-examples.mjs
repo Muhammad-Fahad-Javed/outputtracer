@@ -24,6 +24,7 @@ const require = createRequire(resolve(process.env.QA_PROJECT_ROOT || process.cwd
 const normalize = value => String(value ?? '').replace(/\r\n/g, '\n');
 const results = [];
 let actor;
+let lastTerminalStart = 0;
 
 export const examples = {
   cpp: [
@@ -102,6 +103,10 @@ async function buffered(language, example, invalid = false) {
 }
 
 async function terminal(language, example, invalid = false, action) {
+  // Honor the real eight-starts/minute IP limit instead of disabling it for QA.
+  const wait = 8000 - (Date.now() - lastTerminalStart);
+  if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+  lastTerminalStart = Date.now();
   const { WebSocket } = require('ws');
   const auth = language === 'python' ? await login() : null;
   return new Promise((resolveResult, reject) => {

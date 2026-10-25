@@ -80,15 +80,15 @@ describe("terminal canonical classroom access", () => {
     expect(await result.payload.validateAccess!()).toBe(false);
   });
 
-  it("keeps the existing anonymous C++ budget and binds Python guests to server identity", async () => {
-    const result = await resolveTerminalPayload({ files: { "main.cpp": "int main(){}" } }, "server-ip");
+  it("keeps the existing anonymous C++ budget and the Python sign-in requirement", async () => {
+    const result = await resolveTerminalPayload({ files: { "main.cpp": "int main(){}" } });
     expect(result).toEqual({ ok: true, payload: { language: "cpp", files: { "main.cpp": "int main(){}" }, standard: undefined, ownerKey: undefined, validateAccess: undefined } });
-    const python = await resolveTerminalPayload({ language: "python", files: canonical }, "server-ip");
-    expect(python.ok && python.payload.ownerKey).toBe("server-ip");
+    const python = await resolveTerminalPayload({ language: "python", files: canonical });
+    expect(python.ok).toBe(false);
   });
 
   it("binds valid standalone tokens to their actor and rejects invalid supplied tokens", async () => {
-    const result = await resolveTerminalPayload({ files: { "main.cpp": "int main(){}" }, accessToken: "valid" }, "shared-nat");
+    const result = await resolveTerminalPayload({ files: { "main.cpp": "int main(){}" }, accessToken: "valid" });
     if (!result.ok) throw Error("expected actor access");
     expect(result.payload.ownerKey).toBe(actorId);
     expect(await result.payload.validateAccess!()).toBe(true);

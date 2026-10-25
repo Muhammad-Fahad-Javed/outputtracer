@@ -143,7 +143,7 @@ app.prepare().then(() => {
   }, 30_000);
   heartbeat.unref?.();
 
-  wss.on("connection", (ws: WebSocket, req) => {
+  wss.on("connection", (ws: WebSocket) => {
     trackSocket(ws);
     // Wait for the first message which should be the init payload
     let initialized = false;
@@ -176,9 +176,7 @@ app.prepare().then(() => {
 
       try {
         const payload = JSON.parse(data.toString()) as TerminalRequestPayload;
-        const ip = clientIpFromForwarded(req.headers["x-forwarded-for"], req.socket.remoteAddress,
-          process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true");
-        void resolveTerminalPayload(payload, `terminal:${ip}`)
+        void resolveTerminalPayload(payload)
           .then((resolved) => {
             if (!resolved.ok) {
               ws.send(JSON.stringify({ type: "error", data: resolved.message }));
