@@ -200,8 +200,8 @@ export default function BrowserDosbox(props: BrowserDosboxProps) {
     </div>}
     {diagnostics && <pre role="alert" className="max-h-40 shrink-0 overflow-auto whitespace-pre-wrap border-b border-red-900 bg-[#251818] p-3 text-xs text-red-200">{diagnostics}</pre>}
     <div className="relative min-h-0 flex-1 overflow-auto bg-black">
-      {!revision && <div className="p-4 text-sm text-[#aaa]">Run the current shared editor snapshot locally in your browser. Click the DOS screen to type directly.</div>}
-      <canvas ref={canvas} tabIndex={0} aria-label="DOSBox screen. Click to send keyboard input to your program." className={`${revision ? 'block' : 'hidden'} mx-auto h-full max-h-full max-w-full object-contain outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400`} style={{ imageRendering: 'pixelated', minHeight: revision ? 120 : undefined }}
+      {!revision && <div className="p-4 text-sm text-[#aaa]">Run the current editor snapshot locally in your browser. Click the DOS screen to type directly.</div>}
+      <canvas ref={canvas} tabIndex={0} aria-label="DOSBox screen. Click to send keyboard input to your program." className={`${revision ? 'block' : 'hidden'} mx-auto h-auto w-full max-w-[720px] outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400`} style={{ imageRendering: 'pixelated' }}
         onKeyDown={event => { const key = dosKey(event.nativeEvent); if (key !== null && active) { event.preventDefault(); if (!event.repeat) { pressed.current.add(key); command.current?.sendKeyEvent(key, true); } } }}
         onKeyUp={event => { const key = dosKey(event.nativeEvent); if (key !== null) { event.preventDefault(); pressed.current.delete(key); command.current?.sendKeyEvent(key, false); } }}
         onBlur={releaseKeys} onContextMenu={event => event.preventDefault()}/>

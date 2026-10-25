@@ -105,7 +105,9 @@ export async function createDosbox(files: Record<string, string>, assets: Dosbox
     ...project.map(file => `attrib +r ${file.path.replace(/\//g, '\\')}`),
     'OTSYS\\NASM.EXE -f bin MAIN.ASM -o MAIN.COM -Z BUILD.LOG',
     'if errorlevel 1 goto failed', 'cls', 'echo __OT_DOSBOX_READY__>OTSYS\\READY.TXT',
-    'MAIN.COM', 'if errorlevel 1 echo __OT_DOSBOX_FAILED__>OTSYS\\EXITERR.TXT', 'echo __OT_DOSBOX_DONE__>OTSYS\\DONE.TXT', 'goto finished',
+    'MAIN.COM', 'if errorlevel 1 goto runerror', 'goto done',
+    ':runerror', 'echo __OT_DOSBOX_FAILED__>OTSYS\\EXITERR.TXT',
+    ':done', 'echo __OT_DOSBOX_DONE__>OTSYS\\DONE.TXT', 'goto finished',
     ':failed', 'echo __OT_DOSBOX_FAILED__>OTSYS\\FAILED.TXT', ':finished', 'OTSYS\\HALT.COM',
   ].join('\n');
   const conf = bundle.dosboxConf.replace('ipx=true', 'ipx=false')
@@ -114,8 +116,10 @@ export async function createDosbox(files: Record<string, string>, assets: Dosbox
   const ci = await emulators.dosboxWorker([
     { dosboxConf: conf, jsdosConf: { version: '8' } },
     ...project,
-    { path: 'OTSYS/NASM.EXE', contents: nasm },
-    { path: 'OTSYS/CWSDPMI.EXE', contents: dpmi },
+    // Worker transport transfers (detaches) buffers. Keep cached toolchain bytes
+    // intact so Restart and simultaneous private sessions receive fresh copies.
+    { path: 'OTSYS/NASM.EXE', contents: new Uint8Array(nasm) },
+    { path: 'OTSYS/CWSDPMI.EXE', contents: new Uint8Array(dpmi) },
     // BIOS wait loop: never returns to a DOS prompt, stays responsive to worker control.
     { path: 'OTSYS/HALT.COM', contents: Uint8Array.from([0xb4, 0, 0xcd, 0x16, 0xeb, 0xfa]) },
     { path: 'OUTPUT/.KEEP', contents: new Uint8Array() },

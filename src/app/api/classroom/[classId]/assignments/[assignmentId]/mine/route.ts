@@ -1,3 +1,5 @@
+import { getGrade } from "@/lib/classroom/gradingService";
+import { getSubmissionSnapshot } from "@/lib/classroom/versioningService";
 import { projectSnapshotView } from "@/lib/classroom/projectSnapshot";
 /**
  * GET the signed-in student's own submission for this assignment.
@@ -14,6 +16,15 @@ import { pickOwnSubmission } from "@/lib/classroom/ownSubmission";
 import { classroomRequestUser } from "@/lib/classroom/requestUser";
 import { readMemorySubmission } from "@/lib/classroom/submissionMemory";
 import { createAdminClient } from "@/lib/supabase/admin";
+
+/** Marks belong to an immutable hand-in, not to the mutable submission row. */
+async function currentGradeView(submissionId: string, status: string) {
+  const [grade, snapshot] = await Promise.all([getGrade(submissionId), getSubmissionSnapshot(submissionId)]);
+  if (!grade || !snapshot || grade.snapshotId !== snapshot.id) {
+    return { grade: null, maxPoints: null, gradedAt: null, status: status === "graded" ? "submitted" : status };
+  }
+  return { grade: grade.totalPoints, maxPoints: grade.maxPoints, gradedAt: grade.gradedAt, status: status === "returned" ? status : "graded" };
+}
 
 export async function GET(
   _request: Request,
@@ -38,7 +49,8 @@ export async function GET(
     const groupIds = await listCallerGroupIds(user.id, classId, assignmentId);
     const submission = readMemorySubmission(assignmentId, user.id, groupIds);
     const view = submission ? projectSnapshotView(submission.codeFiles) : null;
-    return NextResponse.json({ success: true, submission: submission && view ? { ...submission, codeFiles: view.files, inputAssets: view.inputAssets, contentHashScope: view.contentHashScope } : null });
+    const grading = submission ? await currentGradeView(submission.id, submission.status) : null;
+    return NextResponse.json({ success: true, submission: submission && view ? { ...submission, ...grading, codeFiles: view.files, inputAssets: view.inputAssets, contentHashScope: view.contentHashScope } : null });
   }
 
   const columns = "id, status, code_files, submitted_at, is_late, grade, feedback, graded_at, student_id, group_id";
@@ -71,20 +83,19 @@ export async function GET(
   }
 
   const view = row ? projectSnapshotView(row.code_files || {}) : null;
+  const grading = row ? await currentGradeView(row.id, row.status) : null;
   return NextResponse.json({
     success: true,
     submission: row
       ? {
           id: row.id,
-          status: row.status,
+          ...grading,
           codeFiles: view!.files,
           inputAssets: view!.inputAssets,
           contentHashScope: view!.contentHashScope,
           submittedAt: row.submitted_at,
           isLate: row.is_late,
-          grade: row.grade,
           feedback: row.feedback,
-          gradedAt: row.graded_at,
         }
       : null,
   });

@@ -321,6 +321,7 @@ async function writeGrade(input: {
             max_points: input.maxPoints,
             graded_by: input.gradedBy,
             grade_mode: input.gradeMode,
+            graded_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
           { onConflict: "submission_id" }

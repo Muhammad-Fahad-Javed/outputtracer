@@ -1,7 +1,26 @@
-import { describe, expect, it } from 'vitest';
-import { dosKey, dosPath, prepareDosFiles, readDosArtifacts, type DosCommand } from './runtime';
+import { describe, expect, it, vi } from 'vitest';
+import { createDosbox, dosKey, dosPath, prepareDosFiles, readDosArtifacts, type DosCommand } from './runtime';
 
 describe('browser DOSBox project boundary', () => {
+  it('keeps cached toolchain bytes intact when workers transfer their buffers on repeated runs', async () => {
+    const toolchains: number[][] = [];
+    const emulator = {
+      pathPrefix: '',
+      bundle: async () => ({ dosboxConf: 'cycles=auto\n[autoexec]\n' }),
+      dosboxWorker: async (entries: {path?: string; contents?: Uint8Array}[]) => {
+        toolchains.push(Array.from(entries.find(entry => entry.path === 'OTSYS/NASM.EXE')!.contents!));
+        for (const entry of entries) if (entry.contents) structuredClone(entry.contents, { transfer: [entry.contents.buffer] });
+        return { mute() {} };
+      },
+    };
+    vi.stubGlobal('window', { emulators: emulator });
+    vi.stubGlobal('fetch', async () => ({ ok: true, arrayBuffer: async () => Uint8Array.of(77, 90, 42).buffer }));
+    try {
+      await createDosbox({ 'main.asm': 'org 100h\nint 20h' });
+      await createDosbox({ 'main.asm': 'org 100h\nint 20h' });
+      expect(toolchains).toEqual([[77, 90, 42], [77, 90, 42]]);
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('loads exact source and binary input without changing bytes', () => {
     const entries = prepareDosFiles({ 'main.asm': 'org 100h\r\nint 20h', 'lib/math.inc': 'db 1' }, { 'TEST.BIN': { base64: 'AP+A' } });
     expect(entries.map(e => e.path)).toEqual(['MAIN.ASM', 'LIB/MATH.INC', 'INPUT/TEST.BIN']);
