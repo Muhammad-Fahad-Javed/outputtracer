@@ -66,6 +66,13 @@ export default function TeacherSubmissionReview({ classId, assignmentId, owner, 
     void load(); return () => abort.abort();
   }, [base, selected, refresh]);
 
+  function downloadSource() {
+    if (!snapshot || !file) return;
+    const url = URL.createObjectURL(new Blob([snapshot.frozenCodeFiles[file] || ""], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = url; link.download = file; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async function saveGrade() {
     if (!snapshot || saving) return;
     const value = Number(points);
@@ -89,8 +96,9 @@ export default function TeacherSubmissionReview({ classId, assignmentId, owner, 
     {note && <p role="status" className="my-3 rounded border border-[#555] p-3 text-sm">{note}</p>}
     {snapshot && <>
       <p className="mb-3 break-all font-mono text-[11px] text-[#aaa]">Submitted {new Date(snapshot.submittedAt).toLocaleString()} · version {snapshot.versionId} · hash {snapshot.contentHash}</p>
+      <button type="button" className={`${button} mb-2`} onClick={downloadSource}>Download {file}</button>
       <div className="mb-3 flex h-72 min-h-0 overflow-hidden border border-[#444]">
-        {language === "asm8086" ? <div className="w-40 shrink-0 sm:w-52"><DosboxFiles readOnly sources={snapshot.frozenCodeFiles} assets={snapshot.inputAssets || {}} activeFile={file} onSelectSource={setFile}/></div> : <div className="w-36 shrink-0 overflow-auto border-r border-[#444]">{Object.keys(snapshot.frozenCodeFiles).map(name => <button key={name} onClick={() => setFile(name)} className={`block w-full p-2 text-left text-xs ${name === file ? "bg-[#333]" : ""}`}>{name}</button>)}</div>}
+        {language === "asm8086" ? <div className="w-40 shrink-0 sm:w-52"><DosboxFiles readOnly shared={false} sources={snapshot.frozenCodeFiles} assets={snapshot.inputAssets || {}} activeFile={file} onSelectSource={setFile}/></div> : <div className="w-36 shrink-0 overflow-auto border-r border-[#444]">{Object.keys(snapshot.frozenCodeFiles).map(name => <button key={name} onClick={() => setFile(name)} className={`block w-full p-2 text-left text-xs ${name === file ? "bg-[#333]" : ""}`}>{name}</button>)}</div>}
         <pre aria-label={`Submitted source ${file}`} className="min-w-0 flex-1 overflow-auto bg-[#181818] p-3 font-mono text-xs leading-5">{snapshot.frozenCodeFiles[file]}</pre>
       </div>
       {language === "asm8086" && <div className="mb-4 h-96 min-h-72 overflow-hidden border border-[#444]"><BrowserDosbox key={snapshot.id} files={snapshot.frozenCodeFiles} assets={snapshot.inputAssets || {}}/></div>}
