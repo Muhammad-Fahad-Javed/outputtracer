@@ -70,7 +70,7 @@ export const WORKSPACE_CONFIG: Record<SupportedLanguage, LanguageWorkspaceConfig
   },
   assembly: {
     language: "assembly",
-    label: "Assembly (NASM + DOSBox)",
+    label: "8086 Assembly (NASM)",
     defaultFile: "main.asm",
     monacoLanguage: "nasm",
     tabs: [

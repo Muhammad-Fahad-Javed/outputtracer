@@ -35,6 +35,10 @@ import dynamic from "next/dynamic";
 import type { OnMount } from "@monaco-editor/react";
 import { useAuth } from "@/components/AuthProvider";
 import DosboxWorkspace from "@/components/asm/DosboxWorkspace";
+import AssemblyInspector from "@/components/asm/AssemblyInspector";
+import AssemblyMemory from "@/components/asm/AssemblyMemory";
+import {ASM_EXAMPLES, DEFAULT_ASM_CODE} from "@/lib/asm/samples";
+import {registerNasmLanguage} from "@/lib/asm/registerNasmLanguage";
 import ProgramConsole from "@/components/ProgramConsole";
 import {
   WORKSPACE_CONFIG,
@@ -315,12 +319,21 @@ const EXAMPLE_CATEGORIES: ExampleCategory[] = [
   },
 ];
 
-export default function UnifiedShell() {
+export default function UnifiedShell({initialLanguage = "cpp", assemblyLab = false}: {initialLanguage?: SupportedLanguage; assemblyLab?: boolean}) {
   const { user, signOut } = useAuth();
   const [pendingExample] = useState<string | null>(() =>
-    typeof window === "undefined" ? null : consumePendingExample()
+    typeof window === "undefined" || initialLanguage !== "cpp" ? null : consumePendingExample()
   );
-  const [lang, setLang] = useState<SupportedLanguage>("cpp");
+  const [pendingAssembly] = useState<string | null>(() => {
+    if (typeof window === "undefined" || initialLanguage !== "assembly") return null;
+    try { return localStorage.getItem("pending_asm_code"); } catch { return null; }
+  });
+  useEffect(() => {
+    if (pendingAssembly === null) return;
+    try { if (localStorage.getItem("pending_asm_code") === pendingAssembly) localStorage.removeItem("pending_asm_code"); } catch { /* Storage may be unavailable. */ }
+  }, [pendingAssembly]);
+  const [lang, setLang] = useState<SupportedLanguage>(initialLanguage);
+  const [labOpen, setLabOpen] = useState(assemblyLab);
   const [activeTab, setActiveTab] = useState<WorkspaceTabId>("console");
   const [panelHeight, setPanelHeight] = useState(280);
   const [panelCollapsed,setPanelCollapsed]=useState(false);
@@ -340,7 +353,7 @@ export default function UnifiedShell() {
   const [codeBuffers, setCodeBuffers] = useState<Record<SupportedLanguage, string>>(() => ({
     cpp: pendingExample ?? CPP_SAMPLE,
     python: PYTHON_SAMPLE,
-    assembly: ASM_SAMPLE,
+    assembly: pendingAssembly ?? (assemblyLab ? DEFAULT_ASM_CODE : ASM_SAMPLE),
   }));
 
   // Stdin & interactive output state
@@ -352,6 +365,7 @@ export default function UnifiedShell() {
   const [asmSessionId, setAsmSessionId] = useState<string | null>(null);
   const [asmSessionToken, setAsmSessionToken] = useState<string | null>(null);
   const asmSourceRef = useRef<string | null>(null);
+  const [assembledSource, setAssembledSource] = useState<string | null>(null);
   const [asmStatus, setAsmStatus] = useState<AsmExecutionStatus>({
     state: "ready",
     currentStep: 0,
@@ -364,10 +378,18 @@ export default function UnifiedShell() {
   });
   const [asmDiagnostics, setAsmDiagnostics] = useState<AsmDiagnostic[]>([]);
   const [asmTraceHistory, setAsmTraceHistory] = useState<AsmTraceStep[]>([]);
-  const [asmEngineUsed, setAsmEngineUsed] = useState<string>("builtin-nasm-compat");
+  const [asmEngineUsed, setAsmEngineUsed] = useState<string>("not-assembled");
   const [asmIsLoading, setAsmIsLoading] = useState(false);
   const [asmErrorMessage, setAsmErrorMessage] = useState<string | null>(null);
   const [asmExecTime, setAsmExecTime] = useState<number | null>(null);
+  const asmSessionRef = useRef<{id: string; token: string} | null>(null);
+  const asmGeneration = useRef(0);
+  const asmBusyRef = useRef(false);
+  useEffect(() => () => {
+    ++asmGeneration.current;
+    const session = asmSessionRef.current;
+    if (session) void fetch("/api/asm", {method: "POST", keepalive: true, headers: {"Content-Type":"application/json"}, body: JSON.stringify({action:"stop", sessionId:session.id, sessionToken:session.token})}).catch(() => {});
+  }, []);
 
   // C++ and Python execution states
   const [cppOutput, setCppOutput] = useState("");
@@ -399,10 +421,15 @@ export default function UnifiedShell() {
   const lineCount = currentCode.split("\n").length;
   const currentTraceSteps = lang === "cpp" ? CPP_TRACE_STEPS : PYTHON_TRACE_STEPS;
 
-  // Filtered examples for search
+  const exampleCategories = useMemo<ExampleCategory[]>(() => lang === "assembly"
+    ? [...new Set(ASM_EXAMPLES.map(example => example.category))].map(category => ({
+      id: category, title: category, desc: "8086 Assembly", icon: Cpu,
+      examples: ASM_EXAMPLES.filter(example => example.category === category).map(example => ({...example, desc: example.description})),
+    })) : EXAMPLE_CATEGORIES, [lang]);
+  // Filtered examples for the active workspace.
   const allExamples = useMemo(() => {
-    return EXAMPLE_CATEGORIES.flatMap((c) => c.examples);
-  }, []);
+    return exampleCategories.flatMap((c) => c.examples);
+  }, [exampleCategories]);
 
   const filteredExamples = useMemo(() => {
     if (!exampleSearch.trim()) return [];
@@ -478,19 +505,18 @@ export default function UnifiedShell() {
 
   // Update line highlight when tab or step changes
   useEffect(() => {
-    if (activeTab === "trace") {
-      if (lang === "assembly") {
-        updateLineHighlight(asmStatus.currentInstruction?.sourceLine || 6);
-      } else {
+    if (lang === "assembly") {
+      updateLineHighlight(asmStatus.currentInstruction?.sourceLine);
+    } else if (activeTab === "trace") {
         const step = currentTraceSteps.find((s) => s.step === selectedTraceStep);
         if (step) updateLineHighlight(step.line);
-      }
     } else {
       updateLineHighlight(undefined);
     }
   }, [activeTab, selectedTraceStep, lang, currentTraceSteps, asmStatus, updateLineHighlight]);
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
+    registerNasmLanguage(monaco);
     editorRef.current = editor;
     monacoRef.current = monaco;
   };
@@ -498,6 +524,7 @@ export default function UnifiedShell() {
   // Language change handler with strict tab sanitization
   const handleLanguageChange = (newLang: SupportedLanguage) => {
     if (newLang === lang) return;
+    if (lang === "assembly") void handleAsmStop();
     setLang(newLang);
     setConsoleRunRequest(0);
     setConsoleStopRequest(0);
@@ -544,166 +571,102 @@ export default function UnifiedShell() {
     };
   }, [isDragging]);
 
-  // Each new run assembles the current buffer, including edits made after a prior run.
-  const prepareAsmSession = async () => {
-    if (asmSessionId) {
-      const stopped = await fetch("/api/asm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "stop", sessionId: asmSessionId, sessionToken: asmSessionToken }),
-      });
-      if (!stopped.ok && stopped.status !== 404 && stopped.status !== 410) {
-        throw new Error("Unable to stop the previous assembly session. Try Stop before starting again.");
-      }
-      setAsmSessionId(null);
-      setAsmSessionToken(null);
-    }
+  const disposeAsmSession = async (session: {id: string; token: string}) => {
+    const response = await fetch("/api/asm", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"stop",sessionId:session.id,sessionToken:session.token})});
+    if (!response.ok && response.status !== 404 && response.status !== 410) throw Error("Unable to stop the previous assembly session.");
+  };
+
+  const prepareAsmSession = async (generation: number) => {
+    const previous = asmSessionRef.current;
+    if (previous) await disposeAsmSession(previous);
+    if (generation !== asmGeneration.current) throw Error("Execution superseded.");
+    asmSessionRef.current = null;
+    setAsmSessionId(null);
+    setAsmSessionToken(null);
     const source = codeBuffers.assembly;
-    const response = await fetch("/api/asm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "assemble", source, code: source, stdin: typedInput }),
-    });
+    const response = await fetch("/api/asm", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"assemble",source,stdin:typedInput})});
     const data = await response.json();
-    setAsmDiagnostics(data.assembleResult?.diagnostics || []);
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || "Assembly failed.");
+    const session = data.sessionId && data.sessionToken ? {id:String(data.sessionId), token:String(data.sessionToken)} : null;
+    if (generation !== asmGeneration.current) {
+      if (session) await disposeAsmSession(session);
+      throw Error("Execution superseded.");
     }
+    setAsmDiagnostics(data.assembleResult?.diagnostics || []);
+    if (!response.ok || !data.success || !session) {
+      if (session) await disposeAsmSession(session);
+      throw Error(data.error || "Assembly failed.");
+    }
+    asmSessionRef.current = session;
     asmSourceRef.current = source;
-    setAsmSessionId(data.sessionId);
-    setAsmSessionToken(data.sessionToken || null);
-    setAsmEngineUsed(data.assembleResult?.engineUsed || "builtin-8086");
+    setAssembledSource(source);
+    setAsmSessionId(session.id);
+    setAsmSessionToken(session.token);
+    setAsmEngineUsed(data.assembleResult?.engineUsed || "builtin-nasm-compat");
     setAsmStatus(data.status);
     setAsmTraceHistory([]);
     updateLineHighlight(data.status.currentInstruction?.sourceLine);
-    return data;
+    return session;
   };
 
-  const handleAsmAssemble = async () => {
+  const performAsmAction = async (action: "assemble" | "run" | "step" | "stepBack" | "reset" | "input", input?: string, fresh = false) => {
+    if (asmBusyRef.current) return;
+    const sourceCurrent = asmSourceRef.current === codeBuffers.assembly;
+    if (action === "stepBack" && (!sourceCurrent || !asmStatus.canStepBack)) return;
+    if (action === "step" && asmSessionRef.current && sourceCurrent && !asmStatus.canStepForward) return;
+    asmBusyRef.current = true;
+    const generation = ++asmGeneration.current;
     setAsmIsLoading(true);
     setAsmErrorMessage(null);
     const startedAt = performance.now();
     try {
-      await prepareAsmSession();
-    } catch (error) {
-      setAsmErrorMessage(error instanceof Error ? error.message : "Assembly failed.");
-    } finally {
-      setAsmExecTime(Math.round(performance.now() - startedAt));
-      setAsmIsLoading(false);
-    }
-  };
-
-  const handleAsmRun = async () => {
-    if (asmIsLoading) return;
-    setAsmIsLoading(true);
-    setAsmErrorMessage(null);
-    const startedAt = performance.now();
-    try {
-      const session = await prepareAsmSession();
-      const response = await fetch("/api/asm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "run", sessionId: session.sessionId, sessionToken: session.sessionToken, limit: 2000 }),
-      });
+      let session = asmSessionRef.current;
+      if (action === "input" && !session) throw Error("Run your program before entering input.");
+      if (action !== "input" && (fresh || action === "assemble" || !session || !sourceCurrent)) session = await prepareAsmSession(generation);
+      if (!session) throw Error("Build your program before executing it.");
+      if (action === "assemble" || generation !== asmGeneration.current) return;
+      const response = await fetch("/api/asm", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,sessionId:session.id,sessionToken:session.token,...(action === "run" ? {limit:2000} : {}),...(action === "input" ? {input} : {})})});
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || "Execution failed.");
+      if (generation !== asmGeneration.current) return;
+      if (!response.ok || !data.success) throw Error(data.error || "Execution failed.");
       setAsmStatus(data.status);
-      setAsmTraceHistory(data.steps || []);
+      if (Array.isArray(data.trace)) setAsmTraceHistory(data.trace);
+      else if (action === "reset") setAsmTraceHistory([]);
+      else if (action === "stepBack") setAsmTraceHistory(previous => previous.slice(0, -1));
+      else if (data.step) setAsmTraceHistory(previous => [...previous, data.step]);
+      else if (Array.isArray(data.steps)) setAsmTraceHistory(previous => [...previous, ...data.steps]);
       updateLineHighlight(data.status.currentInstruction?.sourceLine);
     } catch (error) {
-      setAsmErrorMessage(error instanceof Error ? error.message : "Execution failed.");
+      if (generation === asmGeneration.current) setAsmErrorMessage(error instanceof Error ? error.message : "Execution failed.");
     } finally {
-      setAsmExecTime(Math.round(performance.now() - startedAt));
-      setAsmIsLoading(false);
+      if (generation === asmGeneration.current) {
+        asmBusyRef.current = false;
+        setAsmExecTime(Math.round(performance.now() - startedAt));
+        setAsmIsLoading(false);
+      }
     }
   };
-
-  const handleAsmInput = async (input:string) => {
-    if(!asmSessionId||!asmSessionToken)return;setAsmIsLoading(true);setAsmErrorMessage(null);
-    try{const r=await fetch('/api/asm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'input',sessionId:asmSessionId,sessionToken:asmSessionToken,input})});const d=await r.json();if(!r.ok||!d.success)throw Error(d.error||'Input failed.');setAsmStatus(d.status);updateLineHighlight(d.status.currentInstruction?.sourceLine);}catch(e){setAsmErrorMessage(e instanceof Error?e.message:'Input failed.');}finally{setAsmIsLoading(false);}
-  };
+  const handleAsmAssemble = () => performAsmAction("assemble");
+  const handleAsmRun = () => performAsmAction("run", undefined, true);
+  const handleAsmContinue = () => performAsmAction("run");
+  const handleAsmStep = () => performAsmAction("step");
+  const handleAsmBack = () => performAsmAction("stepBack");
+  const handleAsmReset = () => performAsmAction("reset");
+  const handleAsmInput = (input: string) => performAsmAction("input", input);
   const handleAsmStop = async () => {
-    if (!asmSessionId) return;
-    setAsmErrorMessage(null);
-    try {
-      const response = await fetch("/api/asm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "stop", sessionId: asmSessionId, sessionToken: asmSessionToken }),
-      });
-      if (!response.ok && response.status !== 404 && response.status !== 410) throw new Error("Unable to stop the assembly session.");
-      setAsmSessionId(null);
-      setAsmSessionToken(null);
-      asmSourceRef.current = null;
-      setAsmStatus((previous) => ({ ...previous, state: "halted", canStepForward: false, inputRequest: undefined }));
-    } catch (error) {
-      setAsmErrorMessage(error instanceof Error ? error.message : "Unable to stop the assembly session.");
-    }
-  };
-  const handleAsmStep = async () => {
-    if (!asmSessionId || asmSourceRef.current !== codeBuffers.assembly) {
-      await handleAsmAssemble();
-      return;
-    }
-
-    setAsmIsLoading(true);
-    try {
-      const res = await fetch("/api/asm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "step",
-          sessionId: asmSessionId,
-          sessionToken: asmSessionToken,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        setAsmStatus(data.status);
-        if (data.step) {
-          setAsmTraceHistory((prev) => [...prev, data.step]);
-        }
-        updateLineHighlight(data.status.currentInstruction?.sourceLine);
-      } else {
-        setAsmErrorMessage(data.error || "Step failed.");
-      }
-    } catch (err: unknown) {
-      setAsmErrorMessage(`Network error during step: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setAsmIsLoading(false);
-    }
-  };
-
-  const handleAsmReset = async () => {
-    if (!asmSessionId || asmSourceRef.current !== codeBuffers.assembly) {
-      await handleAsmAssemble();
-      return;
-    }
-    setAsmIsLoading(true);
-
-    try {
-      const res = await fetch("/api/asm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "reset",
-          sessionId: asmSessionId,
-          sessionToken: asmSessionToken,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        setAsmStatus(data.status);
-        setAsmTraceHistory([]);
-        updateLineHighlight(data.status.currentInstruction?.sourceLine);
-      }
-    } catch (err: unknown) {
-      setAsmErrorMessage(`Network error during reset: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setAsmIsLoading(false);
-    }
+    ++asmGeneration.current;
+    asmBusyRef.current = false;
+    setAsmIsLoading(false);
+    const session = asmSessionRef.current;
+    // Cancel in-flight assembly too; a late response disposes of its new session.
+    asmSessionRef.current = null;
+    asmSourceRef.current = null;
+    setAssembledSource(null);
+    setAsmSessionId(null);
+    setAsmSessionToken(null);
+    setAsmStatus(previous => ({...previous,state:"halted",canStepForward:false,canStepBack:false,inputRequest:undefined}));
+    if (!session) return;
+    try { await disposeAsmSession(session); }
+    catch (error) { setAsmErrorMessage(error instanceof Error ? error.message : "Unable to stop execution."); }
   };
 
   const handleAsmClear = () => {
@@ -716,7 +679,8 @@ export default function UnifiedShell() {
     setActiveTab("console");
     setPanelCollapsed(false);
     if (lang === "assembly") {
-      void handleAsmRun();
+      if (labOpen && asmSourceRef.current === codeBuffers.assembly && asmStatus.canStepForward && asmStatus.currentStep > 0) void handleAsmContinue();
+      else void handleAsmRun();
     } else {
       setConsoleRunRequest((request) => request + 1);
     }
@@ -747,12 +711,22 @@ export default function UnifiedShell() {
       setCodeBuffers({
         cpp: CPP_SAMPLE,
         python: PYTHON_SAMPLE,
-        assembly: ASM_SAMPLE,
+        assembly: assemblyLab ? DEFAULT_ASM_CODE : ASM_SAMPLE,
       });
     }
   };
 
   const handleSelectExample = (ex: ExampleItem) => {
+    if (lang === "assembly") {
+      void handleAsmStop();
+      setCodeBuffers(previous => ({...previous, assembly: ex.code}));
+      setAsmTraceHistory([]);
+      setAsmDiagnostics([]);
+      setExamplesOpen(false);
+      setExampleSearch("");
+      updateLineHighlight(undefined);
+      return;
+    }
     if (lang !== "cpp") {
       handleLanguageChange("cpp");
     }
@@ -771,6 +745,10 @@ export default function UnifiedShell() {
       if (e.key === "F5") {
         e.preventDefault();
         handleRunDebug();
+      } else if (e.key === "F10" && lang === "assembly") {
+        e.preventDefault();
+        if (e.shiftKey) void handleAsmBack();
+        else void handleAsmStep();
       } else if (e.ctrlKey && e.key.toLowerCase() === "n") {
         e.preventDefault();
         handleNewFile();
@@ -862,6 +840,9 @@ export default function UnifiedShell() {
     }
   };
 
+  const showAsmPanel = (panel: "memory" | "stack" | "trace") => { setActiveTab(panel); setPanelCollapsed(false); };
+  const inspector = <AssemblyInspector status={asmStatus} trace={asmTraceHistory} onContinue={() => void handleAsmContinue()} sourceChanged={!asmSessionId || assembledSource !== codeBuffers.assembly} busy={asmIsLoading} engineUsed={asmEngineUsed} onStep={() => void handleAsmStep()} onBack={() => void handleAsmBack()} onReset={() => void handleAsmReset()} onAssemble={() => void handleAsmAssemble()} onShowPanel={showAsmPanel}/>;
+
   return (
     <div data-surface="dark"
       className="flex h-screen w-full flex-col overflow-hidden bg-[#0A0A0A] text-[#CCCCCC] antialiased select-none"
@@ -913,7 +894,7 @@ export default function UnifiedShell() {
               <div className="absolute right-0 top-full mt-1 z-50 w-80 sm:w-88 rounded border border-[#2E2E2E] bg-[#181818] p-2.5 shadow-2xl text-left">
                 <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#2E2E2E]">
                   <span className="font-semibold text-xs text-white">Example Programs</span>
-                  <span className="text-[10px] text-[#858585]">5 Categories</span>
+                  <span className="text-[10px] text-[#858585]">{exampleCategories.length} Categories</span>
                 </div>
 
                 {/* Search */}
@@ -958,7 +939,7 @@ export default function UnifiedShell() {
                   </div>
                 ) : (
                   <div className="max-h-72 overflow-y-auto space-y-0.5">
-                    {EXAMPLE_CATEGORIES.map((cat) => {
+                    {exampleCategories.map((cat) => {
                       const Icon = cat.icon;
                       const isExpanded = expandedCategory === cat.id;
                       return (
@@ -1107,7 +1088,7 @@ export default function UnifiedShell() {
       </nav>
 
       {/* 2. Compact Visual Studio-Inspired Toolbar (Height 36px) */}
-      <div className="flex h-[36px] shrink-0 items-center gap-2 border-b border-[#2E2E2E] bg-[#181818] px-3 select-none text-[12px]">
+      <div className="flex h-[36px] shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-[#2E2E2E] bg-[#181818] px-3 select-none text-[12px] [&>button]:shrink-0">
         {/* Compiler / Language Selector */}
         <div className="flex items-center gap-1.5">
           <label htmlFor="lang-select" className="text-[11px] font-semibold text-[#858585] uppercase">
@@ -1121,7 +1102,7 @@ export default function UnifiedShell() {
           >
             <option value="cpp">C++</option>
             <option value="python">Python 3</option>
-            <option value="assembly">Assembly (NASM + DOSBox)</option>
+            <option value="assembly">8086 Assembly (NASM)</option>
           </select>
         </div>
 
@@ -1133,11 +1114,17 @@ export default function UnifiedShell() {
           className="flex h-6 items-center gap-1.5 rounded-[2px] bg-[#238636] px-2.5 text-[12px] font-semibold text-white transition-colors hover:bg-[#2EA043] disabled:opacity-50 cursor-pointer shadow-sm"
         >
           <Play size={12} fill="white" />
-          <span>Run & Debug</span>
+          <span>{lang === "assembly" && labOpen && assembledSource === codeBuffers.assembly && asmStatus.canStepForward && asmStatus.currentStep > 0 ? "Continue" : "Run & Debug"}</span>
           <span className="rounded bg-black/30 px-1 py-0.2 font-mono text-[9px] font-bold">
             F5
           </span>
         </button>
+
+        {lang === "assembly" && <>
+          <button type="button" onClick={() => void handleAsmStep()} disabled={asmIsLoading || (assembledSource === codeBuffers.assembly && !asmStatus.canStepForward && asmStatus.state !== "ready")} className="rounded border border-[#444] px-2 py-1 text-[#ddd] disabled:opacity-40" title="Next instruction (F10)">Step</button>
+          <button type="button" onClick={() => void handleAsmBack()} disabled={asmIsLoading || !asmStatus.canStepBack || assembledSource !== codeBuffers.assembly} className="rounded border border-[#444] px-2 py-1 text-[#ddd] disabled:opacity-40" title="Previous instruction (Shift+F10)">Back</button>
+          <button type="button" aria-pressed={labOpen} onClick={() => {setLabOpen(open => !open); if (window.matchMedia("(max-width: 767px)").matches) {setActiveTab("registers");setPanelCollapsed(false);} }} className={`rounded border px-2 py-1 ${labOpen ? "border-blue-500 bg-blue-950 text-blue-200" : "border-[#444] text-[#ddd]"}`}>8086 Lab</button>
+        </>}
 
         {/* Stop Button */}
         <button
@@ -1221,6 +1208,7 @@ export default function UnifiedShell() {
 
       {/* 4. Main Code Editor (Fills remaining height) */}
       <div className="relative flex min-h-[140px] flex-1 overflow-hidden bg-[#121212]">
+        <div className="min-w-0 flex-1">
         <Editor
           height="100%"
           language={fileMeta.monacoLang}
@@ -1242,6 +1230,8 @@ export default function UnifiedShell() {
             padding: { top: 8, bottom: 8 },
           }}
         />
+        </div>
+        {lang === "assembly" && labOpen && <aside className="hidden w-[320px] shrink-0 border-l border-[#333] md:block">{inspector}</aside>}
       </div>
 
       {/* 5. Compact Drag Handle (Height 8px) */}
@@ -1618,114 +1608,10 @@ export default function UnifiedShell() {
             </div>
           )}
 
-          {/* Registers Tab (Assembly only) */}
-          {activeTab === "registers" && lang === "assembly" && (
-            <div className="flex flex-1 flex-col p-3 font-mono text-[12px] bg-[#121212] overflow-y-auto">
-              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#2E2E2E]">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-white">
-                  8086 CPU Registers &amp; Flags
-                </span>
-                <span className="text-[11px] text-[#858585]">16-bit Real Mode</span>
-              </div>
-              <div className="grid grid-cols-4 gap-2 mb-3">
-                {[
-                  { name: "AX", val: asmStatus.registers.ax, hi: "AH", lo: "AL" },
-                  { name: "BX", val: asmStatus.registers.bx, hi: "BH", lo: "BL" },
-                  { name: "CX", val: asmStatus.registers.cx, hi: "CH", lo: "CL" },
-                  { name: "DX", val: asmStatus.registers.dx, hi: "DH", lo: "DL" },
-                  { name: "SI", val: asmStatus.registers.si },
-                  { name: "DI", val: asmStatus.registers.di },
-                  { name: "BP", val: asmStatus.registers.bp },
-                  { name: "SP", val: asmStatus.registers.sp },
-                  { name: "CS", val: asmStatus.registers.cs },
-                  { name: "DS", val: asmStatus.registers.ds },
-                  { name: "ES", val: asmStatus.registers.es },
-                  { name: "SS", val: asmStatus.registers.ss },
-                  { name: "IP", val: asmStatus.registers.ip },
-                  { name: "FL", val: 0x7202 },
-                ].map((reg) => (
-                  <div key={reg.name} className="rounded border border-[#2E2E2E] bg-[#181818] p-1.5">
-                    <div className="flex justify-between text-[#858585] text-[10px]">
-                      <span>{reg.name}</span>
-                      <span className="text-white font-bold">0x{(reg.val & 0xffff).toString(16).toUpperCase().padStart(4, "0")}</span>
-                    </div>
-                    {reg.hi && (
-                      <div className="flex justify-between text-[9px] text-[#888888] mt-0.5">
-                        <span>{reg.hi}: 0x{((reg.val >> 8) & 0xff).toString(16).toUpperCase().padStart(2, "0")}</span>
-                        <span>{reg.lo}: 0x{(reg.val & 0xff).toString(16).toUpperCase().padStart(2, "0")}</span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="rounded border border-[#2E2E2E] bg-[#181818] p-2">
-                <div className="text-[10px] font-semibold text-[#858585] uppercase mb-1">Flags</div>
-                <div className="flex gap-1.5">
-                  {Object.entries(asmStatus.flags).map(([k, v]) => (
-                    <span
-                      key={k}
-                      className={`px-1.5 py-0.2 rounded text-[10px] border font-mono ${
-                        v
-                          ? "bg-[#3FB950]/20 border-[#3FB950] text-[#3FB950] font-bold"
-                          : "bg-[#121212] border-[#2E2E2E] text-[#666666]"
-                      }`}
-                    >
-                      {k.toUpperCase()}: {v ? "1" : "0"}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Registers and CPU controls share the same live session as Console. */}
+          {activeTab === "registers" && lang === "assembly" && <div className="min-h-0 flex-1 overflow-auto">{inspector}</div>}
 
-          {/* Memory Tab (Assembly only) */}
-          {activeTab === "memory" && lang === "assembly" && (
-            <div className="flex flex-1 flex-col p-3 font-mono text-[11px] bg-[#121212] overflow-hidden">
-              <div className="flex items-center justify-between pb-1 mb-1 border-b border-[#2E2E2E]">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-white">
-                  Memory View (Segment 1000h)
-                </span>
-                <span className="text-[10px] text-[#858585]">16 bytes per row</span>
-              </div>
-              <div className="flex-1 overflow-y-auto text-[#CCCCCC] space-y-0.5">
-                <div>1000:0100  BA 0C 01 B4 09 CD 21 BA  29 01 B4 0A CD 21 B8 00  |.......!)....!..|</div>
-                <div>1000:0110  4C CD 21 65 6E 74 65 72  20 74 65 78 74 20 28 6D  |L.!enter text (m|</div>
-                <div>1000:0120  61 78 20 39 39 20 63 68  61 72 73 29 3A 20 24 64  |ax 99 chars): $d|</div>
-                <div>1000:0130  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|</div>
-              </div>
-            </div>
-          )}
-
-          {/* Stack Tab (Assembly only) */}
-          {activeTab === "stack" && lang === "assembly" && (
-            <div className="flex flex-1 flex-col p-3 font-mono text-[11px] bg-[#121212] overflow-y-auto">
-              <div className="flex items-center justify-between pb-1 mb-2 border-b border-[#2E2E2E]">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-white">
-                  Stack Frame &amp; SP
-                </span>
-                <span className="text-[10px] text-[#858585]">SS: 1000h, SP: 0x{asmStatus.registers.sp.toString(16).toUpperCase()}</span>
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                <div className="rounded border border-[#2E2E2E] bg-[#181818] p-2 text-center">
-                  <div className="text-[#858585] text-[9px]">[SS:FFFE]</div>
-                  <div className="text-base font-bold text-white">0000h</div>
-                  <div className="text-[9px] text-[#888888] mt-0.5">▲ Current SP</div>
-                </div>
-                <div className="rounded border border-[#2E2E2E] bg-[#141414] p-2 text-center text-[#666666]">
-                  <div className="text-[9px]">[SS:FFFC]</div>
-                  <div className="text-base font-bold">0000h</div>
-                </div>
-                <div className="rounded border border-[#2E2E2E] bg-[#141414] p-2 text-center text-[#666666]">
-                  <div className="text-[9px]">[SS:FFFA]</div>
-                  <div className="text-base font-bold">0000h</div>
-                </div>
-                <div className="rounded border border-[#2E2E2E] bg-[#141414] p-2 text-center text-[#666666]">
-                  <div className="text-[9px]">[SS:FFF8]</div>
-                  <div className="text-base font-bold">0000h</div>
-                </div>
-              </div>
-            </div>
-          )}
+          {lang === "assembly" && (activeTab === "memory" || activeTab === "stack") && <AssemblyMemory sessionId={asmSessionId} sessionToken={asmSessionToken} status={asmStatus} mode={activeTab}/>}
 
           {/* Instruction Help Tab (Assembly only) */}
           {activeTab === "instructionHelp" && lang === "assembly" && (

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import AssemblyLab from "@/components/asm/AssemblyLab";
-import Header from "@/components/Header";
+import AssemblyIdeShell from "@/components/AssemblyIdeShell";
 
 export const metadata: Metadata = {
   title: "Online 8086 Assembly Emulator | OutputTracer",
@@ -36,13 +35,10 @@ export const metadata: Metadata = {
 
 export default function AssemblyPage() {
   return (
-    <main className="flex h-screen w-full flex-col overflow-hidden bg-[#1E1E1E]">
+    <main className="h-screen w-full overflow-hidden bg-[#0A0A0A]">
       {/* Single primary heading; the lab UI is client-rendered. */}
       <h1 className="sr-only">Online 8086 Assembly Emulator</h1>
-      <Header />
-      <div className="flex-1 overflow-hidden">
-        <AssemblyLab />
-      </div>
+      <AssemblyIdeShell />
     </main>
   );
 }

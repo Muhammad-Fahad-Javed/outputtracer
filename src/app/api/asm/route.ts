@@ -31,6 +31,9 @@ export async function POST(request: Request) {
     stdin?: string;
     limit?: number;
     input?: string;
+    segment?: number;
+    offset?: number;
+    length?: number;
   };
 
   try {
@@ -97,6 +100,23 @@ export async function POST(request: Request) {
 
     // Existing session actions
     switch (action) {
+      case "inspect": {
+        const { segment, offset, length = 128 } = body;
+        if (
+          typeof segment !== "number" || !Number.isInteger(segment) || segment < 0 || segment > 0xffff ||
+          typeof offset !== "number" || !Number.isInteger(offset) || offset < 0 || offset > 0xffff ||
+          !Number.isInteger(length) || length < 1 || length > 256
+        ) {
+          return NextResponse.json(
+            { success: false, error: "Segment and offset must be integers from 0 to 65535; length must be from 1 to 256 bytes." },
+            { status: 400 }
+          );
+        }
+        // Inspection must not add memory reads to the next instruction's trace.
+        const bytes = Array.from({ length }, (_, index) => session.cpu.readByte(segment, offset + index, false));
+        return NextResponse.json({ success: true, sessionId: session.id, segment, offset, bytes });
+      }
+
       case "assemble": {
         if (typeof source === "string") {
           session.source = source;
@@ -147,7 +167,7 @@ export async function POST(request: Request) {
         if(typeof body.input!=="string")return NextResponse.json({error:"Input text required"},{status:400});
         session.provideInput(body.input);
         await session.runUntilBlocked();
-        return NextResponse.json({success:true,sessionId:session.id,status:session.getStatus()});
+        return NextResponse.json({success:true,sessionId:session.id,status:session.getStatus(),trace:session.traceHistory});
       }
       case "stop": {
         sessionManager.deleteSession(session.id);
