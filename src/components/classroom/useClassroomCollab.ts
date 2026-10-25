@@ -240,7 +240,9 @@ export function useClassroomCollab(opts: {
       } catch {
         if (!stopped) {
           setStatus("offline");
-          setError("Could not open the shared document.");
+          setError("Connection interrupted. Reconnecting to the shared document…");
+          retry += 1;
+          retryTimer = setTimeout(() => void connect(), Math.min(1000 * retry, 5000));
         }
         return;
       }
