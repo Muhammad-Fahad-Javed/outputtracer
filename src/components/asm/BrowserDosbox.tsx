@@ -30,6 +30,7 @@ export default function BrowserDosbox(props: BrowserDosboxProps) {
   const deadline = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressed = useRef(new Set<number>());
   const [status, setStatus] = useState('Ready');
+  const statusRef = useRef('Ready');
   const [active, setActive] = useState(false);
   const [hasSession, setHasSession] = useState(false);
   const [revision, setRevision] = useState('');
@@ -41,6 +42,7 @@ export default function BrowserDosbox(props: BrowserDosboxProps) {
   const [refreshing, setRefreshing] = useState(false);
   const buttonClass = 'inline-flex items-center gap-1 rounded border border-[#414141] px-2 py-1 text-xs text-[#ddd] hover:bg-[#303030] disabled:opacity-40';
   const updateStatus = useCallback((value: string, running: boolean) => {
+    statusRef.current = value;
     setStatus(value); setActive(running);
     latest.current.onStatusChange?.(value); latest.current.onRunningChange?.(running);
   }, []);
@@ -153,10 +155,12 @@ export default function BrowserDosbox(props: BrowserDosboxProps) {
   useEffect(() => { if (runRequest !== runSeen.current) { runSeen.current = runRequest; void run(); } }, [runRequest, run]);
   useEffect(() => { if (stopRequest !== stopSeen.current) { stopSeen.current = stopRequest; void stop(); } }, [stopRequest, stop]);
   useEffect(() => {
-    if (canRun) return;
-    const task = setTimeout(() => { void stop('Run disabled'); }, 0);
+    const task = setTimeout(() => {
+      if (!canRun) void stop('Run disabled');
+      else if (statusRef.current === 'Run disabled') updateStatus('Ready', false);
+    }, 0);
     return () => clearTimeout(task);
-  }, [canRun, stop]);
+  }, [canRun, stop, updateStatus]);
   useEffect(() => () => { void stop(); }, [stop]);
   const releaseKeys = () => {
     for (const key of pressed.current) command.current?.sendKeyEvent(key, false);
