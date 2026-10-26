@@ -17,6 +17,9 @@ const eslintConfig = defineConfig([
     "coverage/**",
     "scripts/**",
     "sandbox-worker/**",
+    // Upstream Emscripten output is vendored unchanged with its own licence.
+    // Lint the DOSBox integration source, not the generated emulator bundle.
+    "public/dosbox/emulators-8.5.2/**",
     // Release artefacts: the tarball built off the host and the candidate
     // release it is unpacked into. These are compiled build output, not
     // source, and linting them produces thousands of meaningless errors.

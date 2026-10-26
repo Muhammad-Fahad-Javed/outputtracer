@@ -10,11 +10,15 @@ import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { DEFAULT_CONFIG, runInContainer, checkRuntime, startInteractiveContainer } from "./dockerExec.mjs";
+import { normalizeInteractiveFiles } from "./pythonFiles.mjs";
 
 export const LIMITS = Object.freeze({
   maxCodeBytes: 64 * 1024,
   maxStdinBytes: 16 * 1024,
   maxBodyBytes: 128 * 1024,
+  // JSON can expand a valid 64 KiB source snapshot sixfold (e.g. control
+  // characters). The decoded aggregate source limit still applies below.
+  maxTerminalMessageBytes: 512 * 1024,
   maxClientIdLength: 64,
   maxPerClient: 2,
 });
@@ -140,6 +144,15 @@ export function validatePayload(p) {
   return null;
 }
 
+/** Interactive sessions accept either a legacy code string or bounded .py files. */
+export function validateTerminalPayload(payload) {
+  try { normalizeInteractiveFiles(payload); }
+  catch (error) { return error.code || "invalid_request"; }
+  if (payload.stdin !== undefined && (typeof payload.stdin !== "string" || Buffer.byteLength(payload.stdin, "utf8") > LIMITS.maxStdinBytes)) return "invalid_request";
+  if (payload.clientId !== undefined && (typeof payload.clientId !== "string" || payload.clientId.length > LIMITS.maxClientIdLength)) return "invalid_request";
+  return null;
+}
+
 /** Map a container outcome to the run result contract. */
 export function mapRunOutcome(o) {
   if (o.kind === "sandbox_unavailable") return { status: "sandbox_unavailable" };
@@ -222,7 +235,7 @@ export function createApp({ config, exec = runInContainer, check = checkRuntime,
       return send(res, 500, { status: "internal_error" });
     }
   });
-  const terminals = new WebSocketServer({ noServer: true, maxPayload: LIMITS.maxBodyBytes });
+  const terminals = new WebSocketServer({ noServer: true, maxPayload: LIMITS.maxTerminalMessageBytes });
   server.on("upgrade", (req, socket, head) => {
     // This endpoint is for our trusted application server only. The browser
     // never receives the worker bearer token or connects here directly.
@@ -248,7 +261,7 @@ export function createApp({ config, exec = runInContainer, check = checkRuntime,
           return;
         }
         initialized = true; clearTimeout(initTimer);
-        const bad = validatePayload(payload);
+        const bad = validateTerminalPayload(payload);
         if (bad) { push({ type: "error", data: "Invalid Python program or source too large." }); ws.close(); return; }
         try {
           const healthy = await check({ cfg: config.docker });
@@ -258,7 +271,7 @@ export function createApp({ config, exec = runInContainer, check = checkRuntime,
           if (!release) { push({ type: "error", data: "The Python runner is busy. Please try again shortly." }); ws.close(); return; }
           // A queued socket can disappear before it owns a slot.
           if (ws.readyState !== ws.OPEN) { release(); release = undefined; return; }
-          session = terminal({ code: payload.code, timeoutMs: payload.timeoutMs, cpuTimeMs: payload.cpuTimeMs, cfg: config.docker, emit: push });
+          session = terminal({ ...(payload.files !== undefined ? { files: normalizeInteractiveFiles(payload) } : { code: payload.code }), timeoutMs: payload.timeoutMs, cpuTimeMs: payload.cpuTimeMs, cfg: config.docker, emit: push });
           await session.done;
           cleanup(); ws.close();
         } catch { push({ type: "error", data: "Could not start the Python sandbox." }); cleanup(); ws.close(); }

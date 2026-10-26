@@ -131,3 +131,33 @@ test("worker terminal uses shared gate, delivers real input/EOF and disconnect r
     assert.equal(app.gate.active, 0); assert.ok(stopped >= 1);
   } finally { await close(app); }
 });
+
+test("worker accepts a full escaped multi-file snapshot without relaxing decoded source limits", async () => {
+  const files = { "main.py": "\u0001".repeat(65520), "helper.py": "print('helper')" };
+  let received;
+  let resolveDone;
+  const app = await start(({ files: snapshot, emit }) => {
+    received = snapshot;
+    emit({ type: "ready" });
+    return { done: new Promise(resolve => { resolveDone = resolve; }), input() {}, eof() {}, stop() { resolveDone(); } };
+  });
+  try {
+    const ws = new WebSocket(app.url, { headers: { authorization: `Bearer ${TOKEN}` } });
+    await once(ws, "open");
+    const first = once(ws, "message"); ws.send(JSON.stringify({ files, clientId: "qa-modules" }));
+    assert.equal(JSON.parse((await first)[0].toString()).type, "ready");
+    assert.deepEqual(received, files);
+    ws.close(); await once(ws, "close");
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(app.gate.active, 0);
+
+    const invalid = new WebSocket(app.url, { headers: { authorization: `Bearer ${TOKEN}` } });
+    await once(invalid, "open");
+    const rejected = once(invalid, "message");
+    invalid.send(JSON.stringify({ files: { "main.py": "x".repeat(65537) } }));
+    assert.equal(JSON.parse((await rejected)[0].toString()).type, "error");
+    await once(invalid, "close");
+    assert.equal(app.gate.active, 0);
+    assert.deepEqual(received, files, "invalid snapshot must not start another terminal");
+  } finally { await close(app); }
+});

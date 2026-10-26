@@ -49,7 +49,9 @@ describe("Python terminal proxy lifecycle", () => {
     await handlePythonTerminalSession(client.ws, { files: { "main.py": "print(input())" }, ownerKey: "actor" });
     const worker = mocks.workers[0]; open(worker);
     expect(worker.headers.authorization).toContain("Bearer private-worker-secret");
-    expect(worker.sent[0]).toContain('"clientId":"actor"');
+    const initialization = JSON.parse(worker.sent[0]);
+    expect(initialization).toMatchObject({ files: { "main.py": "print(input())" }, clientId: "actor" });
+    expect(initialization).not.toHaveProperty("code");
     worker.emit("message", Buffer.from(JSON.stringify({ type: "ready" })));
     client.ws.emit("message", Buffer.from(JSON.stringify({ type: "stdin", data: "  Ada  \n" })));
     client.ws.emit("message", Buffer.from(JSON.stringify({ type: "eof" })));
@@ -59,6 +61,60 @@ describe("Python terminal proxy lifecycle", () => {
     client.ws.emit("close");
     expect(activeRunCount()).toBe(0);
     expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  it("forwards every Python module as one project snapshot and preserves input and EOF", async () => {
+    const client = browser();
+    const files = {
+      "main.py": "from helper import greeting\nprint(greeting(input()))\n",
+      "helper.py": "def greeting(name):\n    return 'Hello, ' + name\n",
+    };
+    await handlePythonTerminalSession(client.ws, { files, ownerKey: "group-member" });
+    const worker = mocks.workers[0]; open(worker);
+    expect(JSON.parse(worker.sent[0])).toMatchObject({ files, clientId: "group-member" });
+    expect(JSON.parse(worker.sent[0])).not.toHaveProperty("code");
+    worker.emit("message", Buffer.from('{"type":"ready"}'));
+    client.ws.emit("message", Buffer.from(JSON.stringify({ type: "stdin", data: "  Ada  \n\n" })));
+    client.ws.emit("message", Buffer.from('{"type":"eof"}'));
+    client.ws.emit("message", Buffer.from('{"type":"stdin","data":"must not be forwarded"}'));
+    await flush();
+    expect(worker.sent.slice(1).map((message) => JSON.parse(message))).toEqual([
+      { type: "stdin", data: "  Ada  \n\n" },
+      { type: "eof" },
+    ]);
+    client.ws.emit("close");
+    expect(activeRunCount()).toBe(0);
+  });
+
+  it("accepts exactly 16 flat Python files and a combined 64 KiB of UTF-8 source", async () => {
+    const client = browser();
+    const files = Object.fromEntries([
+      ["main.py", "é".repeat(32 * 1024)],
+      ...Array.from({ length: 15 }, (_, index) => ["module" + index + ".py", ""]),
+    ]);
+    await handlePythonTerminalSession(client.ws, { files });
+    expect(mocks.workers).toHaveLength(1);
+    open(mocks.workers[0]);
+    expect(JSON.parse(mocks.workers[0].sent[0]).files).toEqual(files);
+    client.ws.emit("close");
+    expect(activeRunCount()).toBe(0);
+  });
+
+  it.each([
+    ["path traversal", { "main.py": "pass", "../helper.py": "pass" }],
+    ["nested path", { "main.py": "pass", "package/helper.py": "pass" }],
+    ["wrong file type", { "main.py": "pass", "helper.txt": "pass" }],
+    ["missing main.py", { "helper.py": "pass" }],
+    ["non-string source", { "main.py": "pass", "helper.py": 42 }],
+    ["17 files", Object.fromEntries([["main.py", "pass"], ...Array.from({ length: 16 }, (_, index) => ["module" + index + ".py", "pass"])])],
+    ["combined UTF-8 source over 64 KiB", { "main.py": "é".repeat(32 * 1024), "helper.py": "x" }],
+  ])("rejects %s before opening a private worker or acquiring a run slot", async (_name, files) => {
+    const client = browser();
+    await handlePythonTerminalSession(client.ws, { files: files as unknown as Record<string, string> });
+    expect(mocks.workers).toHaveLength(0);
+    expect(activeRunCount()).toBe(0);
+    expect(client.send).toHaveBeenCalledWith(expect.stringContaining('"type":"error"'));
+    expect(client.close).toHaveBeenCalledOnce();
   });
 
   it("cancels a connecting worker and never sends source on a late open", async () => {

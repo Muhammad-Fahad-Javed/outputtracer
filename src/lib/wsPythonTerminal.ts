@@ -9,9 +9,9 @@ import type { TerminalInitPayload } from "./wsTerminal";
 /** Bridge public terminal traffic to the private, authenticated Docker worker. */
 export async function handlePythonTerminalSession(ws: WebSocket, payload: TerminalInitPayload): Promise<void> {
   const send = (message: Record<string, unknown>) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message)); };
-  const inspected = inspectSourceFiles(payload.files, { maxFiles: 1, maxSourceBytes: PYTHON_LIMITS.maxCodeBytes }, "python");
+  const inspected = inspectSourceFiles(payload.files, { maxFiles: 16, maxSourceBytes: PYTHON_LIMITS.maxCodeBytes }, "python");
   if (!inspected.ok || typeof payload.files["main.py"] !== "string") {
-    send({ type: "error", data: inspected.ok ? "Python requires a single main.py file." : inspected.message }); ws.close(); return;
+    send({ type: "error", data: inspected.ok ? "Python requires a main.py entry file." : inspected.message }); ws.close(); return;
   }
   const config = loadSandboxConfig();
   if (!config.enabled || !config.url || config.token.length < 32) {
@@ -54,7 +54,7 @@ export async function handlePythonTerminalSession(ws: WebSocket, payload: Termin
       if (worker.readyState === worker.OPEN) worker.terminate();
       finish(); return;
     }
-    worker.send(JSON.stringify({ code: payload.files["main.py"], clientId: payload.ownerKey, timeoutMs: payload.timeoutMs || execConfig.interactiveTimeoutMs, cpuTimeMs: payload.cpuTimeMs }));
+    worker.send(JSON.stringify({ files: payload.files, clientId: payload.ownerKey, timeoutMs: payload.timeoutMs || execConfig.interactiveTimeoutMs, cpuTimeMs: payload.cpuTimeMs }));
   });
   worker.on("message", (raw) => {
     if (finished) return;

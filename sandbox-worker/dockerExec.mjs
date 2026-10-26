@@ -3,6 +3,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
+import { normalizeInteractiveFiles } from "./pythonFiles.mjs";
 
 export const DEFAULT_CONFIG = Object.freeze({
   image: "outputtracer-python-sandbox:latest",
@@ -59,20 +60,47 @@ export function buildDockerArgs({ name, mode, cfg }) {
 // The trusted wrapper reads exactly one JSON line. The very same stdin stream
 // then belongs to the user's program, so input() waits for real input/EOF.
 export const INTERACTIVE_READY = "\x1eOTPY_READY\n";
-export const INTERACTIVE_BOOTSTRAP = `import sys, json, traceback
-source = json.loads(sys.stdin.readline())["code"]
+export const INTERACTIVE_BOOTSTRAP = `import sys, json, traceback, os, tempfile, re
+payload = json.loads(sys.stdin.readline())
+files = payload.get("files") if "files" in payload else {"main.py": payload.get("code")}
+# Validate inside the fresh container too. No project path is ever used on the host.
+if not isinstance(files, dict) or not 1 <= len(files) <= 16 or not isinstance(files.get("main.py"), str):
+    raise SystemExit(70)
+size = 0
+for name, source in files.items():
+    if not isinstance(name, str) or not 3 <= len(name) <= 64 or ".." in name or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*[.]py", name, re.IGNORECASE) or not isinstance(source, str):
+        raise SystemExit(70)
+    size += len(source.encode("utf-8"))
+if size > 65536:
+    raise SystemExit(70)
+workdir = tempfile.mkdtemp(prefix="otpy-", dir="/tmp")
 try:
-    program = compile(source, "main.py", "exec")
+    # Files exist only in this container's bounded tmpfs. Mark snapshots read-only;
+    # the authoritative shared editor is never mounted or modified by a run.
+    for name, source in files.items():
+        with open(os.path.join(workdir, name), "x", encoding="utf-8") as target:
+            target.write(source)
+        os.chmod(os.path.join(workdir, name), 0o444)
+    os.chdir(workdir)
+    sys.path.insert(0, workdir)
+    program = compile(files["main.py"], "main.py", "exec")
 except (SyntaxError, ValueError):
     traceback.print_exc()
     raise SystemExit(3)
 sys.stdout.write(${JSON.stringify(INTERACTIVE_READY)})
 sys.stdout.flush()
-exec(program, {"__name__": "__main__", "__file__": "main.py"})
+exec(program, {"__name__": "__main__", "__file__": os.path.join(workdir, "main.py")})
 `;
 
 /** Fresh isolated container with bounded streaming input/output and cleanup. */
-export function startInteractiveContainer({ code, cfg, emit, timeoutMs, cpuTimeMs, spawnFn = spawn }) {
+export function startInteractiveContainer({ code, files, cfg, emit, timeoutMs, cpuTimeMs, spawnFn = spawn }) {
+  let sourceFiles;
+  try { sourceFiles = normalizeInteractiveFiles(files !== undefined ? { files, ...(code !== undefined ? { code } : {}) } : { code }); }
+  catch {
+    emit({ type: "error", data: "Invalid Python source files or source too large." });
+    return { done: Promise.resolve(), stop() {}, input() {}, eof() {} };
+  }
+  const envelope = files !== undefined ? { files: sourceFiles } : { code: sourceFiles["main.py"] };
   const name = newContainerName();
   const terminalCpuSeconds = Number.isFinite(cpuTimeMs) ? Math.max(1, Math.min(5, Math.ceil(cpuTimeMs / 1000))) : 5;
   const args = buildDockerArgs({ name, mode: "terminal", cfg: {...cfg, terminalCpuSeconds} });
@@ -157,7 +185,7 @@ export function startInteractiveContainer({ code, cfg, emit, timeoutMs, cpuTimeM
     finish();
   });
   child.stdin.on("error", () => {});
-  child.stdin.write(JSON.stringify({ code }) + "\n");
+  child.stdin.write(JSON.stringify(envelope) + "\n");
   return {
     done, stop,
     input(text) {
