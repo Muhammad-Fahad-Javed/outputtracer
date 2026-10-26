@@ -1,6 +1,19 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useState, useSyncExternalStore } from "react";
+import ClothericWelcome from "@/components/ClothericWelcome";
+
+const PROMOTION_DISMISSED_KEY = "outputtracer:clotheric-welcome:v1";
+const subscribeToHydration = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
+
+function wasPromotionDismissed() {
+  if (typeof window === "undefined") return false;
+  try { return window.sessionStorage.getItem(PROMOTION_DISMISSED_KEY) === "1"; }
+  catch { return false; }
+}
 
 // The IDE shell is browser-only (Monaco, xterm, WebSocket terminal), so it is
 // loaded with SSR disabled. Keeping it in a small client component lets
@@ -19,5 +32,15 @@ const UnifiedShell = dynamic(() => import("@/components/UnifiedShell"), {
 });
 
 export default function HomeIdeShell() {
-  return <UnifiedShell />;
+  // Keep hydration deterministic without flashing an ad over a returning
+  // workspace. Do not mount the IDE or load its runtime before Continue.
+  const ready = useSyncExternalStore(subscribeToHydration, clientReady, serverReady);
+  const [dismissed, setDismissed] = useState(wasPromotionDismissed);
+  if (!ready) return <div role="status" className="flex h-dvh items-center justify-center bg-[#f5f2eb] text-sm text-[#635e52]">Opening OutputTracer…</div>;
+  if (dismissed) return <UnifiedShell />;
+  return <ClothericWelcome onContinue={() => {
+    try { window.sessionStorage.setItem(PROMOTION_DISMISSED_KEY, "1"); }
+    catch { /* Continue still works when browser storage is unavailable. */ }
+    setDismissed(true);
+  }}/>;
 }
