@@ -86,6 +86,7 @@ describe("language-aware saved project collaboration", () => {
   it.each(["cpp", "python", "asm8086"] as const)("seeds and broadcasts the canonical %s language", async (language) => {
     const ws = await open(language);
     expect(ws.sent.find((message) => message.type === "init")?.language).toBe(language);
+    expect(ws.sent.some(message => message.type === "awareness")).toBe(false);
     const project = await getHub().readFiles(projectId);
     expect(project.language).toBe(language);
     expect(Object.keys(project.files)).toEqual([language === "cpp" ? "main.cpp" : language === "python" ? "main.py" : "main.asm"]);

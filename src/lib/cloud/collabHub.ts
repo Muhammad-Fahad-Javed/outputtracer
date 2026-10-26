@@ -658,6 +658,9 @@ class CollabHub {
       evictTimer: null,
       saving: null,
     };
+    // The relay is not a person editing the document. Its default empty local
+    // awareness state otherwise appears as a phantom "Student" to clients.
+    room.awareness.setLocalState(null);
     this.attachRoomListeners(room);
     this.rooms.set(projectId, room);
     if (!snapshot?.state_b64) this.scheduleSave(room);
@@ -702,6 +705,7 @@ class CollabHub {
       evictTimer: null,
       saving: null,
     };
+    room.awareness.setLocalState(null);
     this.attachRoomListeners(room);
     this.rooms.set(resolved.docKey, room);
     if (seeded) this.scheduleSave(room);
