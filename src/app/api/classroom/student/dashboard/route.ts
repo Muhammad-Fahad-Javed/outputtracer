@@ -33,7 +33,7 @@ export async function GET() {
           name,
           subject,
           description,
-          teacher:profiles!classrooms_teacher_id_fkey(full_name, username, display_name)
+          teacher:profiles!classrooms_teacher_id_fkey(display_name)
         )
       `)
       .eq("user_id", user.id)
@@ -43,7 +43,7 @@ export async function GET() {
     const classroomIds = (memberRows || []).map((m: Record<string, unknown>) => String(m.classroom_id));
 
     const groupResult = await admin.from("classroom_group_members")
-      .select("group_id, classroom_groups!inner(classroom_id)").eq("user_id", user.id);
+      .select("group_id").eq("user_id", user.id);
     if (groupResult.error) throw groupResult.error;
     const groupIds = (groupResult.data || []).map(g => g.group_id);
     // IDs originate from verified membership rows, never request parameters.
@@ -176,7 +176,7 @@ export async function GET() {
         name: String(cl?.name || "Untitled Class"),
         subject: String(cl?.subject || "Computer Science"),
         description: String(cl?.description || ""),
-        teacherName: String(teacher?.full_name || teacher?.username || "Instructor"),
+        teacherName: String(teacher?.display_name || "Instructor"),
       };
     });
 
