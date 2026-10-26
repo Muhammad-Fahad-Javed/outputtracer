@@ -228,6 +228,8 @@ try {
   check(cleanSync.status === 200 && cleanSync.data.ok === true, 'Valid NASM snapshot sync preserves canonical source and assets');
   const reloaded = await join(owner, projects.asm8086, 'owner');
   check(assetAt(reloaded, 'SAMPLE.BIN') === binary && Object.keys(await sourceFiles(owner, projects.asm8086.id)).every(file => /\.(asm|inc)$/i.test(file)), 'Reopened NASM project restores binary inputs separately from source files');
+  const reopenedPage = await http(owner, `/p/${projects.asm8086.id}`, { json: false });
+  check(reopenedPage.status === 200 && reopenedPage.data.includes('title="All projects"') && reopenedPage.data.includes('SAMPLE.BIN'), 'Persisted NASM project renders its editor and input assets across the React server boundary');
   await rpc(owner, 'set_member_role', { pid: projects.asm8086.id, target: editor.id, target_role: 'viewer' });
   send(b, { type: 'asset-upload', name: 'DENIED.BIN', base64: 'AA==' });
   await until(() => b.closed, 'asset permission downgrade');

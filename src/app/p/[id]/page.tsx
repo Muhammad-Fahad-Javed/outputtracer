@@ -101,7 +101,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       const doc = new Y.Doc();
       try {
         applyEncoded(doc, document.state_b64);
-        initialAssets = readDosboxAssets(doc);
+        // Asset validation deliberately uses a null-prototype dictionary.
+        // React's Server Component boundary requires plain objects at every
+        // level, including when a persisted document contains no input files.
+        initialAssets = Object.fromEntries(Object.entries(readDosboxAssets(doc))
+          .map(([name, asset]) => [name, { base64: asset.base64 }]));
       } finally { doc.destroy(); }
     }
   }
