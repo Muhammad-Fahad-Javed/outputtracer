@@ -135,8 +135,10 @@ export default function AuthForm({
       } else if (data.session) {
         window.location.assign(continueHref(role, nextPath));
       } else {
+        // Supabase also returns success for an existing confirmed account to
+        // prevent account enumeration. This response is not proof of email delivery.
         setMessage(
-          "Check your email and click the confirmation link, then sign in here."
+          "If your email needs confirmation, check your inbox and spam folder for a link. Already registered? Sign in with your existing password, or use Continue with Google if you registered with Google."
         );
       }
     } else {
