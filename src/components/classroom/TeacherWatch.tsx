@@ -7,7 +7,7 @@ import { CLASSROOM_LANGUAGES, classroomLanguage } from "@/lib/classroom/language
 import { Eye, Play, RefreshCw, Search, Settings } from "lucide-react";
 
 const CollabEditor = dynamic(() => import("@/components/collab/CollabEditor"), { ssr: false });
-import { colorForUser } from "@/components/collab/useProjectCollab";
+import { contributionColors } from "@/lib/classroom/contributionColors";
 import { authorshipOfDoc, authorshipOfText, type AuthorshipReport } from "@/lib/classroom/authorship";
 import { useClassroomCollab } from "./useClassroomCollab";
 import TeacherConsole from "./TeacherConsole";
@@ -152,12 +152,15 @@ export default function TeacherWatch({
     }
   };
 
-  const contribution = useContribution(selected && panel === "contribution" && collab.status === "live" ? collab.doc : null, collab.activeFile);
-  const authorNames: Record<string, string> = {};
-  if (selected?.members) {
-    for (const member of selected.members) authorNames[member.userId] = member.displayName;
-  }
-  if (selected?.kind === "student") authorNames[selected.id] = selected.name;
+  const contribution = useContribution(
+    selected && panel !== "console" && collab.status === "live" ? collab.doc : null,
+    collab.activeFile,
+  );
+  const authorNames = useMemo(() => new Map(
+    selected?.kind === "student" ? [[selected.id, selected.name]]
+      : (selected?.members ?? []).map(member => [member.userId, member.displayName]),
+  ), [selected]);
+  const authorColors = useMemo(() => contributionColors([...authorNames.keys()], contribution.authorIds), [authorNames, contribution.authorIds]);
 
   const presence = collab.peers.length === 0
     ? "No other cursors in this document."
@@ -339,7 +342,7 @@ export default function TeacherWatch({
                   </div>
                 </div>
                 {panel === "contribution" && <div className="min-h-0 flex-1 overflow-auto p-3">
-                  {collab.status !== "live" ? <p className="text-xs text-[#aaa]">Connecting to load authorship data…</p> : <ContributionLegend file={contribution.file} document={contribution.document} filename={collab.activeFile} names={authorNames}/>}
+                  {collab.status !== "live" ? <p className="text-xs text-[#aaa]">Connecting to load authorship data…</p> : <ContributionLegend file={contribution.file} document={contribution.document} filename={collab.activeFile} names={authorNames} colors={authorColors}/>}
                 </div>}
                 {panel === "code" && <><div className="flex shrink-0 gap-1 overflow-x-auto border-b border-[#333] px-2 py-1">
                     {collab.fileNames.map((name) => (
@@ -368,6 +371,8 @@ export default function TeacherWatch({
                     onRunShortcut={() => { if (collab.status !== "live") return; setPanel("console"); setConsoleRunRequest(value => value + 1); }}
                     language={CLASSROOM_LANGUAGES[classroomLanguage(language)].monaco}
                     showAuthorship={collab.status === "live"}
+                    contributionColors={authorColors}
+                    contributionNames={authorNames}
                   />
                   </div>
                 </div></>}
@@ -406,11 +411,18 @@ function Toggle({
 }
 
 function createContributionStore(doc: Y.Doc | null, filename: string) {
+    let authorIds: string[] = [];
     const read = () => {
       const text = doc?.getMap("files").get(filename);
+      const document = doc ? authorshipOfDoc(doc) : null;
+      const currentIds = document?.shares.map(share => share.authorId).sort() ?? [];
+      if (currentIds.length !== authorIds.length || currentIds.some((id, index) => id !== authorIds[index])) {
+        authorIds = currentIds;
+      }
       return {
-        document: doc ? authorshipOfDoc(doc) : null,
+        document,
         file: text instanceof Y.Text ? authorshipOfText(text) : null,
+        authorIds,
       };
     };
     let snapshot = read();
@@ -418,11 +430,16 @@ function createContributionStore(doc: Y.Doc | null, filename: string) {
       getSnapshot: () => snapshot,
       subscribe: (notify: () => void) => {
         if (!doc) return () => {};
-        const update = () => { snapshot = read(); notify(); };
+        let frame: number | null = null;
+        const refresh = () => { frame = null; snapshot = read(); notify(); };
+        const update = () => { if (frame === null) frame = requestAnimationFrame(refresh); };
         const files = doc.getMap("files");
         files.observeDeep(update);
-        update();
-        return () => files.unobserveDeep(update);
+        refresh();
+        return () => {
+          if (frame !== null) cancelAnimationFrame(frame);
+          files.unobserveDeep(update);
+        };
       },
     };
 }
@@ -431,6 +448,7 @@ function createContributionStore(doc: Y.Doc | null, filename: string) {
 function useContribution(doc: Y.Doc | null, filename: string): {
   document: AuthorshipReport | null;
   file: AuthorshipReport | null;
+  authorIds: readonly string[];
 } {
   const store = useMemo(() => createContributionStore(doc, filename), [doc, filename]);
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
@@ -441,11 +459,13 @@ function ContributionLegend({
   document,
   filename,
   names,
+  colors,
 }: {
   file: AuthorshipReport | null;
   document: AuthorshipReport | null;
   filename: string;
-  names: Record<string, string>;
+  names: ReadonlyMap<string, string>;
+  colors: ReadonlyMap<string, string>;
 }) {
   const report = file || document;
   if (!report) return null;
@@ -455,7 +475,7 @@ function ContributionLegend({
         <p className="text-xs font-semibold text-[#ddd]">Who wrote {filename}</p>
         {document && document.shares.length > 0 && (
           <p className="text-xs text-[#aaa]">
-            Whole document: {document.shares.map((share) => `${names[share.authorId] || "Student"} ${share.percent}%`).join(" · ")}
+            Whole document: {document.shares.map((share) => `${names.get(share.authorId) || "Former or unknown contributor"} ${share.percent}%`).join(" · ")}
           </p>
         )}
       </div>
@@ -468,15 +488,15 @@ function ContributionLegend({
             <li key={share.authorId}>
               <div className="mb-1 flex items-center justify-between text-xs text-[#ddd]">
                 <span className="inline-flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorForUser(share.authorId) }} />
-                  {names[share.authorId] || "Student"}
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colors.get(share.authorId) }} />
+                  {names.get(share.authorId) || "Former or unknown contributor"}
                 </span>
                 <span className="font-semibold tabular-nums">{share.characters} characters · {share.percent}%</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-[#E4E4E7]">
                 <div
                   className="h-full rounded-full"
-                  style={{ width: `${share.percent}%`, backgroundColor: colorForUser(share.authorId) }}
+                  style={{ width: `${share.percent}%`, backgroundColor: colors.get(share.authorId) }}
                 />
               </div>
             </li>

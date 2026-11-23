@@ -26,6 +26,8 @@ interface CollabEditorProps {
   onEditor?: (editor: Parameters<OnMount>[0]) => void;
   /** Color the characters each student typed. Used on the teacher watch view. */
   showAuthorship?: boolean;
+  contributionColors?: ReadonlyMap<string, string>;
+  contributionNames?: ReadonlyMap<string, string>;
   language?: "cpp" | "python" | "asm";
   inputPolicy?: "typing_only" | "paste_allowed";
   pasteBlockedMessage?: string;
@@ -41,6 +43,8 @@ export default function CollabEditor({
   onRunShortcut,
   onEditor,
   showAuthorship = false,
+  contributionColors,
+  contributionNames,
   language = "cpp",
   inputPolicy = "paste_allowed",
   pasteBlockedMessage = "Typing-only assignment: paste is disabled by your teacher.",
@@ -146,12 +150,13 @@ export default function CollabEditor({
         spans.map((span) => {
           const start = currentModel.getPositionAt(Math.min(span.start, currentModel.getValueLength()));
           const end = currentModel.getPositionAt(Math.min(span.end, currentModel.getValueLength()));
-          const color = colorForUser(span.authorId);
+          const color = contributionColors?.get(span.authorId) ?? (contributionColors ? "#ABB2BF" : colorForUser(span.authorId));
           colors.set(span.authorId, color);
           return {
             range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
             options: {
               inlineClassName: `ot-author-${safeClass(span.authorId)}`,
+              hoverMessage: { value: contributionNames?.get(span.authorId) || "Former or unknown contributor" },
               overviewRuler: { color, position: monaco.editor.OverviewRulerLane.Left },
             },
           };
@@ -159,7 +164,7 @@ export default function CollabEditor({
       );
       setAuthorCss(
         [...colors.entries()]
-          .map(([authorId, color]) => `.ot-author-${safeClass(authorId)}{background-color:${color}2e;box-shadow:inset 0 -2px 0 ${color}}`)
+          .map(([authorId, color]) => `.ot-author-${safeClass(authorId)}{background-color:color-mix(in srgb,${color} 18%,transparent);box-shadow:inset 0 -2px 0 ${color}}`)
           .join("\n")
       );
     };
@@ -170,7 +175,7 @@ export default function CollabEditor({
       files.unobserveDeep(paint);
       decorations.clear();
     };
-  }, [doc, filename, mounted, showAuthorship]);
+  }, [doc, filename, mounted, showAuthorship, contributionColors, contributionNames]);
 
   const cursorCss = peers
     .map((peer) => {
