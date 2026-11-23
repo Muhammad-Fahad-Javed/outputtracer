@@ -23,7 +23,7 @@ export async function POST(
     return NextResponse.json({ success: false, error: access.error || "Access denied" }, { status: 403 });
   }
 
-  let body: { groupId?: string; studentId?: string; previewStudent?: boolean } = {};
+  let body: { groupId?: string; studentId?: string; previewStudent?: boolean; includePreview?: boolean } = {};
   try {
     const parsed = await request.json();
     if (parsed && typeof parsed === "object") body = parsed;
@@ -59,7 +59,7 @@ export async function POST(
 
   const admin = createAdminClient();
   const [files, name] = await Promise.all([
-    loadCanonicalClassroomFiles(resolved.doc),
+    body.includePreview === false ? Promise.resolve(undefined) : loadCanonicalClassroomFiles(resolved.doc),
     admin
       ? admin.from("profiles").select("display_name").eq("id", actor.actorId).maybeSingle().then(({ data }) => data?.display_name)
       : listClassroomRoster(user.id, classId).then(roster => roster.members?.find(member => member.userId === actor.actorId)?.displayName),

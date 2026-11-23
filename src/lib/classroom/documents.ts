@@ -180,7 +180,7 @@ export async function resolveClassroomDocument(input: {
       if (admin) {
         const scope = assignment.groupScope === "assignment" ? input.assignmentId : null;
         const { data, error } = await admin.from("classroom_group_members")
-          .select("group_id,classroom_groups!inner(classroom_id,assignment_id)")
+          .select("group_id,classroom_groups!classroom_group_members_group_id_fkey!inner(classroom_id,assignment_id)")
           .eq("user_id", input.actorId)
           .eq("classroom_groups.classroom_id", input.classroomId)
           .filter("classroom_groups.assignment_id", scope ? "eq" : "is", scope ?? "null")

@@ -6,6 +6,7 @@ import {
   Awareness,
   applyAwarenessUpdate,
   encodeAwarenessUpdate,
+  removeAwarenessStates,
 } from "y-protocols/awareness";
 import { colorForUser, type CollabPeer } from "@/components/collab/useProjectCollab";
 import { base64ToBytes, bytesToBase64 } from "@/lib/cloud/base64";
@@ -309,6 +310,7 @@ export function useClassroomCollab(opts: {
               groupId: opts.groupId,
               studentId: opts.studentId,
               previewStudent: opts.previewStudent === true,
+              includePreview: !synchronized,
             }),
           }
         );
@@ -483,6 +485,8 @@ export function useClassroomCollab(opts: {
         if (stopped || socketRef.current !== current) return;
         clearTimeout(handshakeTimer);
         socket = null;
+        const peers = [...awareness.getStates().keys()].filter(id => id !== doc.clientID);
+        removeAwarenessStates(awareness, peers, "remote");
         if (event.code === 1008) {
           roleRef.current = "viewer";
           setRole("viewer");
