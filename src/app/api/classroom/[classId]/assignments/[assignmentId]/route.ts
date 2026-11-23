@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { classroomRequestUser, isLocalPreviewActor } from "@/lib/classroom/requestUser";
 import { getAssignment, updateAssignmentPolicy } from "@/lib/classroom/classroomService";
+import { recordAdminAudit } from "@/lib/classroom/adminService";
 
 export async function GET(
   _request: Request,
@@ -38,6 +39,10 @@ export async function PATCH(
 
   const { classId, assignmentId } = await params;
   let body: {
+    title?: string;
+    description?: string;
+    dueDate?: string | null;
+    isPublished?: boolean;
     locked?: boolean;
     allowLate?: boolean;
     allowRun?: boolean;
@@ -57,5 +62,6 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: result.error }, { status });
   }
 
+  if (result.isAdmin) await recordAdminAudit(user.id, "admin_assignment_updated", "classroom_assignment", assignmentId, { classroomId: classId });
   return NextResponse.json({ success: true, assignment: result.assignment });
 }

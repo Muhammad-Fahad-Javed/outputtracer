@@ -4,7 +4,7 @@ import { randomInt } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAuthConfigured } from "@/lib/supabase/env";
 import { inspectSourceFiles } from "@/lib/sourceFiles";
-import { checkIsAdmin } from "@/lib/learn/db";
+import { checkIsAdmin, isServerConfiguredAdmin } from "@/lib/learn/db";
 import {
   checkIsVerifiedTeacher,
   checkCanManageClassroom,
@@ -333,6 +333,37 @@ export async function createClassroom(
   ]);
 
   return { success: true, classroom: newClass };
+}
+
+export async function updateClassroomDetails(
+  actorId: string,
+  classroomId: string,
+  input: { name: string; subject: string; description: string },
+): Promise<{ success: boolean; classroom?: Classroom; isAdmin?: boolean; error?: string }> {
+  const access = await getClassroom(actorId, classroomId);
+  if (!access.success || !access.isTeacher) return { success: false, error: "Classroom manager access required." };
+  if (!input || typeof input.name !== "string" || typeof input.subject !== "string" || typeof input.description !== "string") {
+    return { success: false, error: "Enter a name, subject, and description." };
+  }
+  const name = input.name.trim();
+  const subject = input.subject.trim();
+  const description = input.description.trim();
+  if (!name || name.length > 100 || !subject || subject.length > 100 || description.length > 4000) {
+    return { success: false, error: "Name and subject must be 1–100 characters, with up to 4,000 characters for the description." };
+  }
+  const admin = createAdminClient();
+  const updatedAt = new Date().toISOString();
+  if (admin) {
+    const { data, error } = await admin.from("classrooms")
+      .update({ name, subject, description, updated_at: updatedAt }).eq("id", classroomId).select("*").single();
+    return error || !data ? { success: false, error: "Could not save classroom details." }
+      : { success: true, classroom: normalizeClassroom(data), isAdmin: access.isAdmin };
+  }
+  const stored = memoryClassrooms.get(classroomId);
+  if (isAuthConfigured() || !stored) return { success: false, error: "Classroom database unavailable." };
+  const classroom = { ...stored, name, subject, description, updatedAt };
+  memoryClassrooms.set(classroomId, classroom);
+  return { success: true, classroom, isAdmin: access.isAdmin };
 }
 
 /**
@@ -750,12 +781,11 @@ export async function createClassroomGroup(
     return { success: false, error: access.error };
   }
 
-  const canManage = await checkCanManageClassroom(actorUserId, access.classroom.teacherId);
-  if (!canManage) {
+  if (!access.isTeacher) {
     return { success: false, error: "Unauthorized. Teacher privileges required." };
   }
 
-  const name = (groupName || "").trim();
+  const name = typeof groupName === "string" ? groupName.trim() : "";
   if (name.length < 1 || name.length > 80) {
     return { success: false, error: "Group name must be between 1 and 80 characters" };
   }
@@ -765,15 +795,22 @@ export async function createClassroomGroup(
   const admin = createAdminClient();
   if (admin) {
     try {
-      const { data, error } = await admin
-        .from("classroom_groups")
-        .insert({
-          classroom_id: classroomId,
-          name,
-          created_at: now,
-        })
-        .select()
-        .single();
+      const { data, error } = access.isAdmin
+        ? await admin.rpc("create_classroom_group_as_admin", {
+          actor: actorUserId,
+          cid: classroomId,
+          group_name: name,
+          verified_server_admin: isServerConfiguredAdmin(actorUserId),
+        }).single()
+        : await admin
+          .from("classroom_groups")
+          .insert({
+            classroom_id: classroomId,
+            name,
+            created_at: now,
+          })
+          .select()
+          .single();
 
       if (!error && data) {
         return {
@@ -789,10 +826,11 @@ export async function createClassroomGroup(
         };
       }
     } catch {
-      // Memory fallback below
+      // Configured installations fail closed below.
     }
   }
 
+  if (isAuthConfigured()) return { success: false, error: "Could not save the classroom group." };
   const groups = memoryGroups.get(classroomId) || [];
   const newGroup: ClassroomGroup = {
     id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1255,6 +1293,10 @@ export async function updateAssignmentPolicy(
   classroomId: string,
   assignmentId: string,
   patch: {
+    title?: string;
+    description?: string;
+    dueDate?: string | null;
+    isPublished?: boolean;
     locked?: boolean;
     allowLate?: boolean;
     allowRun?: boolean;
@@ -1262,7 +1304,7 @@ export async function updateAssignmentPolicy(
     timeLimitMs?: number;
     inputPolicy?: "typing_only" | "paste_allowed";
   }
-): Promise<{ success: boolean; assignment?: ClassroomAssignment; error?: string }> {
+): Promise<{ success: boolean; assignment?: ClassroomAssignment; isAdmin?: boolean; error?: string }> {
   const access = await getClassroom(actorUserId, classroomId);
   if (!access.success || !access.classroom) {
     return { success: false, error: access.error || "Classroom not found" };
@@ -1275,6 +1317,20 @@ export async function updateAssignmentPolicy(
   const current = await getAssignment(actorUserId, classroomId, assignmentId);
   if (!current.success || !current.assignment) {
     return { success: false, error: current.error || "Assignment not found" };
+  }
+
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return { success: false, error: "Invalid assignment changes." };
+  if (patch.title !== undefined && (typeof patch.title !== "string" || !patch.title.trim() || patch.title.trim().length > 160)) {
+    return { success: false, error: "Assignment title must be 1–160 characters." };
+  }
+  if (patch.description !== undefined && (typeof patch.description !== "string" || patch.description.length > 20000)) {
+    return { success: false, error: "Instructions must have at most 20,000 characters." };
+  }
+  if (patch.dueDate !== undefined && patch.dueDate !== null && (typeof patch.dueDate !== "string" || !Number.isFinite(Date.parse(patch.dueDate)))) {
+    return { success: false, error: "Choose a valid due date." };
+  }
+  if (patch.isPublished !== undefined && typeof patch.isPublished !== "boolean") {
+    return { success: false, error: "Choose whether to publish this assignment." };
   }
 
   if (patch.locked !== undefined && typeof patch.locked !== "boolean") {
@@ -1316,6 +1372,10 @@ export async function updateAssignmentPolicy(
       const { data, error } = await admin
         .from("classroom_assignments")
         .update({
+          ...(patch.title !== undefined && { title: patch.title.trim() }),
+          ...(patch.description !== undefined && { description: patch.description }),
+          ...(patch.dueDate !== undefined && { due_date: patch.dueDate }),
+          ...(patch.isPublished !== undefined && { is_published: patch.isPublished }),
           input_policy: next.inputPolicy,
           locked: next.locked,
           allow_late: next.allowLate,
@@ -1328,7 +1388,7 @@ export async function updateAssignmentPolicy(
         .eq("classroom_id", classroomId)
         .select("*")
         .single();
-      if (!error && data) return { success: true, assignment: toAssignment(data, true) };
+      if (!error && data) return { success: true, assignment: toAssignment(data, true), isAdmin: current.isAdmin };
       if (error && isAuthConfigured()) return { success: false, error: error.message };
     } catch {
       if (isAuthConfigured()) return { success: false, error: "Could not update assignment policy." };
@@ -1344,7 +1404,11 @@ export async function updateAssignmentPolicy(
   stored.allowTrace = next.allowTrace;
   stored.timeLimitMs = next.timeLimitMs;
   stored.updatedAt = updatedAt;
-  return { success: true, assignment: toAssignment(stored, true) };
+  if (patch.title !== undefined) stored.title = patch.title.trim();
+  if (patch.description !== undefined) stored.description = patch.description;
+  if (patch.dueDate !== undefined) stored.dueDate = patch.dueDate ?? undefined;
+  if (patch.isPublished !== undefined) stored.isPublished = patch.isPublished;
+  return { success: true, assignment: toAssignment(stored, true), isAdmin: current.isAdmin };
 }
 
 /**
@@ -1446,27 +1510,80 @@ export async function assignmentBelongsToClassroom(
   return !catalog;
 }
 
-export async function createAssignmentTeam(actor:string,classId:string,assignmentId:string,input:{name:string;studentIds?:string[];emails?:string[];groupId?:string}) {
- const access=await getAssignment(actor,classId,assignmentId);
- if(!access.success || !access.assignment) return {success:false,error:access.error||"Assignment unavailable."};
- const cls=await getClassroom(actor,classId);
- if(!cls.isTeacher) return {success:false,error:"Teacher privileges required."};
- const a=access.assignment;
- if(!a.groupMode || a.groupScope!=="assignment") return {success:false,error:"This assignment uses legacy classroom groups."};
- const roster=await listClassroomRoster(actor,classId); if(!roster.success) return {success:false,error:roster.error};
- const enrolled=(roster.members||[]).filter(s=>s.role==='student');
- if(input.studentIds && input.emails) return {success:false,error:"Use roster selection or email entry, not both."};
- const ids=input.emails ? input.emails.map(email=>enrolled.find(s=>s.email?.toLowerCase()===email.trim().toLowerCase())?.userId||'') : input.studentIds||[];
- if(ids.length!==a.requiredGroupSize || new Set(ids).size!==ids.length || ids.some(id=>!enrolled.some(s=>s.userId===id))) return {success:false,error:`Select exactly ${a.requiredGroupSize} distinct enrolled students. Invite and enroll unknown email addresses first.`};
- const name=(input.name||'').trim();if(!name || name.length>80) return {success:false,error:"Team name must be 1–80 characters."};
- const admin=createAdminClient();
- if(admin){const {data,error}=await admin.rpc('create_assignment_team',{actor,aid:assignmentId,team_name:name,student_ids:ids,existing_group:input.groupId||null});return error?{success:false,error:error.message}:{success:true,groupId:data};}
- if(isAuthConfigured())return {success:false,error:"Team database unavailable."};
- const groups=memoryGroups.get(classId)||[];
- if(groups.some(g=>g.id!==input.groupId && g.assignmentId===assignmentId && ids.some(id=>memoryGroupMembers.get(g.id)?.has(id))))return {success:false,error:"A student is already assigned to a team for this assignment."};
- const existing=input.groupId?groups.find(g=>g.id===input.groupId&&g.assignmentId===assignmentId):undefined;
- if(input.groupId&&!existing)return {success:false,error:"Team does not belong to this assignment."};
- if(existing){if(memoryTeamFrozen(existing.id))return {success:false,error:"Team membership is frozen after the first submission."};}
- const group:ClassroomGroup=existing?{...existing,name}:{id:`team-${Date.now()}-${Math.random()}`,classroomId:classId,assignmentId,name,createdAt:new Date().toISOString()};
- if(existing)groups[groups.indexOf(existing)]=group;else groups.push(group);memoryGroups.set(classId,groups);memoryGroupMembers.set(group.id,new Set(ids));return {success:true,groupId:group.id};
+export async function createAssignmentTeam(
+  actor: string,
+  classId: string,
+  assignmentId: string,
+  input: { name: string; studentIds?: string[]; emails?: string[]; groupId?: string },
+): Promise<{ success: boolean; groupId?: string; error?: string }> {
+  const access = await getAssignment(actor, classId, assignmentId);
+  if (!access.success || !access.assignment) {
+    return { success: false, error: access.error || "Assignment unavailable." };
+  }
+  if (!access.isTeacher) return { success: false, error: "Teacher privileges required." };
+  const a = access.assignment;
+  if (!a.groupMode || a.groupScope !== "assignment") {
+    return { success: false, error: "This assignment uses legacy classroom groups." };
+  }
+  const roster = await listClassroomRoster(actor, classId);
+  if (!roster.success) return { success: false, error: roster.error };
+  const enrolled = (roster.members || []).filter((student) => student.role === "student");
+  if (input.studentIds && input.emails) {
+    return { success: false, error: "Use roster selection or email entry, not both." };
+  }
+  const ids = input.emails
+    ? input.emails.map((email) =>
+      typeof email === "string"
+        ? enrolled.find((student) => student.email?.toLowerCase() === email.trim().toLowerCase())?.userId || ""
+        : "")
+    : input.studentIds || [];
+  const maximum = a.requiredGroupSize ?? 2;
+  const allowedSize = maximum === 2 ? "2" : `2 to ${maximum}`;
+  if (ids.length < 2 || ids.length > maximum || new Set(ids).size !== ids.length ||
+      ids.some((id) => !enrolled.some((student) => student.userId === id))) {
+    return {
+      success: false,
+      error: `Select ${allowedSize} distinct enrolled students. Invite and enroll unknown email addresses first.`,
+    };
+  }
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  if (!name || name.length > 80) return { success: false, error: "Team name must be 1–80 characters." };
+  const admin = createAdminClient();
+  if (admin) {
+    const { data, error } = await admin.rpc("create_assignment_team", {
+      actor,
+      aid: assignmentId,
+      team_name: name,
+      student_ids: ids,
+      existing_group: input.groupId || null,
+      ...(isServerConfiguredAdmin(actor) ? { verified_server_admin: true } : {}),
+    });
+    return error ? { success: false, error: error.message } : { success: true, groupId: data };
+  }
+  if (isAuthConfigured()) return { success: false, error: "Team database unavailable." };
+
+  const groups = memoryGroups.get(classId) || [];
+  if (groups.some((group) => group.id !== input.groupId && group.assignmentId === assignmentId &&
+      ids.some((id) => memoryGroupMembers.get(group.id)?.has(id)))) {
+    return { success: false, error: "A student is already assigned to a team for this assignment." };
+  }
+  const existing = input.groupId
+    ? groups.find((group) => group.id === input.groupId && group.assignmentId === assignmentId)
+    : undefined;
+  if (input.groupId && !existing) return { success: false, error: "Team does not belong to this assignment." };
+  if (existing && memoryTeamFrozen(existing.id)) {
+    return { success: false, error: "Team membership is frozen after the first submission." };
+  }
+  const group: ClassroomGroup = existing ? { ...existing, name } : {
+    id: `team-${Date.now()}-${Math.random()}`,
+    classroomId: classId,
+    assignmentId,
+    name,
+    createdAt: new Date().toISOString(),
+  };
+  if (existing) groups[groups.indexOf(existing)] = group;
+  else groups.push(group);
+  memoryGroups.set(classId, groups);
+  memoryGroupMembers.set(group.id, new Set(ids));
+  return { success: true, groupId: group.id };
 }

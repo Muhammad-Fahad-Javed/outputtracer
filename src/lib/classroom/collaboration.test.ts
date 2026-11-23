@@ -10,6 +10,7 @@ import { classroomExecutionRequest, clampTimeLimitMs } from "./assignmentPolicy"
 import { actorForClassroomRequest } from "./classroomActor";
 import { executeResolvedClassroom } from "./classroomRun";
 import { signClassroomCollabToken } from "./collabToken";
+import { classroomDraftPrefix, restoreLocalEdits, saveLocalEdit } from "./localEditJournal";
 import {
   classroomDocumentKey,
   chooseCanonicalFiles,
@@ -722,10 +723,59 @@ describe("classroom collaboration", () => {
       second.emit("message", JSON.stringify({ type: "update", editId: 2, update: offlineEdit }));
       await vi.waitFor(() => expect(second!.sent.map(raw => JSON.parse(raw)).filter(event => event.type === "edit-accepted").map(event => event.editId)).toEqual([1, 2]));
       expect(getHub().peekClassroomFiles(docKey)?.["main.cpp"]).toBe("// offline edit\n// first edit\nint main() {}");
+      await waitForType(second, "edit-durable");
+      expect(second.sent.map(raw => JSON.parse(raw)).find(event => event.type === "edit-durable")?.editId).toBe(2);
+      expect((await readClassroomDocument(docKey))?.files["main.cpp"]).toBe("// offline edit\n// first edit\nint main() {}");
     } finally {
       first.emit("close");
       second?.emit("close");
       local.destroy();
+    }
+  });
+
+  it("recovers the original CRDT edits after reopening and scopes them to the signed-in student and document", async () => {
+    const data = new Map<string, string>();
+    const storage: Storage = {
+      get length() { return data.size; },
+      key: index => [...data.keys()][index] ?? null,
+      setItem: (key, value) => { data.set(key, value); },
+      getItem: key => data.get(key) ?? null,
+      removeItem: key => { data.delete(key); },
+      clear: () => data.clear(),
+    };
+    const { classroom } = await createClassroom(teacherA, { name: "Recovery lab" });
+    const classId = classroom!.id;
+    await joinClassroomByCode(student1, classroom!.joinCode);
+    const { assignment } = await createAssignment(teacherA, classId, { title: "Offline recovery", isPublished: true, starterCode: { "main.cpp": "int main() {}" } });
+    const params = Promise.resolve({ classId, assignmentId: assignment!.id });
+    const open = () => openSession(new Request("http://localhost/session", { method: "POST", body: JSON.stringify({ editableBootstrap: true }) }), { params });
+    const first = new Y.Doc();
+    const reopened = new Y.Doc();
+    try {
+      auth.userId = student1;
+      const bootstrap = await (await open()).json();
+      expect(bootstrap.role).toBe("editor");
+      expect(bootstrap.initialState).toBeTruthy();
+      Y.applyUpdate(first, base64ToBytes(bootstrap.initialState));
+      const prefix = classroomDraftPrefix(student1, bootstrap.docKey);
+      const stop = (update: Uint8Array) => saveLocalEdit(storage, prefix, update);
+      first.on("update", stop);
+      const text = first.getMap("files").get("main.cpp") as Y.Text;
+      text.insert(0, "// first\n", { author: student1 });
+      text.insert(0, "// second\n", { author: student1 });
+      first.off("update", stop);
+      first.destroy();
+
+      expect(restoreLocalEdits(storage, classroomDraftPrefix(student2, bootstrap.docKey))).toEqual([]);
+      expect(restoreLocalEdits(storage, classroomDraftPrefix(student1, "other-document"))).toEqual([]);
+      const later = await (await open()).json();
+      Y.applyUpdate(reopened, base64ToBytes(later.initialState));
+      for (const edit of restoreLocalEdits(storage, prefix)) Y.applyUpdate(reopened, edit.update);
+      expect((reopened.getMap("files").get("main.cpp") as Y.Text).toString()).toBe("// second\n// first\nint main() {}");
+    } finally {
+      auth.userId = "";
+      first.destroy();
+      reopened.destroy();
     }
   });
 });

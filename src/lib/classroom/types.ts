@@ -159,6 +159,7 @@ export interface ClassroomAssignment {
   maxPoints: number;
   groupMode: boolean;
   groupScope?: "legacy_class" | "assignment";
+  /** Maximum students per team. Assignment teams have a minimum of two. */
   requiredGroupSize?: number;
   inputPolicy?: "typing_only" | "paste_allowed";
   isPublished: boolean;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   GraduationCap,
   CheckCircle2,
@@ -17,6 +18,7 @@ import {
   UserPlus,
   Trash2,
   RefreshCw,
+  ArrowRight,
 } from "lucide-react";
 import { TeacherApplication, DecisionReasonCode, TeacherApplicationStatus } from "@/lib/classroom/types";
 import { AdminInvitation } from "@/lib/classroom/adminRoleService";
@@ -228,7 +230,7 @@ export default function AdminTeacherManager() {
   return (
     <div className="space-y-6">
       {/* Top Mode Tabs */}
-      <div className="flex gap-2 border-b border-[#EAEAEA] pb-2">
+      <div className="flex flex-wrap gap-2 border-b border-[#EAEAEA] pb-2">
         <button
           onClick={() => setActiveTab("teachers")}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
@@ -250,6 +252,10 @@ export default function AdminTeacherManager() {
         >
           <Shield size={14} /> Platform Administrators ({adminInvitations.length})
         </button>
+
+        <Link href="/admin/teacher-dashboards" className="inline-flex items-center gap-1.5 rounded-md border border-[#DCDCDC] px-3 py-1.5 text-xs font-semibold text-black hover:bg-[#F2F2F2] sm:ml-auto">
+          Teacher dashboards <ArrowRight size={14} />
+        </Link>
       </div>
 
       {feedback && (
@@ -353,7 +359,16 @@ export default function AdminTeacherManager() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex sm:flex-col gap-2 shrink-0">
+                      <div className="flex flex-wrap sm:flex-col gap-2 shrink-0">
+                        {(app.status === "approved" || app.status === "suspended") && (
+                          <Link
+                            href={`/admin/teacher-dashboards/${app.userId}`}
+                            prefetch={false}
+                            className="inline-flex items-center justify-center gap-1 rounded-[4px] border border-[#DCDCDC] px-3 py-1.5 text-xs font-semibold text-black hover:bg-[#F2F2F2]"
+                          >
+                            Open dashboard <ArrowRight size={12} />
+                          </Link>
+                        )}
                         {app.status !== "approved" && (
                           <button
                             onClick={() => handleOpenDecision(app, "approve")}

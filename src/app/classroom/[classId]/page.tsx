@@ -33,6 +33,7 @@ export default function ClassroomDetailPage({
 
   const [classroom, setClassroom] = useState<Classroom | null>(null);
   const [isTeacher, setIsTeacher] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [assignments, setAssignments] = useState<ClassroomAssignment[]>([]);
   const [members, setMembers] = useState<ClassroomMember[]>([]);
   const [announcements, setAnnouncements] = useState<ClassroomAnnouncement[]>([]);
@@ -62,6 +63,7 @@ export default function ClassroomDetailPage({
         }
         setClassroom(classData.classroom);
         setIsTeacher(Boolean(classData.isTeacher));
+        setIsAdmin(Boolean(classData.isAdmin));
         if (asgData.success) setAssignments(asgData.assignments || []);
         if (rosterData.success) setMembers(rosterData.members || []);
         if (annData.success) setAnnouncements(annData.announcements || []);
@@ -118,10 +120,10 @@ export default function ClassroomDetailPage({
       <main className="flex-1 py-10 px-4 sm:px-6">
         <div className="mx-auto max-w-5xl">
           <Link
-            href="/classroom"
+            href={isAdmin && classroom ? `/admin/teacher-dashboards/${classroom.teacherId}` : "/classroom"}
             className="inline-flex items-center gap-1.5 text-xs text-[#666666] hover:text-black mb-6"
           >
-            <ArrowLeft size={13} /> Back to Classrooms
+            <ArrowLeft size={13} /> {isAdmin && classroom ? "Back to teacher dashboard" : "Back to Classrooms"}
           </Link>
 
           {loading ? (
@@ -151,7 +153,7 @@ export default function ClassroomDetailPage({
                       </span>
                       {isTeacher && (
                         <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-800 flex items-center gap-1">
-                          <ShieldCheck size={11} /> Instructor
+                          <ShieldCheck size={11} /> {isAdmin ? "Administrator view" : "Instructor"}
                         </span>
                       )}
                     </div>

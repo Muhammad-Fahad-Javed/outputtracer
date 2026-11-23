@@ -79,6 +79,7 @@ interface ClientState {
   token?: string;
   displayName?: string;
   instructorView?: boolean;
+  acceptedEditId?: number;
 }
 
 interface Room {
@@ -159,6 +160,12 @@ class CollabHub {
   peekClassroomAssets(docKey: string): DosboxAssets | null {
     const room = this.rooms.get(docKey);
     return room?.kind === "classroom" ? readDosboxAssets(room.doc) : null;
+  }
+
+  /** Authorized HTTP bootstrap permits editing even before the socket connects. */
+  async prepareClassroomEdit(resolved: ResolvedClassroomDocument): Promise<string> {
+    const room = await this.classroomRoom(resolved);
+    return encodeDoc(room.doc);
   }
 
   classroomPresence(docKey: string, includeInstructors = true): { userId: string; name: string; file: string | null }[] {
@@ -373,8 +380,11 @@ class CollabHub {
         }
       }
       Y.applyUpdate(room.doc, bytes, ws);
-      if (room.kind === "classroom" && Number.isSafeInteger(message.editId)) {
+      if (room.kind === "classroom" && typeof message.editId === "number" && Number.isSafeInteger(message.editId)) {
+        state.acceptedEditId = message.editId;
         send(ws, { type: "edit-accepted", editId: message.editId });
+        // Idempotent replays can produce no document change event.
+        this.scheduleSave(room);
       }
       return;
     }
@@ -742,9 +752,22 @@ class CollabHub {
       saving: null,
     };
     room.awareness.setLocalState(null);
+    // A browser can journal edits against this structure before its first
+    // WebSocket join, so the structural IDs must survive a server restart.
+    try {
+      if (seeded) await this.write(room);
+    } catch (error) {
+      doc.destroy();
+      throw error;
+    }
     this.attachRoomListeners(room);
     this.rooms.set(resolved.docKey, room);
-    if (seeded) this.scheduleSave(room);
+    room.evictTimer = setTimeout(() => {
+      if (room.clients.size !== 0 || room.saveTimer) return;
+      this.rooms.delete(room.projectId);
+      room.doc.destroy();
+    }, IDLE_EVICT_MS);
+    room.evictTimer.unref?.();
     return room;
   }
 
@@ -779,6 +802,7 @@ class CollabHub {
   }
 
   private scheduleSave(room: Room) {
+    if (room.kind === "classroom" && room.saveTimer) return;
     if (room.saveTimer) clearTimeout(room.saveTimer);
     room.saveTimer = setTimeout(() => {
       room.saveTimer = null;
@@ -804,6 +828,7 @@ class CollabHub {
   private async write(room: Room) {
     if (room.kind === "classroom" && room.classroom) {
       const { writeClassroomDocument } = await import("@/lib/classroom/documents");
+      const acknowledgements = [...room.clients].map(([socket, state]) => ({ socket, editId: state.acceptedEditId }));
       await writeClassroomDocument({
         docKey: room.projectId,
         classroomId: room.classroom.classId,
@@ -814,6 +839,9 @@ class CollabHub {
         files: readFiles(room.doc),
         updatedAt: new Date().toISOString(),
       });
+      for (const { socket, editId } of acknowledgements) {
+        if (editId !== undefined) send(socket, { type: "edit-durable", editId });
+      }
       this.broadcast(room, { type: "saved" });
       return;
     }

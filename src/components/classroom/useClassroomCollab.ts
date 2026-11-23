@@ -14,6 +14,7 @@ import { readFiles, seedDoc } from "@/lib/cloud/collabDoc";
 import { canEdit, type ProjectRole } from "@/lib/cloud/roles";
 import { watchLocalAuthorship } from "@/lib/classroom/authorship";
 import { readDosboxAssets, type DosboxAssets } from "@/lib/dosboxAssets";
+import { classroomDraftPrefix, restoreLocalEdits, saveLocalEdit, type LocalEdit } from "@/lib/classroom/localEditJournal";
 
 export interface ClassroomCollabState {
   status: "idle" | "connecting" | "live" | "offline" | "blocked";
@@ -35,6 +36,7 @@ export interface ClassroomCollabState {
   groupMode: boolean;
   displayName: string;
   pendingEdits: boolean;
+  localBackupWarning: string | null;
   reconnect: () => void;
   snapshot: () => Record<string, string>;
   assets: DosboxAssets;
@@ -73,6 +75,7 @@ export function useClassroomCollab(opts: {
   const [groupMode, setGroupMode] = useState(false);
   const [displayName, setDisplayName] = useState("Student");
   const [pendingEdits, setPendingEdits] = useState(false);
+  const [localBackupWarning, setLocalBackupWarning] = useState<string | null>(null);
 
   const roleRef = useRef<ProjectRole>("viewer");
   const joinedRef = useRef(false);
@@ -112,22 +115,26 @@ export function useClassroomCollab(opts: {
     let flushTimer: ReturnType<typeof setTimeout> | undefined;
     let handshakeTimer: ReturnType<typeof setTimeout> | undefined;
     const abort = new AbortController();
-    const queue: Uint8Array[] = [];
-    let inFlight: { id: number; update: Uint8Array } | null = null;
+    const queue: LocalEdit[] = [];
+    const awaitingSave: { id: number; edits: LocalEdit[] }[] = [];
+    let inFlight: { id: number; update: Uint8Array; edits: LocalEdit[] } | null = null;
+    let draftPrefix: string | undefined;
+    let draftLoaded = false;
     let nextEditId = 0;
-    const hasEdits = () => queue.length > 0 || inFlight !== null;
+    const hasEdits = () => queue.length > 0 || inFlight !== null || awaitingSave.length > 0;
     const flush = () => {
       if (!joinedRef.current || !canEdit(roleRef.current) || socket?.readyState !== WebSocket.OPEN) return;
       if (inFlight || !queue.length) return;
       // Bound each frame even when a large paste and its attribution arrive together.
       let length = 0;
       let count = 0;
-      for (const update of queue) {
-        if (count && length + update.byteLength > 256 * 1024) break;
-        length += update.byteLength;
+      for (const edit of queue) {
+        if (count && length + edit.update.byteLength > 256 * 1024) break;
+        length += edit.update.byteLength;
         count++;
       }
-      inFlight = { id: ++nextEditId, update: Y.mergeUpdates(queue.splice(0, count)) };
+      const edits = queue.splice(0, count);
+      inFlight = { id: ++nextEditId, edits, update: Y.mergeUpdates(edits.map(edit => edit.update)) };
       sendInFlight();
     };
     const sendInFlight = () => {
@@ -137,7 +144,8 @@ export function useClassroomCollab(opts: {
       handshakeTimer = setTimeout(() => socket?.close(), 15_000);
     };
     const warnUnsynced = (event: BeforeUnloadEvent) => {
-      if (!hasEdits()) return;
+      const missingBackup = [...queue, ...(inFlight?.edits ?? []), ...awaitingSave.flatMap(batch => batch.edits)].some(edit => !edit.key);
+      if (!missingBackup) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -145,6 +153,7 @@ export function useClassroomCollab(opts: {
     queueMicrotask(() => {
       if (stopped) return;
       setPendingEdits(false);
+      setLocalBackupWarning(null);
       setError(null);
       setBlockedCode(null);
       setRole("viewer");
@@ -202,7 +211,12 @@ export function useClassroomCollab(opts: {
 
       const onUpdate = (update: Uint8Array, origin: unknown) => {
         if (!synchronized || origin === "remote" || origin === "hydrate" || !canEdit(roleRef.current)) return;
-        queue.push(update);
+        try {
+          queue.push(draftPrefix ? saveLocalEdit(window.localStorage, draftPrefix, update) : { update });
+        } catch {
+          queue.push({ update });
+          setLocalBackupWarning("This browser could not save the latest edit locally. Download your code before closing the tab.");
+        }
         setPendingEdits(true);
         if (!flushTimer) flushTimer = setTimeout(() => {
           flushTimer = undefined;
@@ -262,6 +276,27 @@ export function useClassroomCollab(opts: {
       seedDoc(doc, fallbackFiles);
       bind(doc, awareness);
     };
+    const restoreDraft = () => {
+      if (!draftPrefix || draftLoaded) return;
+      draftLoaded = true;
+      try {
+        const saved = restoreLocalEdits(window.localStorage, draftPrefix);
+        for (const edit of saved) {
+          try {
+            Y.applyUpdate(doc, edit.update, "hydrate");
+            queue.push(edit);
+          } catch {
+            setLocalBackupWarning("Part of the local backup could not be loaded. Other recovered edits are still available.");
+          }
+        }
+        if (queue.length) {
+          refreshFiles(doc);
+          setPendingEdits(true);
+        }
+      } catch {
+        setLocalBackupWarning("Local backup is unavailable in this browser.");
+      }
+    };
     const retryLater = () => {
       if (stopped || !reconnectAllowed) return;
       setStatus("offline");
@@ -289,6 +324,7 @@ export function useClassroomCollab(opts: {
         docKey?: string;
         role?: ProjectRole;
         files?: Record<string, string>;
+        initialState?: string;
         frozen?: boolean;
         freezeReason?: string | null;
         allowRun?: boolean;
@@ -311,6 +347,7 @@ export function useClassroomCollab(opts: {
               studentId: opts.studentId,
               previewStudent: opts.previewStudent === true,
               includePreview: !synchronized,
+              editableBootstrap: !synchronized && !opts.groupId && !opts.studentId,
             }),
           }
         );
@@ -341,6 +378,9 @@ export function useClassroomCollab(opts: {
       }
       documentKey = sessionBody.docKey;
       authorizedActor = sessionBody.userId;
+      if (!opts.groupId && !opts.studentId && documentKey && authorizedActor) {
+        draftPrefix = classroomDraftPrefix(authorizedActor, documentKey);
+      }
       fallbackFiles = sessionBody.files || {};
       setFrozen(Boolean(sessionBody.frozen));
       setFreezeReason(sessionBody.freezeReason || null);
@@ -359,7 +399,16 @@ export function useClassroomCollab(opts: {
         roleRef.current = "viewer";
         setRole("viewer");
       }
-      showFallback();
+      if (!synchronized && sessionBody.initialState && sessionBody.role === "editor") {
+        Y.applyUpdate(doc, base64ToBytes(sessionBody.initialState), "hydrate");
+        synchronized = true;
+        roleRef.current = "editor";
+        setRole("editor");
+        bind(doc, awareness);
+        restoreDraft();
+      } else {
+        showFallback();
+      }
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       socket = new WebSocket(`${protocol}//${window.location.host}/ws/collab`);
       socketRef.current = socket;
@@ -423,6 +472,7 @@ export function useClassroomCollab(opts: {
             refreshFiles(doc);
           }
           synchronized = true;
+          restoreDraft();
           joinedRef.current = true;
           publishPresence();
           setStatus("live");
@@ -438,9 +488,21 @@ export function useClassroomCollab(opts: {
         }
         if (msg.type === "edit-accepted" && inFlight && msg.editId === inFlight.id) {
           clearTimeout(handshakeTimer);
+          awaitingSave.push({ id: inFlight.id, edits: inFlight.edits });
           inFlight = null;
-          setPendingEdits(hasEdits());
           flush();
+          return;
+        }
+        if (msg.type === "edit-durable" && typeof msg.editId === "number") {
+          while (awaitingSave.length && awaitingSave[0].id <= msg.editId) {
+            const saved = awaitingSave.shift()!;
+            try {
+              for (const edit of saved.edits) if (edit.key) window.localStorage.removeItem(edit.key);
+            } catch {
+              // Replay is idempotent if the browser cannot prune a saved edit.
+            }
+          }
+          setPendingEdits(hasEdits());
           return;
         }
         if (msg.type === "update" && typeof msg.update === "string") {
@@ -485,6 +547,10 @@ export function useClassroomCollab(opts: {
         if (stopped || socketRef.current !== current) return;
         clearTimeout(handshakeTimer);
         socket = null;
+        const unconfirmed = awaitingSave.splice(0).flatMap(batch => batch.edits);
+        if (inFlight) unconfirmed.push(...inFlight.edits);
+        inFlight = null;
+        if (unconfirmed.length) queue.unshift(...unconfirmed);
         const peers = [...awareness.getStates().keys()].filter(id => id !== doc.clientID);
         removeAwarenessStates(awareness, peers, "remote");
         if (event.code === 1008) {
@@ -576,6 +642,7 @@ export function useClassroomCollab(opts: {
     groupMode,
     displayName,
     pendingEdits: enabled && pendingEdits,
+    localBackupWarning,
     reconnect: () => reconnectRef.current(),
     snapshot,
     assets,

@@ -248,7 +248,14 @@ export default function AssignmentWorkspace({
         <div className="flex-1" />
         <button onClick={submit} disabled={!editable || busy !== null || collab.status !== "live" || collab.pendingEdits} className="inline-flex shrink-0 items-center gap-2 rounded border border-[#007acc] bg-[#0e639c] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13} /> {busy === "submit" ? "Submitting…" : submission ? "Resubmit" : "Submit assignment"}</button>
       </div>
-      {(notice || collab.frozen || collab.error) && <div role="status" className={`shrink-0 border-b border-[#333] px-4 py-2 text-xs ${notice?.tone === "err" || collab.error ? "bg-[#402020] text-red-200" : "bg-[#233026] text-[#b5cea8]"}`}>{collab.error || collab.freezeReason || notice?.text}{collab.status === "offline" && <button className="ml-3 underline" onClick={collab.reconnect}>Retry now</button>}</div>}
+      {(notice || collab.frozen || collab.error || collab.localBackupWarning || collab.pendingEdits && collab.status !== "live") && (
+        <div role="status" className={`shrink-0 border-b border-[#333] px-4 py-2 text-xs ${notice?.tone === "err" || collab.error || collab.localBackupWarning ? "bg-[#402020] text-red-200" : "bg-[#233026] text-[#b5cea8]"}`}>
+          {collab.error || collab.freezeReason || notice?.text}
+          {collab.pendingEdits && collab.status !== "live" && !collab.localBackupWarning && <span className="ml-2">Edits saved on this browser. Reopen this assignment here to sync.</span>}
+          {collab.localBackupWarning && <span className="ml-2">{collab.localBackupWarning}</span>}
+          {collab.status === "offline" && <button className="ml-3 underline" onClick={collab.reconnect}>Retry now</button>}
+        </div>
+      )}
       <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-[#333] bg-[#181818]">
         {collab.fileNames.map(name => <button key={name} onClick={() => collab.setActiveFile(name)} className={`flex shrink-0 items-center gap-2 border-r border-[#333] px-4 font-mono text-xs ${name === collab.activeFile ? "border-t border-t-white bg-[#1e1e1e] text-white" : "text-[#888]"}`}><FileCode size={13} />{name}</button>)}
       </div>

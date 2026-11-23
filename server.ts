@@ -94,8 +94,8 @@ app.prepare().then(() => {
         process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true"
       );
       const limited = globalRateLimiter.check(
-        `ws:${ip}`,
-        execConfig.rateLimitWsMax,
+        `terminal-upgrades:${ip}`,
+        execConfig.rateLimitTerminalIpMax,
         execConfig.rateLimitWsWindowMs
       );
       if (!limited.ok) {
@@ -143,7 +143,7 @@ app.prepare().then(() => {
   }, 30_000);
   heartbeat.unref?.();
 
-  wss.on("connection", (ws: WebSocket) => {
+  wss.on("connection", (ws: WebSocket, req) => {
     trackSocket(ws);
     // Wait for the first message which should be the init payload
     let initialized = false;
@@ -184,6 +184,13 @@ app.prepare().then(() => {
               return;
             }
             if (ws.readyState !== ws.OPEN) return;
+            const owner = resolved.payload.ownerKey;
+            const ip = clientIpFromForwarded(req.headers["x-forwarded-for"], req.socket.remoteAddress, /^(1|true)$/.test(process.env.TRUST_PROXY || ""));
+            if (!globalRateLimiter.check(owner ? `terminal-user:${owner}` : `terminal-guest:${ip}`, execConfig.rateLimitWsMax, execConfig.rateLimitWsWindowMs).ok) {
+              ws.send(JSON.stringify({ type: "error", data: "Too many runs. Wait a minute and try again." }));
+              ws.close(1013, "Run rate limit");
+              return;
+            }
             monitorTerminalAccess(ws, resolved.payload.validateAccess, 5000, () => cancellation.abort());
             resolved.payload.signal = cancellation.signal;
             const handler = resolved.payload.language === "python" ? handlePythonTerminalSession : handleTerminalSession;

@@ -88,6 +88,7 @@ export const execConfig = {
   rateLimitPredictMax: envInt("RATE_LIMIT_PREDICT_MAX", 20),
   rateLimitPredictWindowMs: envInt("RATE_LIMIT_PREDICT_WINDOW_MS", 60_000),
   rateLimitWsMax: envInt("RATE_LIMIT_WS_MAX", 8),
+  rateLimitTerminalIpMax: envInt("RATE_LIMIT_TERMINAL_IP_MAX", 600),
   rateLimitWsWindowMs: envInt("RATE_LIMIT_WS_WINDOW_MS", 60_000),
   rateLimitCollabIpMax: envInt("RATE_LIMIT_COLLAB_IP_MAX", 600),
   rateLimitClassroomJoinsMax: envInt("RATE_LIMIT_CLASSROOM_JOINS_MAX", 90),

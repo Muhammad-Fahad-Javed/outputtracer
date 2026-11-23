@@ -403,8 +403,8 @@ export default function AdminDashboardManager() {
               <h2 className="text-sm font-bold text-black tracking-tight flex items-center gap-2">
                 <GraduationCap size={16} /> Recent Classrooms
               </h2>
-              <Link href="/classroom" className="text-xs text-[#007ACC] hover:underline flex items-center gap-1">
-                View Studio <ExternalLink size={11} />
+              <Link href="/admin/teacher-dashboards" className="text-xs text-[#007ACC] hover:underline flex items-center gap-1">
+                Teacher dashboards <ArrowRight size={11} />
               </Link>
             </div>
             {recentClassrooms.length === 0 ? (
@@ -414,7 +414,7 @@ export default function AdminDashboardManager() {
                 {recentClassrooms.map((c) => (
                   <div key={c.id} className="py-3 flex items-center justify-between text-xs">
                     <div>
-                      <span className="font-semibold text-black">{c.name}</span>
+                      <Link href={`/classroom/${c.id}`} prefetch={false} className="font-semibold text-black hover:underline">{c.name}</Link>
                       <p className="text-[11px] text-[#666666]">{c.subject} &bull; Instructor: {c.teacher?.full_name || c.teacher?.display_name || "Teacher"}</p>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${c.is_archived ? "bg-neutral-100 text-neutral-600" : "bg-emerald-50 text-emerald-700"}`}>
@@ -638,10 +638,10 @@ export default function AdminDashboardManager() {
                 </p>
               </div>
               <Link
-                href="/classroom"
+                href="/admin/teacher-dashboards"
                 className="inline-flex items-center gap-1.5 rounded-[4px] border border-[#DCDCDC] bg-white px-4 py-2 text-xs font-medium text-black hover:bg-[#F2F2F2]"
               >
-                Open Educator Studio <ArrowRight size={13} />
+                Open teacher dashboards <ArrowRight size={13} />
               </Link>
             </div>
           </div>

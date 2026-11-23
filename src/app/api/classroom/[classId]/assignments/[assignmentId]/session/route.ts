@@ -6,6 +6,7 @@ import { LOCAL_PREVIEW_STUDENT_ID } from "@/lib/classroom/localTeacherPreview";
 import { classroomRequestUser, isLocalPreviewActor } from "@/lib/classroom/requestUser";
 import { listClassroomRoster } from "@/lib/classroom/classroomService";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getHub } from "@/lib/cloud/collabHub";
 
 export async function POST(
   request: Request,
@@ -17,7 +18,7 @@ export async function POST(
   }
 
   const { classId, assignmentId } = await params;
-  let body: { groupId?: string; studentId?: string; previewStudent?: boolean; includePreview?: boolean } = {};
+  let body: { groupId?: string; studentId?: string; previewStudent?: boolean; includePreview?: boolean; editableBootstrap?: boolean } = {};
   try {
     const parsed = await request.json();
     if (parsed && typeof parsed === "object") body = parsed;
@@ -46,12 +47,19 @@ export async function POST(
   }
 
   const admin = createAdminClient();
-  const [files, name] = await Promise.all([
-    body.includePreview === false ? Promise.resolve(undefined) : loadCanonicalClassroomFiles(resolved.doc),
+  const bootstrap = body.editableBootstrap === true && resolved.doc.role === "editor";
+  const previewJob = bootstrap
+    ? getHub().prepareClassroomEdit(resolved.doc).then(initialState => ({ initialState }))
+    : body.includePreview === false
+      ? Promise.resolve({})
+      : loadCanonicalClassroomFiles(resolved.doc).then(files => ({ files }));
+  const [previewData, name] = await Promise.all([
+    previewJob.catch(() => null),
     admin
       ? admin.from("profiles").select("display_name").eq("id", actorId).maybeSingle().then(({ data }) => data?.display_name)
       : listClassroomRoster(user.id, classId).then(roster => roster.members?.find(member => member.userId === actorId)?.displayName),
   ]);
+  if (!previewData) return NextResponse.json({ success: false, error: "Could not load saved code. Retrying…" }, { status: 503 });
   const roleLabel = resolved.doc.instructorView ? (resolved.doc.isAdmin ? "Administrator" : "Teacher") : "Student";
   const displayName = name || roleLabel;
   const token = signClassroomCollabToken({
@@ -68,7 +76,7 @@ export async function POST(
     token,
     docKey: resolved.doc.docKey,
     role: resolved.doc.role,
-    files,
+    ...previewData,
     frozen: resolved.doc.frozen,
     freezeReason: resolved.doc.freezeReason ?? null,
     allowRun: resolved.doc.allowRun,

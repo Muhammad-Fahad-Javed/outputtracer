@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef, use } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import ClassroomDetailsForm from "@/components/classroom/ClassroomDetailsForm";
 import {
   Settings,
   Users,
@@ -33,6 +34,7 @@ export default function ClassroomManagePage({
   const { classId } = resolvedParams;
 
   const [classroom, setClassroom] = useState<Classroom | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [members, setMembers] = useState<ClassroomMember[]>([]);
   const [groups, setGroups] = useState<ClassroomGroup[]>([]);
   const [invitations, setInvitations] = useState<ClassroomInvitation[]>([]);
@@ -130,6 +132,7 @@ export default function ClassroomManagePage({
       }
       setError(null);
       setClassroom(classRes.classroom);
+      setIsAdmin(Boolean(classRes.isAdmin));
       const lang = classroomLanguage(classRes.classroom.language, classRes.classroom.subject);
       setAsgLanguage(lang);
       setAsgStarter(CLASSROOM_LANGUAGES[lang].starter);
@@ -352,12 +355,16 @@ export default function ClassroomManagePage({
 
       <main className="flex-1 py-10 px-4 sm:px-6">
         <div className="mx-auto max-w-5xl">
-          <Link
-            href={`/classroom/${classId}`}
-            className="inline-flex items-center gap-1.5 text-xs text-[#666666] hover:text-black mb-6"
-          >
-            <ArrowLeft size={13} /> Back to Classroom View
-          </Link>
+          <nav aria-label="Classroom navigation" className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#666666]">
+            <Link href={`/classroom/${classId}`} className="inline-flex items-center gap-1.5 hover:text-black">
+              <ArrowLeft size={13} /> Back to Classroom View
+            </Link>
+            {isAdmin && classroom && (
+              <Link href={`/admin/teacher-dashboards/${classroom.teacherId}`} className="hover:text-black">
+                Teacher dashboard
+              </Link>
+            )}
+          </nav>
 
           {loading ? (
             <div className="rounded-2xl border border-[#EAEAEA] bg-white p-12 text-center text-xs text-[#666666]">
@@ -391,6 +398,7 @@ export default function ClassroomManagePage({
               {/* Title Header */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
+                  {isAdmin && <p className="mb-1 text-xs font-semibold text-blue-800">Administrator view</p>}
                   <h1 className="text-xl font-bold tracking-tight text-black flex items-center gap-2">
                     <Settings size={20} />
                     Classroom Management: {classroom.name}
@@ -553,6 +561,8 @@ export default function ClassroomManagePage({
                   )}
                 </div>
               </div>
+
+              <ClassroomDetailsForm key={classroom.id} classroom={classroom} onSave={setClassroom} />
 
               {/* Groups Management */}
               <div className="rounded-2xl border border-[#EAEAEA] bg-white shadow-xs overflow-hidden">
@@ -898,7 +908,7 @@ export default function ClassroomManagePage({
                 </label>
               </div>
               <div className="flex flex-wrap gap-4 text-xs">
-                {asgGroupMode&&<label>Students per team <input aria-label="Students per team" type="number" min={2} max={20} value={asgGroupSize} onChange={e=>setAsgGroupSize(Number(e.target.value))} className="ml-2 w-16 rounded border p-2"/></label>}
+                {asgGroupMode&&<label>Maximum students per team <input aria-label="Maximum students per team" type="number" min={2} max={20} value={asgGroupSize} onChange={e=>setAsgGroupSize(Number(e.target.value))} className="ml-2 w-16 rounded border p-2"/></label>}
                 <label>Student input policy <select value={asgInputPolicy} onChange={e=>setAsgInputPolicy(e.target.value as "typing_only"|"paste_allowed")} className="ml-2 rounded border p-2"><option value="typing_only">Typing only</option><option value="paste_allowed">Allow paste and log events</option></select></label>
               </div>
               <p className="text-[11px] text-[#777777]">

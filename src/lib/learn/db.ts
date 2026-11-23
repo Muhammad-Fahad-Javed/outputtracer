@@ -119,12 +119,15 @@ export function normalizeQuestion(q: any, maskAnswer = true): LearnQuestion {
  * - Checks Supabase `app_roles` table using service role client or direct authenticated session.
  * - Also checks ADMIN_USER_IDS or ADMIN_EMAILS environment variable if configured.
  */
+export function isServerConfiguredAdmin(userId: string | undefined): boolean {
+  if (!userId) return false;
+  const adminIds = (process.env.ADMIN_USER_IDS || "").split(",").map((s) => s.trim());
+  return adminIds.includes(userId);
+}
+
 export async function checkIsAdmin(userId: string | undefined): Promise<boolean> {
   if (!userId) return false;
-
-  // 1. Check ADMIN_USER_IDS env if present
-  const adminIds = (process.env.ADMIN_USER_IDS || "").split(",").map((s) => s.trim());
-  if (adminIds.includes(userId)) return true;
+  if (isServerConfiguredAdmin(userId)) return true;
 
   // 2. Check Database app_roles via service-role admin client
   try {

@@ -86,6 +86,21 @@ if(!process.exitCode){
  assert(policy.includes('is_verified_teacher'),'Owner RLS did not gain approval check');
  const granted=(await q(`select has_function_privilege('authenticated','public.activate_teacher_profile()','execute') allowed`))[0].allowed;
  assert(!granted,'Self activation remains callable');
+ const moreStudents = [6, 7, 8].map(n => `10000000-0000-4000-8000-00000000000${n}`);
+ for(const id of moreStudents) await q(`insert into auth.users(id,email) values($1,$2)`,[id,`${id}@example.test`]);
+ for(const id of [student2,...moreStudents]) await q(`insert into classroom_members(classroom_id,user_id,role) values($1,$2,'student')`,[cid,id]);
+ const mixed=(await q(`insert into classroom_assignments(classroom_id,title,group_mode,is_published,required_group_size) values($1,'Mixed teams',true,true,3) returning id`,[cid]))[0].id;
+ const makeTeam=async(actor,name,students,serverAdmin=false)=>(await q(`select create_assignment_team($1,$2,$3,$4,null,$5) id`,[actor,mixed,name,students,serverAdmin]))[0].id;
+ for(const [actor,ids] of [[student,[student,student2]],[teacher,[student,student2]],[admin,[student]],[admin,[student,student2,...moreStudents]]]){
+  rejected=false;try{await makeTeam(actor,'Invalid team',ids);}catch{rejected=true;}assert(rejected,'Unauthorized or invalid-size team accepted');
+ }
+ const pair=await makeTeam(admin,'Pair',[student,student2]);
+ const trio=await makeTeam(outsider,'Trio',moreStudents,true);
+ for(const gid of [pair,trio]) await q(`insert into classroom_submissions(assignment_id,group_id,status) values($1,$2,'submitted')`,[mixed,gid]);
+ assert((await q(`select count(*)::int n from classroom_groups where assignment_id=$1 and membership_frozen_at is not null`,[mixed]))[0].n===2,'Pair and trio did not both submit');
+ assert((await q(`select count(*)::int n from classroom_audit_logs where action='admin_assignment_team_created' and target_id=$1 and actor_id in ($2,$3)`,[mixed,admin,outsider]))[0].n===2,'Admin team changes lost their actor identity');
+ assert(!(await q(`select has_function_privilege('authenticated','public.create_assignment_team(uuid,uuid,text,uuid[],uuid,boolean)','execute') allowed`))[0].allowed,'Students can use the trusted admin argument');
+ console.log('PASS mixed team sizes and first submissions, admin attribution, and blocked unauthorized writes');
  const oldProject=(await q(`select p.language,p.standard,f.path,f.content,d.state_b64 from projects p join project_files f on f.project_id=p.id join project_documents d on d.project_id=p.id where p.id='90000000-0000-4000-8000-000000000004'`))[0];
  assert(oldProject.language==='cpp'&&oldProject.standard==='c++20'&&oldProject.path==='main.cpp'&&oldProject.content==='// Existing student work'&&oldProject.state_b64==='existing-yjs-document','Saved-project language migration rewrote legacy work');
  await db.exec(`set request.jwt.claim.sub='${student}'; set role authenticated;`);
