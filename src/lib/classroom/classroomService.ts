@@ -346,16 +346,14 @@ export async function getClassroom(
     return { success: false, error: "Invalid request parameters" };
   }
 
-  const isAdmin = await checkIsAdmin(userId);
-
+  const adminAccess = checkIsAdmin(userId);
   const admin = createAdminClient();
   if (admin) {
     try {
-      const { data: classRow, error } = await admin
-        .from("classrooms")
-        .select("*")
-        .eq("id", classroomId)
-        .single();
+      const [{ data: classRow, error }, isAdmin] = await Promise.all([
+        admin.from("classrooms").select("*").eq("id", classroomId).single(),
+        adminAccess,
+      ]);
 
       if (error || !classRow) {
         return { success: false, error: "Classroom not found" };
@@ -393,6 +391,7 @@ export async function getClassroom(
   }
 
   if (isAuthConfigured()) return { success: false, error: "Classroom database unavailable." };
+  const isAdmin = await adminAccess;
   const classroom = memoryClassrooms.get(classroomId);
   if (!classroom) {
     return { success: false, error: "Classroom not found" };
@@ -1180,35 +1179,28 @@ export async function getAssignment(
   classroomId: string,
   assignmentId: string
 ): Promise<{ success: boolean; assignment?: ClassroomAssignment; isTeacher?: boolean; isAdmin?: boolean; error?: string }> {
-  const access = await getClassroom(userId, classroomId);
-  if (!access.success) {
-    return { success: false, error: access.error };
-  }
-
-  const isTeacher = access.isTeacher;
-
+  const classroomAccess = getClassroom(userId, classroomId);
   const admin = createAdminClient();
   if (admin) {
     try {
-      const { data, error } = await admin
-        .from("classroom_assignments")
-        .select("*")
-        .eq("id", assignmentId)
-        .eq("classroom_id", classroomId)
-        .single();
+      const [access, { data, error }] = await Promise.all([
+        classroomAccess,
+        admin.from("classroom_assignments").select("*").eq("id", assignmentId).eq("classroom_id", classroomId).single(),
+      ]);
+      if (!access.success) return { success: false, error: access.error };
 
       if (error || !data) {
         return { success: false, error: "Assignment not found" };
       }
 
-      if (!isTeacher && !data.is_published) {
+      if (!access.isTeacher && !data.is_published) {
         return { success: false, error: "Assignment is not published yet" };
       }
 
       return {
         success: true,
-        assignment: toAssignment(data, Boolean(isTeacher)),
-        isTeacher,
+        assignment: toAssignment(data, Boolean(access.isTeacher)),
+        isTeacher: access.isTeacher,
         isAdmin: access.isAdmin,
       };
     } catch {
@@ -1216,6 +1208,9 @@ export async function getAssignment(
     }
   }
 
+  const access = await classroomAccess;
+  if (!access.success) return { success: false, error: access.error };
+  const isTeacher = access.isTeacher;
   const all = memoryAssignments.get(classroomId) || [];
   const item = all.find((a) => a.id === assignmentId);
 

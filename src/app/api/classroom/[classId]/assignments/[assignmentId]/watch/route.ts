@@ -3,6 +3,7 @@ import { getHub } from "@/lib/cloud/collabHub";
 import { assignmentFreezeState } from "@/lib/classroom/assignmentPolicy";
 import { classroomDocumentKey } from "@/lib/classroom/documents";
 import { classroomRequestUser } from "@/lib/classroom/requestUser";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   getAssignment,
   listClassroomGroups,
@@ -25,16 +26,48 @@ export async function GET(
   }
   const assignment = loaded.assignment;
   const freeze = assignmentFreezeState(assignment);
-  const participants: Array<{
+  type Participant = {
     kind: "group" | "student";
     id: string;
     name: string;
     docKey: string;
     members?: { userId: string; displayName: string }[];
     online: { userId: string; name: string; file: string | null }[];
-  }> = [];
+  };
+  const participants: Participant[] = [];
+  const hub = getHub();
+  const admin = createAdminClient();
+  if (admin && assignment.groupMode) {
+    const scope = assignment.groupScope === "assignment" ? assignmentId : null;
+    const { data, error } = await admin.from("classroom_groups")
+      .select("id, name, members:classroom_group_members!classroom_group_members_group_id_fkey(user_id, profile:profiles!classroom_group_members_user_id_fkey(display_name))")
+      .eq("classroom_id", classId)
+      .filter("assignment_id", scope ? "eq" : "is", scope ?? "null")
+      .order("created_at");
+    if (error) return NextResponse.json({ success: false, error: "Could not load groups." }, { status: 503 });
+    for (const group of data || []) {
+      const docKey = classroomDocumentKey(assignmentId, { groupId: group.id })!;
+      participants.push({
+        kind: "group", id: group.id, name: group.name, docKey,
+        members: group.members.map(member => {
+          const profile = Array.isArray(member.profile) ? member.profile[0] : member.profile;
+          return { userId: member.user_id, displayName: profile?.display_name || member.user_id };
+        }),
+        online: hub.classroomPresence(docKey, false),
+      });
+    }
+  } else if (admin) {
+    const { data, error } = await admin.from("classroom_members")
+      .select("user_id, profile:profiles!classroom_members_user_id_fkey(display_name)")
+      .eq("classroom_id", classId).eq("role", "student").order("joined_at");
+    if (error) return NextResponse.json({ success: false, error: "Could not load students." }, { status: 503 });
+    for (const student of data || []) {
+      const docKey = classroomDocumentKey(assignmentId, { studentId: student.user_id })!;
+      const profile = Array.isArray(student.profile) ? student.profile[0] : student.profile;
+      participants.push({ kind: "student", id: student.user_id, name: profile?.display_name || student.user_id, docKey, online: hub.classroomPresence(docKey, false) });
+    }
 
-  if (assignment.groupMode) {
+  } else if (assignment.groupMode) {
     const groups = await listClassroomGroups(user.id, classId, assignmentId);
     if (!groups.success) {
       return NextResponse.json({ success: false, error: groups.error || "Could not load groups" }, { status: 403 });
@@ -51,7 +84,7 @@ export async function GET(
           userId: member.userId,
           displayName: member.displayName || member.userId,
         })),
-        online: getHub().classroomPresence(docKey, false),
+        online: hub.classroomPresence(docKey, false),
       });
     }
   } else {
@@ -66,7 +99,7 @@ export async function GET(
         id: member.userId,
         name: member.displayName || member.userId,
         docKey,
-        online: getHub().classroomPresence(docKey, false),
+        online: hub.classroomPresence(docKey, false),
       });
     }
   }

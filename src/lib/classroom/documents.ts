@@ -28,6 +28,7 @@ export interface ResolvedClassroomDocument {
   assignmentId: string;
   role: "editor" | "viewer";
   instructorView?: boolean;
+  isAdmin?: boolean;
   groupId?: string;
   studentId?: string;
   frozen: boolean;
@@ -246,6 +247,7 @@ export async function resolveClassroomDocument(input: {
       assignmentId: input.assignmentId,
       role,
       instructorView: isTeacher,
+      isAdmin: loaded.isAdmin,
       groupId,
       studentId,
       frozen: freeze.frozen,
