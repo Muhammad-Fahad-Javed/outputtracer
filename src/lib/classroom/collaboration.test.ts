@@ -1,6 +1,8 @@
 import { CLASSROOM_LANGUAGES } from "./languages";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
+import { POST as openSession } from "@/app/api/classroom/[classId]/assignments/[assignmentId]/session/route";
+import { GET as reviewSnapshot } from "@/app/api/classroom/[classId]/assignments/[assignmentId]/submissions/[submissionId]/snapshot/route";
 import { base64ToBytes, bytesToBase64 } from "@/lib/cloud/base64";
 import { getHub } from "@/lib/cloud/collabHub";
 import { readDosboxAssets } from "@/lib/dosboxAssets";
@@ -22,7 +24,7 @@ import {
   _setMemoryTeacherProfile,
 } from "./roles";
 import { _resetMemorySubmissions } from "./submissionMemory";
-import { _resetVersioningMemory } from "./versioningService";
+import { _resetVersioningMemory, createSubmissionSnapshot } from "./versioningService";
 import {
   _resetClassroomMemory,
   _setMemoryMemberLabel,
@@ -44,6 +46,14 @@ const teacherB = "teacher-uuid-002";
 const student1 = "student-uuid-101";
 const student2 = "student-uuid-102";
 const outsider = "student-uuid-999";
+const platformAdmin = "platform-admin-001";
+
+const auth = vi.hoisted(() => ({ userId: "" }));
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: async () => ({
+    auth: { getUser: async () => ({ data: { user: auth.userId ? { id: auth.userId } : null } }) },
+  }),
+}));
 
 function approve(userId: string) {
   const now = new Date().toISOString();
@@ -594,6 +604,67 @@ describe("classroom collaboration", () => {
     }finally{socket.emit('close');vi.useRealTimers();}
   });
 
+  it("lets an administrator review a teacher's live team and submitted snapshot under their own identity", async () => {
+    const { classroom } = await createClassroom(teacherA, { name: "Review" });
+    const classId = classroom!.id;
+    for (const member of [student1, platformAdmin]) await joinClassroomByCode(member, classroom!.joinCode);
+    const { assignment } = await createAssignment(teacherA, classId, {
+      title: "Team work", groupMode: true, groupScope: "legacy_class", isPublished: true,
+      starterCode: { "main.cpp": "int main() {}" },
+    });
+    const assignmentId = assignment!.id;
+    const { group } = await createClassroomGroup(teacherA, classId, "Team");
+    const groupId = group!.id;
+    for (const member of [student1, platformAdmin]) await assignStudentToGroup(teacherA, classId, groupId, member);
+    const frozenCodeFiles = { "main.cpp": "int main() { return 1; }" };
+    const submissionId = "team-submission";
+    await createSubmissionSnapshot({
+      submissionId, assignmentId, versionId: "version-1", groupId, codeFiles: frozenCodeFiles, isLate: false,
+    });
+    const params = Promise.resolve({ classId, assignmentId, submissionId });
+    const sessionRequest = () => new Request("http://localhost/session", { method: "POST", body: JSON.stringify({ groupId }) });
+    const snapshotRequest = () => new Request("http://localhost/snapshot");
+
+    vi.stubEnv("ADMIN_USER_IDS", platformAdmin);
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const socket = fakeSocket();
+    try {
+      auth.userId = teacherB;
+      expect((await openSession(sessionRequest(), { params })).status).toBe(403);
+      expect((await reviewSnapshot(snapshotRequest(), { params })).status).toBe(403);
+
+      auth.userId = platformAdmin;
+      const session = await openSession(sessionRequest(), { params });
+      expect(session.status).toBe(200);
+      const { token, docKey, ...view } = await session.json();
+      expect(view).toMatchObject({ role: "viewer", userId: platformAdmin, displayName: "Administrator" });
+
+      getHub().attach(socket as never);
+      socket.emit("message", JSON.stringify({ type: "join", kind: "classroom", token, clientId: 53 }));
+      await waitForType(socket, "init");
+      expect(JSON.parse(socket.sent[0])).toMatchObject({ type: "init", role: "viewer" });
+      expect(getHub().classroomPresence(docKey)).toEqual([{ userId: platformAdmin, name: "Administrator", file: null }]);
+      socket.emit("message", JSON.stringify({ type: "file-create", name: "unwanted.cpp" }));
+      expect(getHub().peekClassroomFiles(docKey)).toEqual({ "main.cpp": "int main() {}" });
+
+      const snapshot = await reviewSnapshot(snapshotRequest(), { params });
+      expect(snapshot.status).toBe(200);
+      expect(await snapshot.json()).toMatchObject({ snapshot: { assignmentId, groupId, frozenCodeFiles } });
+
+      // Still enrolled in the same group, but the privileged watch must close.
+      vi.stubEnv("ADMIN_USER_IDS", "");
+      await vi.advanceTimersByTimeAsync(30_001);
+      expect(socket.readyState).toBe(3);
+      const reconnected = await openSession(sessionRequest(), { params });
+      expect(await reconnected.json()).toMatchObject({ role: "editor", userId: platformAdmin, displayName: "Student" });
+    } finally {
+      socket.emit("close");
+      auth.userId = "";
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("does not let a configured teacher pretend to be the sample student", () => {
     expect(actorForClassroomRequest({
       userId: teacherA,
@@ -609,5 +680,52 @@ describe("classroom collaboration", () => {
       previewAllowed: true,
       previewStudentId: "local-preview-student",
     })).toEqual({ actorId: "local-preview-student", isTeacher: false });
+  });
+
+  it("acknowledges a resent edit exactly once in the shared source after reconnect", async () => {
+    const { classroom } = await createClassroom(teacherA, { name: "Reconnect lab" });
+    const classId = classroom!.id;
+    await joinClassroomByCode(student1, classroom!.joinCode);
+    const { assignment } = await createAssignment(teacherA, classId, {
+      title: "Reconnect", isPublished: true, starterCode: { "main.cpp": "int main() {}" },
+    });
+    const assignmentId = assignment!.id;
+    const docKey = classroomDocumentKey(assignmentId, { studentId: student1 })!;
+    const token = signClassroomCollabToken({ userId: student1, displayName: "Ada", classId, assignmentId, studentId: student1 });
+    const local = new Y.Doc();
+    const start = async () => {
+      const socket = fakeSocket();
+      getHub().attach(socket as never);
+      socket.emit("message", JSON.stringify({ type: "join", kind: "classroom", token, clientId: local.clientID }));
+      await waitForType(socket, "init");
+      const init = socket.sent.map(raw => JSON.parse(raw)).find(message => message.type === "init");
+      Y.applyUpdate(local, base64ToBytes(init.state), "remote");
+      return socket;
+    };
+    const first = await start();
+    let second: ReturnType<typeof fakeSocket> | undefined;
+    try {
+      const text = local.getMap("files").get("main.cpp") as Y.Text;
+      const before = Y.encodeStateVector(local);
+      text.insert(0, "// first edit\n", { author: student1 });
+      const firstEdit = JSON.stringify({ type: "update", editId: 1, update: bytesToBase64(Y.encodeStateAsUpdate(local, before)) });
+      first.emit("message", firstEdit);
+      await waitForType(first, "edit-accepted");
+      first.close();
+      first.emit("close");
+
+      const offlineBefore = Y.encodeStateVector(local);
+      text.insert(0, "// offline edit\n", { author: student1 });
+      const offlineEdit = bytesToBase64(Y.encodeStateAsUpdate(local, offlineBefore));
+      second = await start();
+      second.emit("message", firstEdit); // Original acknowledgement could have been lost.
+      second.emit("message", JSON.stringify({ type: "update", editId: 2, update: offlineEdit }));
+      await vi.waitFor(() => expect(second!.sent.map(raw => JSON.parse(raw)).filter(event => event.type === "edit-accepted").map(event => event.editId)).toEqual([1, 2]));
+      expect(getHub().peekClassroomFiles(docKey)?.["main.cpp"]).toBe("// offline edit\n// first edit\nint main() {}");
+    } finally {
+      first.emit("close");
+      second?.emit("close");
+      local.destroy();
+    }
   });
 });

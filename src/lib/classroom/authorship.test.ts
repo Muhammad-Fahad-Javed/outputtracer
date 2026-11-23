@@ -68,4 +68,24 @@ describe("authorship", () => {
     expect(authorshipOfText(text).starter).toBe("teacher".length);
     stop();
   });
+
+  it("does not claim the next edit at the same boundary before stamping", async () => {
+    const doc = new Y.Doc();
+    seedDoc(doc, { "main.cpp": "" });
+    let actor = "ali";
+    const stop = watchLocalAuthorship(doc, () => actor);
+    const text = doc.getMap("files").get("main.cpp") as Y.Text;
+    text.insert(0, "A");
+    actor = "sara";
+    text.insert(1, "B");
+    await flush();
+    expect(authorshipOfText(text).spans).toEqual([
+      { start: 0, end: 1, authorId: "ali" },
+      { start: 1, end: 2, authorId: "sara" },
+    ]);
+    text.delete(0, 1);
+    expect(authorshipOfDoc(doc).shares).toEqual([{ authorId: "sara", characters: 1, percent: 100 }]);
+    stop();
+    doc.destroy();
+  });
 });

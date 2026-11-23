@@ -21,6 +21,7 @@ export async function loadCanonicalClassroomFiles(doc: {
   starterCode: Record<string, string>;
 }): Promise<Record<string, string>> {
   const live = getHub().peekClassroomFiles(doc.docKey);
+  if (live) return live;
   const stored = await readClassroomDocument(doc.docKey);
   return chooseCanonicalFiles(live, stored?.files, doc.starterCode);
 }

@@ -33,6 +33,8 @@ export interface ClassroomCollabState {
   studentId?: string;
   groupMode: boolean;
   displayName: string;
+  pendingEdits: boolean;
+  reconnect: () => void;
   snapshot: () => Record<string, string>;
   assets: DosboxAssets;
   snapshotAssets: () => DosboxAssets;
@@ -59,7 +61,8 @@ export function useClassroomCollab(opts: {
   const [assets, setAssets] = useState<DosboxAssets>({});
   const [peers, setPeers] = useState<CollabPeer[]>([]);
   const [activeFile, setActiveFileState] = useState("main.cpp");
-  const [session, setSession] = useState<{ doc: Y.Doc; awareness: Awareness } | null>(null);
+  const scope = JSON.stringify([opts.classId, opts.assignmentId, opts.groupId, opts.studentId, opts.previewStudent]);
+  const [session, setSession] = useState<{ doc: Y.Doc; awareness: Awareness; scope: string } | null>(null);
   const [frozen, setFrozen] = useState(false);
   const [freezeReason, setFreezeReason] = useState<string | null>(null);
   const [allowRun, setAllowRun] = useState(true);
@@ -68,6 +71,7 @@ export function useClassroomCollab(opts: {
   const [studentId, setStudentId] = useState<string | undefined>(opts.studentId);
   const [groupMode, setGroupMode] = useState(false);
   const [displayName, setDisplayName] = useState("Student");
+  const [pendingEdits, setPendingEdits] = useState(false);
 
   const roleRef = useRef<ProjectRole>("viewer");
   const joinedRef = useRef(false);
@@ -76,6 +80,7 @@ export function useClassroomCollab(opts: {
   const awarenessRef = useRef<Awareness | null>(null);
   const activeFileRef = useRef("main.cpp");
   const identityRef = useRef({ userId: "", displayName: "", ready: false });
+  const reconnectRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     activeFileRef.current = activeFile;
@@ -98,6 +103,54 @@ export function useClassroomCollab(opts: {
     let detach: (() => void) | null = null;
     let fallbackFiles: Record<string, string> = {};
     let shown = false;
+    let synchronized = false;
+    let documentKey: string | undefined;
+    let authorizedActor: string | undefined;
+    let connecting = false;
+    let reconnectAllowed = true;
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
+    let handshakeTimer: ReturnType<typeof setTimeout> | undefined;
+    const abort = new AbortController();
+    const queue: Uint8Array[] = [];
+    let inFlight: { id: number; update: Uint8Array } | null = null;
+    let nextEditId = 0;
+    const hasEdits = () => queue.length > 0 || inFlight !== null;
+    const flush = () => {
+      if (!joinedRef.current || !canEdit(roleRef.current) || socket?.readyState !== WebSocket.OPEN) return;
+      if (inFlight || !queue.length) return;
+      // Bound each frame even when a large paste and its attribution arrive together.
+      let length = 0;
+      let count = 0;
+      for (const update of queue) {
+        if (count && length + update.byteLength > 256 * 1024) break;
+        length += update.byteLength;
+        count++;
+      }
+      inFlight = { id: ++nextEditId, update: Y.mergeUpdates(queue.splice(0, count)) };
+      sendInFlight();
+    };
+    const sendInFlight = () => {
+      if (!inFlight || socket?.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({ type: "update", update: bytesToBase64(inFlight.update), editId: inFlight.id }));
+      clearTimeout(handshakeTimer);
+      handshakeTimer = setTimeout(() => socket?.close(), 15_000);
+    };
+    const warnUnsynced = (event: BeforeUnloadEvent) => {
+      if (!hasEdits()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnUnsynced);
+    queueMicrotask(() => {
+      if (stopped) return;
+      setPendingEdits(false);
+      setError(null);
+      setBlockedCode(null);
+      setRole("viewer");
+      setFrozen(false);
+      setFreezeReason(null);
+      setStatus("connecting");
+    });
     const retired: Y.Doc[] = [];
     const destroyed = new Set<Y.Doc>();
     const destroyDoc = (old: Y.Doc) => {
@@ -147,9 +200,13 @@ export function useClassroomCollab(opts: {
       awarenessRef.current = awareness;
 
       const onUpdate = (update: Uint8Array, origin: unknown) => {
-        if (!joinedRef.current || origin === "remote" || origin === "hydrate") return;
-        if (!canEdit(roleRef.current) || socket?.readyState !== WebSocket.OPEN) return;
-        socket.send(JSON.stringify({ type: "update", update: bytesToBase64(update) }));
+        if (!synchronized || origin === "remote" || origin === "hydrate" || !canEdit(roleRef.current)) return;
+        queue.push(update);
+        setPendingEdits(true);
+        if (!flushTimer) flushTimer = setTimeout(() => {
+          flushTimer = undefined;
+          flush();
+        }, 80);
       };
       const onAwareness = (
         change: { added: number[]; updated: number[]; removed: number[] },
@@ -169,8 +226,9 @@ export function useClassroomCollab(opts: {
       doc.on("update", onUpdate);
       awareness.on("update", onAwareness);
       awareness.on("change", refreshPeers);
-      doc.getMap("files").observe(() => refreshFiles(doc));
-      doc.getMap("dosAssets").observe(() => refreshFiles(doc));
+      const onFiles = () => refreshFiles(nextDoc);
+      doc.getMap("files").observe(onFiles);
+      doc.getMap("dosAssets").observe(onFiles);
       const stopAuthorship = watchLocalAuthorship(doc, () =>
         canEdit(roleRef.current) ? identityRef.current.userId || null : null
       );
@@ -179,11 +237,13 @@ export function useClassroomCollab(opts: {
         doc.off("update", onUpdate);
         awareness.off("update", onAwareness);
         awareness.off("change", refreshPeers);
+        nextDoc.getMap("files").unobserve(onFiles);
+        nextDoc.getMap("dosAssets").unobserve(onFiles);
       };
       refreshFiles(doc);
       refreshPeers();
       shown = true;
-      setSession({ doc, awareness });
+      setSession({ doc, awareness, scope });
     };
 
     const publishPresence = () => {
@@ -197,23 +257,35 @@ export function useClassroomCollab(opts: {
     };
 
     const showFallback = () => {
-      if (doc.getMap("files").size === 0 && Object.keys(fallbackFiles).length > 0) {
-        seedDoc(doc, fallbackFiles);
-      }
-      roleRef.current = "viewer";
-      setRole("viewer");
+      if (shown || !Object.keys(fallbackFiles).length) return;
+      seedDoc(doc, fallbackFiles);
       bind(doc, awareness);
+    };
+    const retryLater = () => {
+      if (stopped || !reconnectAllowed) return;
       setStatus("offline");
+      setError(synchronized && canEdit(roleRef.current)
+        ? "Reconnecting. You can keep typing in this tab."
+        : "Connection interrupted. Reconnecting to the shared document…");
+      retry++;
+      clearTimeout(retryTimer ?? undefined);
+      retryTimer = setTimeout(() => void connect(), Math.min(1000 * 2 ** Math.min(retry - 1, 5), 30_000) + Math.random() * 600);
     };
 
     const connect = async () => {
-      if (stopped) return;
-      setStatus("connecting");
+      if (stopped || connecting || socket || !reconnectAllowed) return;
+      if (!navigator.onLine) {
+        retryLater();
+        return;
+      }
+      connecting = true;
+      if (!shown) setStatus("connecting");
       let sessionBody: {
         success?: boolean;
         error?: string;
         code?: string;
         token?: string;
+        docKey?: string;
         role?: ProjectRole;
         files?: Record<string, string>;
         frozen?: boolean;
@@ -231,6 +303,7 @@ export function useClassroomCollab(opts: {
           `/api/classroom/${opts.classId}/assignments/${opts.assignmentId}/session`,
           {
             method: "POST",
+            signal: AbortSignal.any([abort.signal, AbortSignal.timeout(20_000)]),
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               groupId: opts.groupId,
@@ -239,24 +312,33 @@ export function useClassroomCollab(opts: {
             }),
           }
         );
+        if (response.status >= 500 || response.status === 429) throw Error("Temporary session failure");
         sessionBody = await response.json();
         if (stopped) return;
         if (!response.ok || !sessionBody.success || !sessionBody.token) {
+          roleRef.current = "viewer";
+          setRole("viewer");
           setStatus("blocked");
           setBlockedCode(sessionBody.code || null);
           setError(sessionBody.error || "This document is unavailable.");
           return;
         }
       } catch {
-        if (!stopped) {
-          setStatus("offline");
-          setError("Connection interrupted. Reconnecting to the shared document…");
-          retry += 1;
-          retryTimer = setTimeout(() => void connect(), Math.min(1000 * retry, 5000));
-        }
+        retryLater();
         return;
+      } finally {
+        connecting = false;
       }
 
+      if (synchronized && (documentKey !== sessionBody.docKey || authorizedActor !== sessionBody.userId)) {
+        roleRef.current = "viewer";
+        setRole("viewer");
+        setStatus("blocked");
+        setError("Your workspace access changed. Download any unsynced work before reopening the assignment.");
+        return;
+      }
+      documentKey = sessionBody.docKey;
+      authorizedActor = sessionBody.userId;
       fallbackFiles = sessionBody.files || {};
       setFrozen(Boolean(sessionBody.frozen));
       setFreezeReason(sessionBody.freezeReason || null);
@@ -271,17 +353,16 @@ export function useClassroomCollab(opts: {
         displayName: sessionBody.displayName || "Student",
         ready: true,
       };
-      const initialRole = sessionBody.role === "editor" ? "editor" : "viewer";
-      roleRef.current = initialRole;
-      setRole(initialRole);
-
-      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-        return;
+      if (sessionBody.role !== "editor") {
+        roleRef.current = "viewer";
+        setRole("viewer");
       }
+      showFallback();
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       socket = new WebSocket(`${protocol}//${window.location.host}/ws/collab`);
       socketRef.current = socket;
       const current = socket;
+      handshakeTimer = setTimeout(() => current.close(), 25_000);
 
       current.onopen = () => {
         if (stopped) {
@@ -307,6 +388,7 @@ export function useClassroomCollab(opts: {
           message?: string;
           locked?: boolean;
           lockMessage?: string | null;
+          editId?: number;
         };
         try {
           msg = JSON.parse(String(event.data));
@@ -315,6 +397,7 @@ export function useClassroomCollab(opts: {
         }
         if (stopped) return;
         if (msg.type === "init" && typeof msg.state === "string") {
+          clearTimeout(handshakeTimer);
           const nextRole = msg.role === "editor" ? "editor" : "viewer";
           roleRef.current = nextRole;
           setRole(nextRole);
@@ -322,15 +405,13 @@ export function useClassroomCollab(opts: {
             setFrozen(true);
             if (msg.lockMessage) setFreezeReason(msg.lockMessage);
           }
-          if (doc.getMap("files").size > 0) {
+          if (!synchronized && shown) {
             const fresh = new Y.Doc();
             const freshAwareness = new Awareness(fresh);
             Y.applyUpdate(fresh, base64ToBytes(msg.state), "remote");
             const previous = doc;
-            const previousShown = shown;
             bind(fresh, freshAwareness);
-            if (previousShown) retire(previous);
-            else destroyDoc(previous);
+            retire(previous);
             if (current.readyState === WebSocket.OPEN) {
               current.send(JSON.stringify({ type: "client", clientId: fresh.clientID }));
             }
@@ -339,11 +420,25 @@ export function useClassroomCollab(opts: {
             Y.applyUpdate(doc, base64ToBytes(msg.state), "remote");
             refreshFiles(doc);
           }
+          synchronized = true;
           joinedRef.current = true;
           publishPresence();
           setStatus("live");
           setError(null);
           retry = 0;
+          if (canEdit(nextRole)) {
+            if (inFlight) sendInFlight();
+            else flush();
+          } else if (hasEdits()) {
+            setError("Editing is locked. Download any unsynced work before leaving.");
+          }
+          return;
+        }
+        if (msg.type === "edit-accepted" && inFlight && msg.editId === inFlight.id) {
+          clearTimeout(handshakeTimer);
+          inFlight = null;
+          setPendingEdits(hasEdits());
+          flush();
           return;
         }
         if (msg.type === "update" && typeof msg.update === "string") {
@@ -360,25 +455,63 @@ export function useClassroomCollab(opts: {
           setFreezeReason(msg.message || "This assignment is locked.");
           roleRef.current = "viewer";
           setRole("viewer");
+          if (hasEdits()) setError("Editing is locked. Download any unsynced work before leaving.");
+          return;
+        }
+        if (msg.type === "edit-rejected" && inFlight && msg.editId === inFlight.id) {
+          clearTimeout(handshakeTimer);
+          reconnectAllowed = false;
+          roleRef.current = "viewer";
+          setRole("viewer");
+          setStatus("blocked");
+          setError(`${msg.message || "The server could not accept an edit."} Download your unsynced work before reopening the assignment.`);
+          return;
+        }
+        if (msg.type === "save-delayed") {
+          setError("The server is retrying the automatic save.");
+          return;
+        }
+        if (msg.type === "saved") {
+          setError(previous => previous === "The server is retrying the automatic save." ? null : previous);
           return;
         }
         if (msg.type === "error") setError(msg.message || "Collaboration error.");
       };
 
-      current.onclose = () => {
+      current.onclose = (event) => {
         joinedRef.current = false;
         if (stopped || socketRef.current !== current) return;
+        clearTimeout(handshakeTimer);
         socket = null;
-        showFallback();
-        retry += 1;
-        retryTimer = setTimeout(() => void connect(), Math.min(1000 * retry, 5000));
+        if (event.code === 1008) {
+          roleRef.current = "viewer";
+          setRole("viewer");
+        }
+        retryLater();
       };
     };
 
+    const reconnect = () => {
+      clearTimeout(retryTimer ?? undefined);
+      void connect();
+    };
+    reconnectRef.current = reconnect;
+    const networkLost = () => {
+      if (socket) socket.close();
+      else retryLater();
+    };
+    window.addEventListener("online", reconnect);
+    window.addEventListener("offline", networkLost);
     void connect();
 
     return () => {
       stopped = true;
+      abort.abort();
+      window.removeEventListener("online", reconnect);
+      window.removeEventListener("offline", networkLost);
+      window.removeEventListener("beforeunload", warnUnsynced);
+      clearTimeout(flushTimer);
+      clearTimeout(handshakeTimer);
       joinedRef.current = false;
       if (retryTimer) clearTimeout(retryTimer);
       socket?.close();
@@ -391,7 +524,7 @@ export function useClassroomCollab(opts: {
       socketRef.current = null;
       setSession(null);
     };
-  }, [enabled, opts.assignmentId, opts.classId, opts.groupId, opts.previewStudent, opts.studentId]);
+  }, [enabled, opts.assignmentId, opts.classId, opts.groupId, opts.previewStudent, opts.studentId, scope]);
 
   const setActiveFile = useCallback((name: string) => {
     setActiveFileState(name);
@@ -417,9 +550,10 @@ export function useClassroomCollab(opts: {
   const deleteFile = useCallback((name: string) => sendCommand({ type: "file-delete", name }), [sendCommand]);
   const uploadAsset = useCallback((name: string, base64: string) => sendCommand({ type: "asset-upload", name, base64 }), [sendCommand]);
   const deleteAsset = useCallback((name: string) => sendCommand({ type: "asset-delete", name }), [sendCommand]);
+  const visibleSession = enabled && session?.scope === scope ? session : null;
 
   return {
-    status: enabled ? status : "idle",
+    status: !enabled ? "idle" : status === "live" && !visibleSession ? "connecting" : status,
     error: enabled ? error : null,
     blockedCode,
     role,
@@ -427,8 +561,8 @@ export function useClassroomCollab(opts: {
     peers,
     activeFile,
     setActiveFile,
-    doc: enabled ? session?.doc ?? null : null,
-    awareness: enabled ? session?.awareness ?? null : null,
+    doc: visibleSession?.doc ?? null,
+    awareness: visibleSession?.awareness ?? null,
     frozen,
     freezeReason,
     allowRun,
@@ -437,6 +571,8 @@ export function useClassroomCollab(opts: {
     studentId,
     groupMode,
     displayName,
+    pendingEdits: enabled && pendingEdits,
+    reconnect: () => reconnectRef.current(),
     snapshot,
     assets,
     snapshotAssets,

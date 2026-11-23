@@ -89,6 +89,8 @@ export const execConfig = {
   rateLimitPredictWindowMs: envInt("RATE_LIMIT_PREDICT_WINDOW_MS", 60_000),
   rateLimitWsMax: envInt("RATE_LIMIT_WS_MAX", 8),
   rateLimitWsWindowMs: envInt("RATE_LIMIT_WS_WINDOW_MS", 60_000),
+  rateLimitCollabIpMax: envInt("RATE_LIMIT_COLLAB_IP_MAX", 600),
+  rateLimitClassroomJoinsMax: envInt("RATE_LIMIT_CLASSROOM_JOINS_MAX", 90),
 
   // Interactive-terminal stdin caps. `maxStdinBytes` (above) is the total a
   // session may forward; `maxWsStdinMessageBytes` bounds a single WebSocket

@@ -1,5 +1,6 @@
 import { classroomLanguage, type ClassroomLanguage } from "./languages";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isAuthConfigured } from "@/lib/supabase/env";
 import { assignmentFreezeState } from "./assignmentPolicy";
 import {
   getAssignment,
@@ -26,6 +27,7 @@ export interface ResolvedClassroomDocument {
   classroomId: string;
   assignmentId: string;
   role: "editor" | "viewer";
+  instructorView?: boolean;
   groupId?: string;
   studentId?: string;
   frozen: boolean;
@@ -65,7 +67,7 @@ export function chooseCanonicalFiles(
   return starter;
 }
 
-export async function readClassroomDocument(docKey: string): Promise<ClassroomDocumentRecord | null> {
+export async function readClassroomDocument(docKey: string, requireDatabase = false): Promise<ClassroomDocumentRecord | null> {
   const admin = createAdminClient();
   if (admin) {
     try {
@@ -74,6 +76,8 @@ export async function readClassroomDocument(docKey: string): Promise<ClassroomDo
         .select("doc_key, classroom_id, assignment_id, student_id, group_id, state_b64, files, updated_at")
         .eq("doc_key", docKey)
         .maybeSingle();
+      if (error && requireDatabase) throw Error("Could not load the saved document. Please reconnect.");
+      if (!error && !data && requireDatabase) return null;
       if (!error && data) {
         return {
           docKey: String(data.doc_key),
@@ -86,20 +90,20 @@ export async function readClassroomDocument(docKey: string): Promise<ClassroomDo
           updatedAt: String(data.updated_at || ""),
         };
       }
-    } catch {
+    } catch (error) {
+      if (requireDatabase) throw error;
       // Memory copy below.
     }
   }
+  if (requireDatabase && isAuthConfigured()) throw Error("Classroom database unavailable. Please reconnect.");
   const row = memoryDocs.get(docKey);
   if (!row) return null;
   return { ...row, files: { ...row.files } };
 }
 
 export async function writeClassroomDocument(record: ClassroomDocumentRecord): Promise<void> {
-  memoryDocs.set(record.docKey, { ...record, files: { ...record.files } });
   const admin = createAdminClient();
-  if (!admin) return;
-  try {
+  if (admin) {
     const { error } = await admin.from("classroom_documents").upsert(
       {
         doc_key: record.docKey,
@@ -113,9 +117,11 @@ export async function writeClassroomDocument(record: ClassroomDocumentRecord): P
       },
       { onConflict: "doc_key" }
     );
-    if (error) console.warn("classroom document save failed:", error.message);
-  } catch (err) {
-    console.warn("classroom document save failed:", err);
+    if (error) throw Error(error.message);
+  } else if (isAuthConfigured()) {
+    throw Error("Classroom database unavailable.");
+  } else {
+    memoryDocs.set(record.docKey, { ...record, files: { ...record.files } });
   }
 }
 
@@ -123,7 +129,7 @@ export async function resolveClassroomDocument(input: {
   actorId: string;
   classroomId: string;
   assignmentId: string;
-  isTeacher: boolean;
+  isTeacher?: boolean;
   groupId?: string;
   studentId?: string;
   now?: number;
@@ -140,22 +146,50 @@ export async function resolveClassroomDocument(input: {
       error: loaded.error || "Assignment not found",
     };
   }
+  if (input.isTeacher && !loaded.isTeacher) {
+    return { ok: false, status: 403, error: "Instructor privileges required." };
+  }
+  const isTeacher = input.isTeacher ?? Boolean(loaded.isTeacher);
   const assignment = loaded.assignment;
+  const admin = isAuthConfigured() ? createAdminClient() : null;
   const freeze = assignmentFreezeState(assignment, input.now);
   let groupId: string | undefined;
   let studentId: string | undefined;
 
   if (assignment.groupMode) {
-    if (input.isTeacher) {
+    if (isTeacher) {
       if (!input.groupId) {
         return { ok: false, status: 400, error: "Choose a group to open." };
       }
-      const groups = await listClassroomGroups(input.actorId, input.classroomId, input.assignmentId);
-      const group = groups.groups?.find((item) => item.id === input.groupId);
-      if (!group) return { ok: false, status: 404, error: "Group not found" };
-      groupId = group.id;
+      if (admin) {
+        const scope = assignment.groupScope === "assignment" ? input.assignmentId : null;
+        const { data, error } = await admin.from("classroom_groups").select("id")
+          .eq("id", input.groupId).eq("classroom_id", input.classroomId)
+          .filter("assignment_id", scope ? "eq" : "is", scope ?? "null").maybeSingle();
+        if (error) return { ok: false, status: 503, error: "Could not load that group. Please reconnect." };
+        if (!data) return { ok: false, status: 404, error: "Group not found" };
+      } else {
+        const groups = await listClassroomGroups(input.actorId, input.classroomId, input.assignmentId);
+        if (!groups.groups?.some((item) => item.id === input.groupId)) {
+          return { ok: false, status: 404, error: "Group not found" };
+        }
+      }
+      groupId = input.groupId;
     } else {
-      const ids = await listCallerGroupIds(input.actorId, input.classroomId, input.assignmentId);
+      let ids: string[];
+      if (admin) {
+        const scope = assignment.groupScope === "assignment" ? input.assignmentId : null;
+        const { data, error } = await admin.from("classroom_group_members")
+          .select("group_id,classroom_groups!inner(classroom_id,assignment_id)")
+          .eq("user_id", input.actorId)
+          .eq("classroom_groups.classroom_id", input.classroomId)
+          .filter("classroom_groups.assignment_id", scope ? "eq" : "is", scope ?? "null")
+          .limit(2);
+        if (error) return { ok: false, status: 503, error: "Could not load your group. Please reconnect." };
+        ids = (data || []).map(row => String(row.group_id));
+      } else {
+        ids = await listCallerGroupIds(input.actorId, input.classroomId, input.assignmentId);
+      }
       if (ids.length === 0) {
         return {
           ok: false,
@@ -177,14 +211,22 @@ export async function resolveClassroomDocument(input: {
       }
       groupId = ids[0];
     }
-  } else if (input.isTeacher) {
+  } else if (isTeacher) {
     if (!input.studentId) {
       return { ok: false, status: 400, error: "Choose a student to open." };
     }
-    const roster = await listClassroomRoster(input.actorId, input.classroomId);
-    const student = roster.members?.find((member) => member.userId === input.studentId && member.role === "student");
-    if (!student) return { ok: false, status: 404, error: "Student not found in this class." };
-    studentId = student.userId;
+    if (admin) {
+      const { data, error } = await admin.from("classroom_members").select("user_id")
+        .eq("classroom_id", input.classroomId).eq("user_id", input.studentId).eq("role", "student").maybeSingle();
+      if (error) return { ok: false, status: 503, error: "Could not load that student. Please reconnect." };
+      if (!data) return { ok: false, status: 404, error: "Student not found in this class." };
+    } else {
+      const roster = await listClassroomRoster(input.actorId, input.classroomId);
+      if (!roster.members?.some((member) => member.userId === input.studentId && member.role === "student")) {
+        return { ok: false, status: 404, error: "Student not found in this class." };
+      }
+    }
+    studentId = input.studentId;
   } else {
     if (input.studentId && input.studentId !== input.actorId) {
       return { ok: false, status: 403, error: "You can only open your own document." };
@@ -195,7 +237,7 @@ export async function resolveClassroomDocument(input: {
   const docKey = classroomDocumentKey(input.assignmentId, { groupId, studentId });
   if (!docKey) return { ok: false, status: 400, error: "This document has no owner." };
 
-  const role = input.isTeacher || freeze.frozen ? "viewer" : "editor";
+  const role = isTeacher || freeze.frozen ? "viewer" : "editor";
   return {
     ok: true,
     doc: {
@@ -203,6 +245,7 @@ export async function resolveClassroomDocument(input: {
       classroomId: input.classroomId,
       assignmentId: input.assignmentId,
       role,
+      instructorView: isTeacher,
       groupId,
       studentId,
       frozen: freeze.frozen,

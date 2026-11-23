@@ -27,6 +27,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { DEFAULT_CODE } from "@/lib/examples";
 import { inspectDosboxAssets, readDosboxAssets, sameDosboxAssets, type DosboxAssets } from "@/lib/dosboxAssets";
 import { projectLanguage, PROJECT_LANGUAGES, type ProjectLanguage } from "./projectLanguage";
+import { globalRateLimiter } from "@/lib/rateLimit";
 
 const HUB_KEY = "__outputtracerCollabHub";
 const SAVE_DELAY_MS = 800;
@@ -57,6 +58,7 @@ function inspectProjectUpdate(doc: Y.Doc, bytes: Uint8Array, language: Classroom
   try {
     Y.applyUpdate(probe, Y.encodeStateAsUpdate(doc));
     Y.applyUpdate(probe, bytes);
+    if (probe.store.pendingStructs || probe.store.pendingDs) return { valid: false };
     // Only code and validated input assets belong in a persisted project document.
     // readFiles intentionally skips non-text values, so validate the raw map first.
     if (!sameDosboxAssets(doc, probe) || !projectDocumentIsValid(probe, language, requireEntry)) return { valid: false };
@@ -75,6 +77,8 @@ interface ClientState {
   role: ProjectRole;
   clientId: number;
   token?: string;
+  displayName?: string;
+  instructorView?: boolean;
 }
 
 interface Room {
@@ -99,7 +103,7 @@ interface Room {
 type ClientMessage =
   | { type: "join"; projectId?: string; token?: string; clientId?: number; kind?: string }
   | { type: "client"; clientId?: number }
-  | { type: "update"; update?: string }
+  | { type: "update"; update?: string; editId?: number }
   | { type: "awareness"; update?: string }
   | { type: "file-create"; name?: string; content?: string }
   | { type: "file-delete"; name?: string }
@@ -157,16 +161,17 @@ class CollabHub {
     return room?.kind === "classroom" ? readDosboxAssets(room.doc) : null;
   }
 
-  classroomPresence(docKey: string): { userId: string; name: string; file: string | null }[] {
+  classroomPresence(docKey: string, includeInstructors = true): { userId: string; name: string; file: string | null }[] {
     const room = this.rooms.get(docKey);
-    if (!room) return [];
+    if (!room || room.kind !== "classroom") return [];
     const states = room.awareness.getStates();
     const online: { userId: string; name: string; file: string | null }[] = [];
     for (const client of room.clients.values()) {
-      const state = states.get(client.clientId) as { user?: { name?: string }; file?: unknown } | undefined;
+      if (client.instructorView && !includeInstructors) continue;
+      const state = states.get(client.clientId) as { file?: unknown } | undefined;
       online.push({
         userId: client.userId,
-        name: state?.user?.name || "Student",
+        name: client.displayName || "Participant",
         file: typeof state?.file === "string" ? state.file : null,
       });
     }
@@ -230,12 +235,15 @@ class CollabHub {
         }
         const cls = currentRoom.classroom;
         if (!cls) return;
-        const { getClassroom } = await import("@/lib/classroom/classroomService");
-        const access = await getClassroom(client.userId, cls.classId);
-        if (!access.success) { ws.close(1008, "Classroom access changed"); return; }
         const { resolveClassroomDocument } = await import("@/lib/classroom/documents");
-        const resolved = await resolveClassroomDocument({ actorId: client.userId, classroomId: cls.classId, assignmentId: cls.assignmentId, isTeacher: Boolean(access.isTeacher), groupId: cls.groupId, studentId: cls.studentId });
-        if (!resolved.ok) ws.close(1008, "Document access changed");
+        const resolved = await resolveClassroomDocument({ actorId: client.userId, classroomId: cls.classId, assignmentId: cls.assignmentId, groupId: cls.groupId, studentId: cls.studentId });
+        if (!resolved.ok || Boolean(resolved.doc.instructorView) !== Boolean(client.instructorView)) {
+          ws.close(1008, "Document access changed");
+          return;
+        }
+        if (client.role !== resolved.doc.role) {
+          ws.close(1012, "Editing policy changed");
+        }
       })().catch(() => ws.close(1011, "Could not verify access")).finally(() => { checkingAccess = false; });
     }, 30_000);
     accessTimer.unref?.();
@@ -245,14 +253,16 @@ class CollabHub {
       if (!room || !state) return;
       room.clients.delete(ws);
       removeAwarenessStates(room.awareness, [state.clientId], ws);
-      if (room.clients.size === 0) {
-        void this.persist(room);
-        room.evictTimer = setTimeout(() => {
-          if (room && room.clients.size === 0) {
-            this.rooms.delete(room.projectId);
-            room.doc.destroy();
+      const departedRoom = room;
+      if (departedRoom.clients.size === 0) {
+        void this.persist(departedRoom);
+        departedRoom.evictTimer = setTimeout(() => {
+          if (departedRoom.clients.size === 0 && !departedRoom.saveTimer) {
+            this.rooms.delete(departedRoom.projectId);
+            departedRoom.doc.destroy();
           }
         }, IDLE_EVICT_MS);
+        departedRoom.evictTimer.unref?.();
       }
       room = null;
       state = null;
@@ -261,8 +271,17 @@ class CollabHub {
     ws.on("close", leave);
     ws.on("error", leave);
 
+    let messages = Promise.resolve();
+    let queuedMessages = 0;
     ws.on("message", (data) => {
-      void this.onMessage(ws, data.toString(), {
+      if (queuedMessages >= 64) {
+        ws.close(1013, "Too many pending messages");
+        return;
+      }
+      queuedMessages++;
+      messages = messages.then(async () => {
+        if (ws.readyState !== 1) return;
+        await this.onMessage(ws, data.toString(), {
         joined: () => joined,
         markJoined: () => {
           joined = true;
@@ -273,7 +292,9 @@ class CollabHub {
           state = nextState;
         },
         current: () => (room && state ? { room, state } : null),
-      });
+        });
+      }).catch(() => ws.close(1011, "Collaboration request failed"))
+        .finally(() => { queuedMessages--; });
     });
   }
 
@@ -323,13 +344,22 @@ class CollabHub {
     }
 
     if (message.type === "update") {
-      if (!canEdit(state.role) || typeof message.update !== "string") return;
+      const reject = (reason: string) => send(ws, room.kind === "classroom" && Number.isSafeInteger(message.editId)
+        ? { type: "edit-rejected", editId: message.editId, message: reason }
+        : { type: "error", message: reason });
+      if (!canEdit(state.role) || typeof message.update !== "string") {
+        reject("This document is read-only.");
+        return;
+      }
       if (await this.classroomEditBlocked(ws, room)) return;
       const bytes = base64ToBytes(message.update);
-      if (bytes.byteLength > MAX_UPDATE_BYTES) return;
+      if (bytes.byteLength > MAX_UPDATE_BYTES) {
+        reject("That edit exceeds the maximum update size.");
+        return;
+      }
       const inspected = inspectProjectUpdate(room.doc, bytes, room.language, room.kind === "project");
       if (!inspected.valid) {
-        send(ws, { type: "error", message: "That edit is not allowed." });
+        reject("That edit could not be merged with the shared document.");
         return;
       }
       // Normal typing uses the periodic session audit. Structural changes check
@@ -338,11 +368,14 @@ class CollabHub {
         if (await this.classroomFileEditBlocked(ws, room, state)) return;
         // Other editors may have changed the document during authorization.
         if (!inspectProjectUpdate(room.doc, bytes, room.language, room.kind === "project").valid) {
-          send(ws, { type: "error", message: "That edit is not allowed." });
+          reject("That edit could not be merged with the shared document.");
           return;
         }
       }
       Y.applyUpdate(room.doc, bytes, ws);
+      if (room.kind === "classroom" && Number.isSafeInteger(message.editId)) {
+        send(ws, { type: "edit-accepted", editId: message.editId });
+      }
       return;
     }
 
@@ -484,21 +517,17 @@ class CollabHub {
       ws.close();
       return;
     }
-
-    const { getClassroom } = await import("@/lib/classroom/classroomService");
-    const { resolveClassroomDocument } = await import("@/lib/classroom/documents");
-    const access = await getClassroom(claims.userId, claims.classId);
-    if (!access.success) {
-      send(ws, { type: "error", message: "You do not have access to this class." });
-      ws.close();
+    if (!globalRateLimiter.check(`classroom-joins:${claims.userId}`, execConfig.rateLimitClassroomJoinsMax, 60_000).ok) {
+      ws.close(1013, "Too many reconnects");
       return;
     }
+
+    const { resolveClassroomDocument } = await import("@/lib/classroom/documents");
 
     const resolved = await resolveClassroomDocument({
       actorId: claims.userId,
       classroomId: claims.classId,
       assignmentId: claims.assignmentId,
-      isTeacher: Boolean(access.isTeacher),
       groupId: claims.groupId,
       studentId: claims.studentId,
     });
@@ -518,6 +547,7 @@ class CollabHub {
       return;
     }
 
+    if (ws.readyState !== 1) return;
     if (room.evictTimer) {
       clearTimeout(room.evictTimer);
       room.evictTimer = null;
@@ -529,7 +559,13 @@ class CollabHub {
     }
 
     const role: ProjectRole = resolved.doc.role === "editor" ? "editor" : "viewer";
-    const state: ClientState = { userId: claims.userId, role, clientId };
+    const state: ClientState = {
+      userId: claims.userId,
+      displayName: claims.displayName,
+      instructorView: Boolean(resolved.doc.instructorView),
+      role,
+      clientId,
+    };
     room.clients.set(ws, state);
     ctx.bind(room, state);
     ctx.markJoined();
@@ -670,7 +706,7 @@ class CollabHub {
   private async openClassroom(resolved: ResolvedClassroomDocument): Promise<Room> {
     const { readClassroomDocument } = await import("@/lib/classroom/documents");
     const doc = new Y.Doc();
-    const persisted = await readClassroomDocument(resolved.docKey);
+    const persisted = await readClassroomDocument(resolved.docKey, true);
     let seeded = false;
     if (persisted?.stateB64) {
       try {
@@ -751,7 +787,17 @@ class CollabHub {
   }
 
   private persist(room: Room) {
-    room.saving = (room.saving || Promise.resolve()).then(() => this.write(room));
+    room.saving = (room.saving || Promise.resolve()).then(() => this.write(room)).catch(error => {
+      console.warn("Collaboration document save failed:", error instanceof Error ? error.message : error);
+      this.broadcast(room, { type: "save-delayed" });
+      if (!room.saveTimer && room.kind === "classroom") {
+        room.saveTimer = setTimeout(() => {
+          room.saveTimer = null;
+          void this.persist(room);
+        }, 5000);
+        room.saveTimer.unref?.();
+      }
+    });
     return room.saving;
   }
 

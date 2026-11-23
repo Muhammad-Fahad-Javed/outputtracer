@@ -6,6 +6,7 @@ import { resolveClassroomDocument } from "@/lib/classroom/documents";
 import { LOCAL_PREVIEW_STUDENT_ID } from "@/lib/classroom/localTeacherPreview";
 import { classroomRequestUser, isLocalPreviewActor } from "@/lib/classroom/requestUser";
 import { getClassroom, listClassroomRoster } from "@/lib/classroom/classroomService";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(
   request: Request,
@@ -56,10 +57,15 @@ export async function POST(
     );
   }
 
-  const files = await loadCanonicalClassroomFiles(resolved.doc);
-  const roster = await listClassroomRoster(user.id, classId);
-  const person = roster.members?.find((member) => member.userId === actor.actorId);
-  const displayName = person?.displayName || (actor.isTeacher ? "Teacher" : "Student");
+  const admin = createAdminClient();
+  const [files, name] = await Promise.all([
+    loadCanonicalClassroomFiles(resolved.doc),
+    admin
+      ? admin.from("profiles").select("display_name").eq("id", actor.actorId).maybeSingle().then(({ data }) => data?.display_name)
+      : listClassroomRoster(user.id, classId).then(roster => roster.members?.find(member => member.userId === actor.actorId)?.displayName),
+  ]);
+  const roleLabel = actor.isTeacher ? (access.isAdmin ? "Administrator" : "Teacher") : "Student";
+  const displayName = name || roleLabel;
   const token = signClassroomCollabToken({
     userId: actor.actorId,
     displayName,

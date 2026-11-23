@@ -136,7 +136,9 @@ export function watchLocalAuthorship(doc: Y.Doc, authorId: () => string | null):
             pending.push({
               text: event.target,
               start: Y.createRelativePositionFromTypeIndex(event.target, index),
-              end: Y.createRelativePositionFromTypeIndex(event.target, index + length),
+              // Anchor the end to the last character in this edit. A following
+              // insertion at the same boundary must stay outside this stamp.
+              end: Y.createRelativePositionFromTypeIndex(event.target, index + length, -1),
             });
           }
           index += length;

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import dynamic from "next/dynamic";
 import * as Y from "yjs";
 import { CLASSROOM_LANGUAGES, classroomLanguage } from "@/lib/classroom/languages";
-import { Eye, Play } from "lucide-react";
+import { Eye, Play, RefreshCw, Search, Settings } from "lucide-react";
 
 const CollabEditor = dynamic(() => import("@/components/collab/CollabEditor"), { ssr: false });
 import { colorForUser } from "@/components/collab/useProjectCollab";
@@ -48,7 +48,7 @@ export default function TeacherWatch({
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [policyNote, setPolicyNote] = useState<string | null>(null);
-  const [timeDraft, setTimeDraft] = useState("10000");
+  const [timeDraft, setTimeDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [runOutput, setRunOutput] = useState<string | null>(null);
   const [runNote, setRunNote] = useState<string | null>(null);
@@ -56,9 +56,11 @@ export default function TeacherWatch({
   const [consoleRunRequest, setConsoleRunRequest] = useState(0);
   const [consoleRunning, setConsoleRunning] = useState(false);
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const [panel, setPanel] = useState<"code" | "console" | "contribution">("code");
+  const [outputs, setOutputs] = useState<Record<string, Uint8Array>>({});
 
-  const load = useCallback(() => {
-    fetch(`/api/classroom/${classId}/assignments/${assignmentId}/watch`)
+  const load = useCallback((signal?: AbortSignal) => {
+    return fetch(`/api/classroom/${classId}/assignments/${assignmentId}/watch`, { signal })
       .then((res) => res.json())
       .then((data) => {
         if (!data.success) {
@@ -67,15 +69,19 @@ export default function TeacherWatch({
         }
         setError(null);
         setWatch(data);
-        setTimeDraft(String(data.timeLimitMs ?? 10000));
       })
-      .catch(() => setError("Could not load live work."));
+      .catch(() => { if (!signal?.aborted) setError("Could not load live work."); });
   }, [assignmentId, classId]);
 
   useEffect(() => {
-    load();
-    const timer = setInterval(load, 5000);
-    return () => clearInterval(timer);
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      if (document.visibilityState === "visible") await load(controller.signal);
+      if (!controller.signal.aborted) timer = setTimeout(refresh, 15_000);
+    };
+    void refresh();
+    return () => { controller.abort(); clearTimeout(timer); };
   }, [load]);
 
   const selected = watch?.participants.find((participant) => participant.id === selectedId)
@@ -85,7 +91,7 @@ export default function TeacherWatch({
     assignmentId,
     groupId: selected?.kind === "group" ? selected.id : undefined,
     studentId: selected?.kind === "student" ? selected.id : undefined,
-    enabled: Boolean(selected),
+    enabled: Boolean(selected) && !reviewSubmitted,
   });
 
   const savePolicy = async (patch: Record<string, unknown>) => {
@@ -102,7 +108,8 @@ export default function TeacherWatch({
         return;
       }
       setPolicyNote("Saved.");
-      load();
+      const { assignment } = data;
+      setWatch(current => current && ({...current, ...assignment, participants: current.participants}));
     } catch {
       setPolicyNote("Network error while saving.");
     }
@@ -145,7 +152,7 @@ export default function TeacherWatch({
     }
   };
 
-  const contribution = useContribution(selected ? collab.doc : null, collab.activeFile);
+  const contribution = useContribution(selected && panel === "contribution" && collab.status === "live" ? collab.doc : null, collab.activeFile);
   const authorNames: Record<string, string> = {};
   if (selected?.members) {
     for (const member of selected.members) authorNames[member.userId] = member.displayName;
@@ -165,21 +172,18 @@ export default function TeacherWatch({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1e1e1e] text-[#ccc]">
-      <div className="flex flex-col gap-4 border-b border-[#333] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#333] px-3 py-2 sm:px-5">
         <div>
           <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-[#ddd]">
             <Eye size={16} /> Watch the class
           </h2>
-          <p className="mt-1 text-xs text-[#aaa]">
-            Pick a {watch?.groupMode ? "group" : "student"}. You can read and run. Your typing does not change their code.
-          </p>
         </div>
         {selected && <button type="button" onClick={() => { setReviewSubmitted(value => !value); setConsoleRunning(false); }} className="rounded border border-[#555] px-3 py-2 text-xs text-white">{reviewSubmitted ? "Back to live work" : "Review submitted work"}</button>}
         {selected && !reviewSubmitted && (
           <button
             type="button"
-            onClick={()=>setConsoleRunRequest(value=>value+1)}
-            disabled={busy || consoleRunning}
+            onClick={()=>{setPanel("console");setConsoleRunRequest(value=>value+1);}}
+            disabled={busy || consoleRunning || collab.status !== "live"}
             className="inline-flex items-center justify-center gap-1.5 rounded-md bg-black px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-60"
           >
             <Play size={12} /> {consoleRunning ? "Running…" : "Run their code"}
@@ -188,7 +192,9 @@ export default function TeacherWatch({
       </div>
 
       {watch && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-[#333] bg-[#181818] px-4 py-3 sm:px-5">
+        <details className="shrink-0 border-b border-[#333] bg-[#181818] px-3 text-xs sm:px-5">
+          <summary className="cursor-pointer py-2"><Settings size={13} className="mx-1 inline" /> Editing and run settings {watch.locked && "· Locked"}</summary>
+          <div className="flex flex-wrap items-center gap-2 pb-3">
           <button
             type="button"
             onClick={() => savePolicy({ locked: !watch.locked })}
@@ -215,11 +221,12 @@ export default function TeacherWatch({
               type="number"
               min={1000}
               max={10000}
-              value={timeDraft}
+              value={timeDraft ?? String(watch.timeLimitMs)}
               onChange={(event) => setTimeDraft(event.target.value)}
               onBlur={() => {
                 const value = Number(timeDraft);
-                if (Number.isFinite(value)) void savePolicy({ timeLimitMs: value });
+                if (value >= 1000 && value <= 10000 && value !== watch.timeLimitMs) void savePolicy({ timeLimitMs: value });
+                setTimeDraft(null);
               }}
               className="w-20 rounded-md border border-[#333] bg-[#181818] px-2 py-1 text-xs"
             />
@@ -231,26 +238,27 @@ export default function TeacherWatch({
             </span>
           )}
           {policyNote && <span className="text-[11px] text-[#ccc]">{policyNote}</span>}
-        </div>
+          </div>
+        </details>
       )}
 
-      {error ? (
-        <p className="p-5 text-sm text-rose-700">{error}</p>
-      ) : !watch ? (
+      {error && <div role="status" className="shrink-0 border-b border-[#503838] bg-[#352525] px-3 py-2 text-xs text-red-200">{error} <button className="ml-2 underline" onClick={() => void load()}>Retry</button></div>}
+      {!watch && error ? null : !watch ? (
         <p className="p-5 text-sm text-[#aaa]">Loading the class…</p>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-auto lg:grid-cols-[240px_minmax(0,1fr)]">
-          <aside className="border-b border-[#333] lg:border-b-0 lg:border-r">
-            <div className="p-3">
+        <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[210px_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)] lg:grid-cols-[250px_minmax(0,1fr)]">
+          <aside className="flex min-h-0 flex-col overflow-hidden border-b border-[#333] md:border-b-0 md:border-r">
+            <div className="flex items-center gap-2 p-2">
+              <Search size={14} className="shrink-0 text-[#aaa]"/>
               <input
                 aria-label={watch.groupMode ? "Find a group" : "Find a student"}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={watch.groupMode ? "Find a group" : "Find a student"}
                 className="w-full rounded-md border border-[#333] px-3 py-2 text-sm outline-none focus:border-black"
-              />
+              /><button type="button" aria-label="Refresh participants" className="shrink-0 rounded p-2 hover:bg-[#333]" onClick={() => void load()}><RefreshCw size={14}/></button>
             </div>
-            <div className="max-h-60 overflow-y-auto lg:max-h-none">
+            <div className="max-h-24 min-h-0 overflow-y-auto md:max-h-none">
               {participants.length === 0 ? (
                 <p className="px-4 pb-4 text-xs text-[#777777]">
                   {watch.participants.length === 0
@@ -267,20 +275,22 @@ export default function TeacherWatch({
                     : participant.kind === "group"
                       ? "No students yet"
                       : "";
-                  const active = selectedId === participant.id;
+                  const active = selected?.id === participant.id;
                   return (
                     <button
                       key={participant.id}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => {
                         setSelectedId(participant.id);
                         setConsoleRunRequest(0);
                         setConsoleRunning(false);
                         setRunOutput(null);
                         setRunNote(null);
+                        setOutputs({});
                       }}
-                      className={`block w-full border-l-2 px-4 py-3 text-left ${
-                        active ? "border-black bg-[#303030]" : "border-transparent hover:bg-[#181818]"
+                      className={`block w-full border-l-2 px-3 py-2 text-left ${
+                        active ? "border-blue-400 bg-[#263746]" : "border-transparent hover:bg-[#252525]"
                       }`}
                     >
                       <span className="flex items-center justify-between gap-2">
@@ -307,45 +317,47 @@ export default function TeacherWatch({
             </div>
           </aside>
 
-          <div className="flex min-h-0 min-w-0 flex-col gap-3 p-3 sm:p-4">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             {!selected ? (
               <p className="py-16 text-center text-sm text-[#aaa]">Choose someone on the left to open their code.</p>
             ) : reviewSubmitted ? (
               <TeacherSubmissionReview key={`${assignmentId}:${selected.id}`} classId={classId} assignmentId={assignmentId} owner={{ groupId: selected.kind === "group" ? selected.id : undefined, studentId: selected.kind === "student" ? selected.id : undefined }} ownerName={selected.name} language={classroomLanguage(language)}/>
             ) : collab.status === "blocked" ? (
-              <p className="text-sm text-rose-700">{collab.error}</p>
+              <p className="p-4 text-sm text-red-200">{collab.error}</p>
             ) : collab.status === "connecting" && !collab.doc ? (
-              <p className="text-sm text-[#aaa]">Opening {selected.name}…</p>
+              <p className="p-4 text-sm text-[#aaa]">Opening {selected.name}…</p>
             ) : collab.doc && collab.awareness ? (
               <>
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#333] px-3 py-2">
                   <div>
                     <p className="text-sm font-semibold text-[#ddd]">{selected.name}</p>
                     <p className="text-[11px] text-[#777]">{presence}</p>
+                    {collab.status !== "live" && <p className="text-xs text-amber-200">Connecting to live work · showing a saved preview <button onClick={collab.reconnect} className="ml-1 underline">Retry</button></p>}
                   </div>
-                  <div className="flex flex-wrap gap-1">
+                  <div aria-label="Workspace view" className="flex gap-1">
+                    {(["code", "console", "contribution"] as const).map(view => <button type="button" key={view} aria-pressed={panel === view} onClick={() => setPanel(view)} className={`rounded px-2.5 py-1.5 text-xs capitalize ${panel === view ? "bg-[#264c68] text-white" : "text-[#ccc] hover:bg-[#333]"}`}>{view}</button>)}
+                  </div>
+                </div>
+                {panel === "contribution" && <div className="min-h-0 flex-1 overflow-auto p-3">
+                  {collab.status !== "live" ? <p className="text-xs text-[#aaa]">Connecting to load authorship data…</p> : <ContributionLegend file={contribution.file} document={contribution.document} filename={collab.activeFile} names={authorNames}/>}
+                </div>}
+                {panel === "code" && <><div className="flex shrink-0 gap-1 overflow-x-auto border-b border-[#333] px-2 py-1">
                     {collab.fileNames.map((name) => (
                       <button
                         key={name}
                         type="button"
                         onClick={() => collab.setActiveFile(name)}
-                        className={`rounded-md px-2.5 py-1 font-mono text-[11px] ${
+                        aria-pressed={collab.activeFile === name}
+                        className={`shrink-0 rounded-md px-2.5 py-1 font-mono text-xs ${
                           collab.activeFile === name ? "bg-black text-white" : "bg-[#303030] text-[#ccc]"
                         }`}
                       >
                         {name}
                       </button>
                     ))}
-                  </div>
                 </div>
-                <details className="shrink-0 text-xs text-[#ccc]"><summary className="cursor-pointer py-2">Contribution details · authorship highlights</summary><ContributionLegend
-                  file={contribution.file}
-                  document={contribution.document}
-                  filename={collab.activeFile}
-                  names={authorNames}
-                /></details>
-                <div className="flex min-h-[160px] flex-[7] overflow-hidden border border-[#333]">
-                  {language === "asm8086" && <div className="w-40 shrink-0 sm:w-48"><DosboxFiles readOnly sources={collab.snapshot()} assets={collab.assets} activeFile={collab.activeFile} onSelectSource={collab.setActiveFile}/></div>}
+                <div className="flex min-h-0 flex-1 overflow-hidden">
+                  {language === "asm8086" && <div className="hidden w-44 shrink-0 lg:block"><DosboxFiles readOnly sources={collab.snapshot()} assets={collab.assets} outputs={outputs} activeFile={collab.activeFile} onSelectSource={collab.setActiveFile}/></div>}
                   <div className="min-w-0 flex-1">
                   <CollabEditor
                     doc={collab.doc}
@@ -353,22 +365,18 @@ export default function TeacherWatch({
                     filename={collab.activeFile}
                     readOnly
                     peers={collab.peers}
-                    onRunShortcut={() => { if (language === "asm8086") setConsoleRunRequest(value => value + 1); else void run(); }}
+                    onRunShortcut={() => { if (collab.status !== "live") return; setPanel("console"); setConsoleRunRequest(value => value + 1); }}
                     language={CLASSROOM_LANGUAGES[classroomLanguage(language)].monaco}
-                    showAuthorship
+                    showAuthorship={collab.status === "live"}
                   />
                   </div>
-                </div>
-                <div className="flex min-h-[200px] flex-[3] flex-col overflow-hidden border border-[#333]">
+                </div></>}
+                <div className={panel === "console" ? "flex min-h-0 flex-1 flex-col overflow-auto" : "hidden"}>
                   <div className="flex shrink-0 items-center justify-between border-b border-[#333] bg-[#181818] px-3 py-1 text-xs"><span className="font-semibold text-white">Console</span><button className="px-2 py-1 text-[#aaa] hover:text-white disabled:opacity-50" onClick={()=>void run()} disabled={language === "asm8086" || busy||consoleRunning}>{language === "asm8086" ? "Teacher review · browser execution" : busy?"Running tests…":"Run public tests"}</button></div>
-                  <TeacherConsole key={`${assignmentId}:${selected.id}`} scope={{classId,assignmentId,groupId:selected.kind==="group"?selected.id:undefined,studentId:selected.kind==="student"?selected.id:undefined}} language={classroomLanguage(language)} files={collab.snapshot()} assets={collab.assets} getFiles={collab.snapshot} getAssets={collab.snapshotAssets} runRequest={consoleRunRequest} onRunningChange={setConsoleRunning}/>
+                  <TeacherConsole key={`${assignmentId}:${selected.id}`} scope={{classId,assignmentId,groupId:selected.kind==="group"?selected.id:undefined,studentId:selected.kind==="student"?selected.id:undefined}} language={classroomLanguage(language)} files={collab.snapshot()} assets={collab.assets} getFiles={collab.snapshot} getAssets={collab.snapshotAssets} runRequest={consoleRunRequest} onRunningChange={setConsoleRunning} onArtifactsChange={setOutputs} canRun={collab.status === "live"}/>
+                  {runNote && <p className="shrink-0 px-3 text-xs text-[#ccc]">{runNote}</p>}
+                  {runOutput && <pre className="max-h-40 shrink-0 overflow-auto bg-[#18181B] p-3 font-mono text-xs text-[#E4E4E7] whitespace-pre-wrap">{runOutput}</pre>}
                 </div>
-                {runNote && <p className="text-xs text-[#ccc]">{runNote}</p>}
-                {runOutput && (
-                  <pre className="max-h-40 overflow-auto rounded-lg bg-[#18181B] p-3 font-mono text-[11px] text-[#E4E4E7] whitespace-pre-wrap">
-                    {runOutput}
-                  </pre>
-                )}
               </>
             ) : (
               <p className="text-sm text-[#aaa]">{collab.error || "The document is not open yet."}</p>
@@ -446,13 +454,14 @@ function ContributionLegend({
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-xs font-semibold text-[#ddd]">Who wrote {filename}</p>
         {document && document.shares.length > 0 && (
-          <p className="text-[11px] text-[#777]">
+          <p className="text-xs text-[#aaa]">
             Whole document: {document.shares.map((share) => `${names[share.authorId] || "Student"} ${share.percent}%`).join(" · ")}
           </p>
         )}
       </div>
+      <p className="mt-2 text-xs text-[#aaa]">Percentages show each student’s share of attributed characters still present in the code. Deleted text is excluded. {report.starter} characters have no recorded author.</p>
       {report.shares.length === 0 ? (
-        <p className="mt-2 text-xs text-[#aaa]">Nobody has typed in this file yet. Starter code stays plain.</p>
+        <p className="mt-2 text-xs text-[#aaa]">There are no recorded authors in this file.</p>
       ) : (
         <ul className="mt-2 space-y-2">
           {report.shares.map((share) => (
@@ -462,7 +471,7 @@ function ContributionLegend({
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorForUser(share.authorId) }} />
                   {names[share.authorId] || "Student"}
                 </span>
-                <span className="font-semibold tabular-nums">{share.percent}%</span>
+                <span className="font-semibold tabular-nums">{share.characters} characters · {share.percent}%</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-[#E4E4E7]">
                 <div

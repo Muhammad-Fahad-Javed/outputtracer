@@ -68,7 +68,7 @@ app.prepare().then(() => {
       );
       const limited = globalRateLimiter.check(
         `collab:${ip}`,
-        execConfig.rateLimitWsMax,
+        execConfig.rateLimitCollabIpMax,
         execConfig.rateLimitWsWindowMs
       );
       if (!limited.ok) {

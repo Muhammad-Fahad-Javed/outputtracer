@@ -5,7 +5,6 @@ import { classroomDocumentKey } from "@/lib/classroom/documents";
 import { classroomRequestUser } from "@/lib/classroom/requestUser";
 import {
   getAssignment,
-  getClassroom,
   listClassroomGroups,
   listClassroomRoster,
 } from "@/lib/classroom/classroomService";
@@ -20,17 +19,9 @@ export async function GET(
   }
 
   const { classId, assignmentId } = await params;
-  const access = await getClassroom(user.id, classId);
-  if (!access.success) {
-    return NextResponse.json({ success: false, error: access.error || "Access denied" }, { status: 403 });
-  }
-  if (!access.isTeacher) {
-    return NextResponse.json({ success: false, error: "Instructor privileges required." }, { status: 403 });
-  }
-
   const loaded = await getAssignment(user.id, classId, assignmentId);
-  if (!loaded.success || !loaded.assignment) {
-    return NextResponse.json({ success: false, error: loaded.error || "Assignment not found" }, { status: 404 });
+  if (!loaded.success || !loaded.isTeacher || !loaded.assignment) {
+    return NextResponse.json({ success: false, error: "Instructor access to this assignment is required." }, { status: 403 });
   }
   const assignment = loaded.assignment;
   const freeze = assignmentFreezeState(assignment);
@@ -60,11 +51,12 @@ export async function GET(
           userId: member.userId,
           displayName: member.displayName || member.userId,
         })),
-        online: getHub().classroomPresence(docKey),
+        online: getHub().classroomPresence(docKey, false),
       });
     }
   } else {
     const roster = await listClassroomRoster(user.id, classId);
+    if (!roster.success) return NextResponse.json({ success: false, error: "Could not load students." }, { status: 503 });
     for (const member of roster.members || []) {
       if (member.role !== "student") continue;
       const docKey = classroomDocumentKey(assignmentId, { studentId: member.userId });
@@ -74,7 +66,7 @@ export async function GET(
         id: member.userId,
         name: member.displayName || member.userId,
         docKey,
-        online: getHub().classroomPresence(docKey),
+        online: getHub().classroomPresence(docKey, false),
       });
     }
   }

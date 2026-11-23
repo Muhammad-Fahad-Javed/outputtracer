@@ -28,6 +28,7 @@ interface CollabEditorProps {
   showAuthorship?: boolean;
   language?: "cpp" | "python" | "asm";
   inputPolicy?: "typing_only" | "paste_allowed";
+  pasteBlockedMessage?: string;
   onPasteCode?: (characterCount:number)=>void;
 }
 
@@ -42,19 +43,20 @@ export default function CollabEditor({
   showAuthorship = false,
   language = "cpp",
   inputPolicy = "paste_allowed",
+  pasteBlockedMessage = "Typing-only assignment: paste is disabled by your teacher.",
   onPasteCode,
 }: CollabEditorProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [inputNotice,setInputNotice]=useState("");
   useEffect(()=>{const root=rootRef.current;if(!root||readOnly)return;
-    const paste=(event:ClipboardEvent)=>{if(inputPolicy==="typing_only"){event.preventDefault();event.stopImmediatePropagation();setInputNotice("Typing-only assignment: paste is disabled by your teacher.");}};
+    const paste=(event:ClipboardEvent)=>{if(inputPolicy==="typing_only"){event.preventDefault();event.stopImmediatePropagation();setInputNotice(pasteBlockedMessage);}};
     const before=(event:InputEvent)=>{if(inputPolicy==="typing_only" && ["insertFromPaste","insertFromDrop"].includes(event.inputType)){event.preventDefault();event.stopImmediatePropagation();}};
     const drop=(event:DragEvent)=>{event.preventDefault();event.stopImmediatePropagation();setInputNotice("File import and drag/drop are unavailable in this assignment editor.");};
     root.addEventListener("paste",paste,true);root.addEventListener("beforeinput",before,true);root.addEventListener("drop",drop,true);
     return()=>{root.removeEventListener("paste",paste,true);root.removeEventListener("beforeinput",before,true);root.removeEventListener("drop",drop,true);};
-  },[readOnly,inputPolicy,onPasteCode]);
-  const pastePolicyRef=useRef({inputPolicy,onPasteCode});
-  useEffect(()=>{pastePolicyRef.current={inputPolicy,onPasteCode};},[inputPolicy,onPasteCode]);
+  },[readOnly,inputPolicy,pasteBlockedMessage]);
+  const pastePolicyRef=useRef({inputPolicy,onPasteCode,pasteBlockedMessage});
+  useEffect(()=>{pastePolicyRef.current={inputPolicy,onPasteCode,pasteBlockedMessage};},[inputPolicy,onPasteCode,pasteBlockedMessage]);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
@@ -86,7 +88,7 @@ export default function CollabEditor({
     const pasteSubscription=editor.onDidPaste(event=>{
       if(pastePolicyRef.current.inputPolicy==='typing_only'){
         queueMicrotask(()=>editor.trigger('input-policy','undo',null));
-        setInputNotice('Typing-only assignment: paste is disabled by your teacher.');
+        setInputNotice(pastePolicyRef.current.pasteBlockedMessage);
       }else{
         const count=editor.getModel()?.getValueInRange(event.range).length||0;
         if(count)pastePolicyRef.current.onPasteCode?.(count);
@@ -218,6 +220,7 @@ export default function CollabEditor({
             lineNumbers: "on",
             minimap: { enabled: false },
             scrollBeyondLastLine: false,
+            wordWrap: showAuthorship ? "on" : "off",
             padding: { top: 16, bottom: 16 },
             tabSize: 4,
             automaticLayout: true,

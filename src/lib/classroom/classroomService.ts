@@ -341,7 +341,7 @@ export async function createClassroom(
 export async function getClassroom(
   userId: string,
   classroomId: string
-): Promise<{ success: boolean; classroom?: Classroom; isTeacher?: boolean; error?: string }> {
+): Promise<{ success: boolean; classroom?: Classroom; isTeacher?: boolean; isAdmin?: boolean; error?: string }> {
   if (!userId || !classroomId) {
     return { success: false, error: "Invalid request parameters" };
   }
@@ -385,6 +385,7 @@ export async function getClassroom(
         success: true,
         classroom,
         isTeacher: isOwner || isAdmin,
+        isAdmin,
       };
     } catch {
       // Memory fallback below
@@ -414,6 +415,7 @@ export async function getClassroom(
       assignmentCount: (memoryAssignments.get(classroomId) || []).length,
     },
     isTeacher: isOwner || isAdmin,
+    isAdmin,
   };
 }
 
@@ -1177,7 +1179,7 @@ export async function getAssignment(
   userId: string,
   classroomId: string,
   assignmentId: string
-): Promise<{ success: boolean; assignment?: ClassroomAssignment; isTeacher?: boolean; error?: string }> {
+): Promise<{ success: boolean; assignment?: ClassroomAssignment; isTeacher?: boolean; isAdmin?: boolean; error?: string }> {
   const access = await getClassroom(userId, classroomId);
   if (!access.success) {
     return { success: false, error: access.error };
@@ -1207,6 +1209,7 @@ export async function getAssignment(
         success: true,
         assignment: toAssignment(data, Boolean(isTeacher)),
         isTeacher,
+        isAdmin: access.isAdmin,
       };
     } catch {
       // Memory fallback below
@@ -1228,6 +1231,7 @@ export async function getAssignment(
     success: true,
     assignment: toAssignment(item, Boolean(isTeacher)),
     isTeacher,
+    isAdmin: access.isAdmin,
   };
 }
 

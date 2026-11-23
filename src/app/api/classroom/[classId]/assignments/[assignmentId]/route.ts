@@ -22,6 +22,7 @@ export async function GET(
     success: true,
     assignment: result.assignment,
     isTeacher: result.isTeacher,
+    isAdmin: result.isAdmin,
     localPreview: isLocalPreviewActor(user),
   });
 }
